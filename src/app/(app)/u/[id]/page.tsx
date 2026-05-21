@@ -60,6 +60,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   );
 
   const heroGradient = CARD_GRADIENTS[parseInt(id.replace('u-', ''), 10) % 3];
+  const canSendPrivateInvite = id === 'u-002';
 
   function showToast(msg: string) {
     setToast(msg);
@@ -178,8 +179,14 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             {isFollowing ? '已關注' : '關注'}
           </button>
           <button
-            onClick={() => setInviteOpen(true)}
-            className="flex-1 py-3 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all shadow-card"
+            onClick={() => canSendPrivateInvite ? setInviteOpen(true) : undefined}
+            disabled={!canSendPrivateInvite}
+            title={!canSendPrivateInvite ? '僅限示範功能' : undefined}
+            className={`flex-1 py-3 rounded-2xl font-semibold text-sm transition-all ${
+              canSendPrivateInvite
+                ? 'bg-brand-sky text-brand-ink active:scale-[0.98] shadow-card'
+                : 'bg-brand-lavender/50 text-zinc-400 cursor-not-allowed'
+            }`}
           >
             私人邀請
           </button>
@@ -317,11 +324,14 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
             <button
               onClick={handleSendPrivateInvite}
-              className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all shadow-card"
+              disabled={!inviteNote.trim()}
+              className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all shadow-card disabled:opacity-50 disabled:cursor-not-allowed"
             >
               送出私人邀請
             </button>
-            <p className="text-xs text-zinc-400 text-center mt-3">對方接受後，你們才能開始聊天</p>
+            <p className="text-xs text-zinc-400 text-center mt-3">
+              {!inviteNote.trim() ? '請填寫個人訊息才能送出邀請' : '對方接受後，你們才能開始聊天'}
+            </p>
           </div>
         </div>
       )}

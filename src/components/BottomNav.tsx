@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Home, ClipboardList, Inbox, Bell, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { PostRequestSheet } from './PostRequestSheet';
+import { useAppState } from '@/lib/state';
 
 const NAV_ITEMS = [
   { href: '/lobby/explore', icon: Home, label: '首頁' },
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
 export function BottomNav() {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const { state, unreadCount } = useAppState();
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');
@@ -43,6 +45,8 @@ export function BottomNav() {
               );
             }
             const active = isActive(item.href);
+            const showInboxBadge = item.href === '/inbox' && state.inboxUnread;
+            const showUpdatesBadge = item.href === '/updates' && unreadCount > 0;
             return (
               <Link
                 key={item.href}
@@ -50,10 +54,15 @@ export function BottomNav() {
                 className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl active:bg-brand-ice transition-colors"
                 aria-label={item.label}
               >
-                <item.icon
-                  className={`w-5 h-5 ${active ? 'text-brand-sky' : 'text-zinc-400'}`}
-                  strokeWidth={active ? 2 : 1.75}
-                />
+                <div className="relative">
+                  <item.icon
+                    className={`w-5 h-5 ${active ? 'text-brand-sky' : 'text-zinc-400'}`}
+                    strokeWidth={active ? 2 : 1.75}
+                  />
+                  {(showInboxBadge || showUpdatesBadge) && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 border border-white" />
+                  )}
+                </div>
                 <span className={`text-[10px] ${active ? 'font-semibold text-brand-sky' : 'text-zinc-400'}`}>
                   {item.label}
                 </span>

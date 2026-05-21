@@ -1,60 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { RequestCard } from '@/components/RequestCard';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Check, X, MessageCircle } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
+import { useState } from 'react';
 
 function getThreadId(a: string, b: string) {
   return [a, b].sort().join('-');
 }
 
 export default function InboxPage() {
-  const { state, respondToInvite } = useAppState();
+  const { state, clearInboxUnread } = useAppState();
   const router = useRouter();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [toast, setToast] = useState('');
+
+  // Clear inbox unread badge when user opens inbox
+  useEffect(() => {
+    if (state.inboxUnread) clearInboxUnread();
+  }, []);
 
   const myRequests = state.requests.filter(
     (r) => r.creatorId === state.currentUserId && r.status === 'open'
-  );
-
-  const pendingInvites = state.invitations.filter(
-    (i) => i.toUserId === state.currentUserId && i.status === 'pending'
   );
 
   const responsesReceived = state.responses.filter((resp) =>
     myRequests.some((req) => req.id === resp.requestId)
   );
 
-  // Accepted invitations where we can now chat
+  // Accepted invitations (private) — show "start chatting"
   const acceptedInvites = state.invitations.filter(
     (i) =>
-      (i.fromUserId === state.currentUserId || i.toUserId === state.currentUserId) &&
-      i.status === 'accepted'
+      i.requestId === null &&
+      i.status === 'accepted' &&
+      !i.meetupConfirmed &&
+      (i.fromUserId === state.currentUserId || i.toUserId === state.currentUserId)
   );
+
+  // Teaser messages from girls (read-only)
+  const teasers = (state.teaserMessages ?? []).filter((t) => t.toUserId === state.currentUserId);
 
   const isEmpty =
     myRequests.length === 0 &&
-    pendingInvites.length === 0 &&
+    acceptedInvites.length === 0 &&
     responsesReceived.length === 0 &&
-    acceptedInvites.length === 0;
-
-  function handleInviteAccept(inviteId: string) {
-    respondToInvite(inviteId, true);
-    setToast('已接受邀請');
-    setTimeout(() => setToast(''), 2000);
-  }
-
-  function handleInviteDecline(inviteId: string) {
-    respondToInvite(inviteId, false);
-    setToast('已婉拒邀請');
-    setTimeout(() => setToast(''), 2000);
-  }
+    teasers.length === 0;
 
   if (isEmpty) {
     return (
@@ -77,7 +71,74 @@ export default function InboxPage() {
 
   return (
     <div className="px-4 py-3 flex flex-col gap-5">
-      {/* My Requests */}
+
+      {/* Accepted private invites — open chat */}
+      {acceptedInvites.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-brand-ink mb-2">已配對 ✨</h2>
+          <div className="flex flex-col gap-3">
+            {acceptedInvites.map((inv) => {
+              const otherId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
+              const other = state.users.find((u) => u.id === otherId);
+              const threadId = getThreadId(state.currentUserId, otherId);
+              return (
+                <div key={inv.id} className="bg-white rounded-2xl border border-brand-sky/40 p-4 shadow-card">
+                  <div className="flex items-center gap-3">
+                    {other && (
+                      <img src={other.avatarUrl} alt={other.nickname} className="w-11 h-11 rounded-full object-cover ring-2 ring-brand-sky/50" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-brand-ink">
+                        {other?.nickname} 接受了你的邀請 🎉
+                      </p>
+                      <p className="text-xs text-zinc-400 mt-0.5">聊天視窗已開啟，8 小時後關閉</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => router.push(`/chat/${threadId}`)}
+                    className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all shadow-card"
+                  >
+                    <MessageCircle className="w-4 h-4" strokeWidth={2} />
+                    開始聊天
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Teaser messages from girls */}
+      {teasers.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-brand-ink mb-2">有人對你感興趣 👀</h2>
+          <div className="flex flex-col gap-2">
+            {teasers.map((t) => {
+              const from = state.users.find((u) => u.id === t.fromUserId);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => router.push(`/u/${t.fromUserId}`)}
+                  className="w-full flex items-center gap-3 bg-white rounded-2xl border border-brand-lavender p-3.5 shadow-card text-left active:bg-brand-ice transition-colors"
+                >
+                  {from && (
+                    <img src={from.avatarUrl} alt={from.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-brand-ink">{from?.nickname}</p>
+                    <p className="text-sm text-zinc-500 mt-0.5">「{t.text}」</p>
+                  </div>
+                  <span className="text-xs text-zinc-400 shrink-0">
+                    {formatDistanceToNow(new Date(t.createdAt), { locale: zhTW, addSuffix: true })}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* My open requests */}
       {myRequests.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-brand-ink mb-2">
@@ -91,90 +152,7 @@ export default function InboxPage() {
         </section>
       )}
 
-      {/* Invitations received */}
-      {pendingInvites.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-brand-ink mb-2">
-            收到的邀請 ({pendingInvites.length})
-          </h2>
-          <div className="flex flex-col gap-3">
-            {pendingInvites.map((inv) => {
-              const from = state.users.find((u) => u.id === inv.fromUserId);
-              const req = state.requests.find((r) => r.id === inv.requestId);
-              return (
-                <div key={inv.id} className="bg-white rounded-2xl border border-brand-lavender p-4 shadow-card">
-                  <div className="flex items-center gap-2 mb-2">
-                    {from && (
-                      <img src={from.avatarUrl} alt={from.nickname} className="w-9 h-9 rounded-full object-cover" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-brand-ink">{from?.nickname} 邀請你加入</p>
-                      {req && (
-                        <p className="text-xs text-zinc-400">
-                          {req.requestType === 'after_party' ? 'After Party' : req.requestType} · {req.area}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {inv.message && (
-                    <p className="text-sm text-zinc-600 italic mb-3">「{inv.message}」</p>
-                  )}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleInviteAccept(inv.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all"
-                    >
-                      <Check className="w-4 h-4" strokeWidth={2} /> 接受
-                    </button>
-                    <button
-                      onClick={() => handleInviteDecline(inv.id)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-brand-lavender text-zinc-500 font-semibold text-sm active:scale-[0.98] transition-all"
-                    >
-                      <X className="w-4 h-4" strokeWidth={2} /> 婉拒
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Accepted invites — open chat */}
-      {acceptedInvites.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-brand-ink mb-2">已配對</h2>
-          <div className="flex flex-col gap-3">
-            {acceptedInvites.map((inv) => {
-              const otherId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
-              const other = state.users.find((u) => u.id === otherId);
-              const threadId = getThreadId(state.currentUserId, otherId);
-              return (
-                <div key={inv.id} className="bg-white rounded-2xl border border-brand-lavender p-4 shadow-card">
-                  <div className="flex items-center gap-3">
-                    {other && (
-                      <img src={other.avatarUrl} alt={other.nickname} className="w-10 h-10 rounded-full object-cover" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-brand-ink">{other?.nickname}</p>
-                      <p className="text-xs text-zinc-400">邀請已接受 · 可以開始聊天了</p>
-                    </div>
-                    <button
-                      onClick={() => router.push(`/chat/${threadId}`)}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-sky text-brand-ink font-semibold text-xs active:scale-[0.98] transition-all shadow-card shrink-0"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" strokeWidth={2} />
-                      開始聊天
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* Responses received */}
+      {/* Responses received on my requests */}
       {responsesReceived.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-brand-ink mb-2">收到的回應</h2>
@@ -193,7 +171,7 @@ export default function InboxPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-brand-ink">
                       <span className="font-semibold">{responder?.nickname}</span>{' '}
-                      {resp.responseStatus === 'joining' ? '想加入' : '對你的需求表示興趣'}
+                      對你的需求表示興趣
                     </p>
                     {resp.note && <p className="text-xs text-zinc-400 truncate">「{resp.note}」</p>}
                   </div>
@@ -205,12 +183,6 @@ export default function InboxPage() {
             })}
           </div>
         </section>
-      )}
-
-      {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50">
-          {toast}
-        </div>
       )}
     </div>
   );

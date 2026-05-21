@@ -10,8 +10,10 @@ import {
   updates as seedUpdates,
   follows as seedFollows,
   seedChatMessages,
+  seedTeaserMessages,
 } from '@/lib/mock';
 import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage, MeetRecord } from '@/lib/mock';
+import type { TeaserMessage } from '@/lib/mock/chat';
 
 const STORAGE_KEY = 'sl_state_v1';
 const PRIVATE_INVITE_CREDIT_COST = 3;
@@ -33,7 +35,9 @@ export interface AppState {
   autoOfflineHours: number;
   chatMessages: ChatMessage[];
   directMessages: DirectMessage[];
-  meetRecords: MeetRecord[];   // who the current user has met
+  meetRecords: MeetRecord[];
+  teaserMessages: TeaserMessage[];
+  inboxUnread: boolean;      // true when a new accepted invite is waiting in inbox
 }
 
 function getSeedState(): AppState {
@@ -55,6 +59,8 @@ function getSeedState(): AppState {
     chatMessages: seedChatMessages,
     directMessages: [],
     meetRecords: [],
+    teaserMessages: seedTeaserMessages,
+    inboxUnread: false,
   };
 }
 
@@ -283,6 +289,7 @@ export function useAppState() {
               : inv
           ),
           updates: [acceptedUpdate, ...prev.updates],
+          inboxUnread: true,
         }));
       }, 1500);
     }
@@ -407,6 +414,10 @@ export function useAppState() {
     }));
   }, []);
 
+  const clearInboxUnread = useCallback(() => {
+    setState((prev) => ({ ...prev, inboxUnread: false }));
+  }, []);
+
   return {
     state,
     currentUser,
@@ -431,5 +442,6 @@ export function useAppState() {
     sendChatMessage,
     sendDirectMessage,
     confirmMeetup,
+    clearInboxUnread,
   };
 }
