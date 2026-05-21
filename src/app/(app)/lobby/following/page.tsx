@@ -1,0 +1,31 @@
+'use client';
+
+import { useAppState } from '@/lib/state';
+import { LobbyGrid } from '@/components/LobbyGrid';
+
+export default function FollowingPage() {
+  const { state, currentUser } = useAppState();
+
+  const followingIds = state.follows
+    .filter((f) => f.followerId === currentUser?.id)
+    .map((f) => f.followingId);
+
+  const followingOnline = state.users.filter(
+    (u) => followingIds.includes(u.id) && state.onlineUserIds.includes(u.id)
+  );
+
+  function getStatus(userId: string) {
+    return state.onlineStatuses.find((s) => s.userId === userId);
+  }
+
+  return (
+    <LobbyGrid
+      users={followingOnline}
+      getStatus={getStatus}
+      emptyTitle="你還沒關注任何人"
+      emptyBody="到探索找你感興趣的人"
+      emptyCta="到探索找人"
+      emptyCtaHref="/lobby/explore"
+    />
+  );
+}
