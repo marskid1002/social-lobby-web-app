@@ -32,11 +32,24 @@ export function UserCard({ user, status, index }: Props) {
   return (
     <button
       onClick={() => router.push(`/u/${user.id}`)}
-      className={`relative aspect-[3/4] rounded-[28px] overflow-hidden shadow-card active:scale-[0.97] transition-transform w-full text-left ${gradient}`}
+      className={`relative aspect-3/4 rounded-[28px] overflow-hidden shadow-card active:scale-[0.97] transition-transform w-full text-left ${!user.cardImageUrl ? gradient : ''}`}
       aria-label={`查看 ${user.nickname} 的個人檔案`}
     >
+      {/* Blurred photo background */}
+      {user.cardImageUrl && (
+        <>
+          <img
+            src={user.cardImageUrl}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 backdrop-blur-sm bg-black/10" />
+        </>
+      )}
+
       {/* Avatar */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2">
+      <div className="absolute top-6 left-1/2 -translate-x-1/2 z-10">
         <img
           src={user.avatarUrl}
           alt={user.nickname}
@@ -45,15 +58,15 @@ export function UserCard({ user, status, index }: Props) {
       </div>
 
       {/* Bottom info */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/20 to-transparent">
-        <p className="text-base font-semibold text-brand-ink leading-tight">{user.nickname}</p>
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-black/50 to-transparent z-10">
+        <p className="text-base font-semibold text-white leading-tight drop-shadow">{user.nickname}</p>
         {status && (
           <div className="flex items-center gap-1.5 mt-1">
             <span
               className="inline-block w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: STATUS_COLORS[status.status] }}
             />
-            <span className="text-xs font-medium text-brand-ink/70">
+            <span className="text-xs font-medium text-white/80">
               {STATUS_LABELS[status.status]} · {status.area}
             </span>
           </div>

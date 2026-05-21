@@ -7,7 +7,11 @@ import { RequestCard } from '@/components/RequestCard';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Check, X } from 'lucide-react';
+import { Check, X, MessageCircle } from 'lucide-react';
+
+function getThreadId(a: string, b: string) {
+  return [a, b].sort().join('-');
+}
 
 export default function InboxPage() {
   const { state, respondToInvite } = useAppState();
@@ -27,7 +31,18 @@ export default function InboxPage() {
     myRequests.some((req) => req.id === resp.requestId)
   );
 
-  const isEmpty = myRequests.length === 0 && pendingInvites.length === 0 && responsesReceived.length === 0;
+  // Accepted invitations where we can now chat
+  const acceptedInvites = state.invitations.filter(
+    (i) =>
+      (i.fromUserId === state.currentUserId || i.toUserId === state.currentUserId) &&
+      i.status === 'accepted'
+  );
+
+  const isEmpty =
+    myRequests.length === 0 &&
+    pendingInvites.length === 0 &&
+    responsesReceived.length === 0 &&
+    acceptedInvites.length === 0;
 
   function handleInviteAccept(inviteId: string) {
     respondToInvite(inviteId, true);
@@ -70,11 +85,7 @@ export default function InboxPage() {
           </h2>
           <div className="flex flex-col gap-3">
             {myRequests.map((req) => (
-              <RequestCard
-                key={req.id}
-                request={req}
-                variant="inbox"
-              />
+              <RequestCard key={req.id} request={req} variant="inbox" />
             ))}
           </div>
         </section>
@@ -129,6 +140,40 @@ export default function InboxPage() {
         </section>
       )}
 
+      {/* Accepted invites — open chat */}
+      {acceptedInvites.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold text-brand-ink mb-2">已配對</h2>
+          <div className="flex flex-col gap-3">
+            {acceptedInvites.map((inv) => {
+              const otherId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
+              const other = state.users.find((u) => u.id === otherId);
+              const threadId = getThreadId(state.currentUserId, otherId);
+              return (
+                <div key={inv.id} className="bg-white rounded-2xl border border-brand-lavender p-4 shadow-card">
+                  <div className="flex items-center gap-3">
+                    {other && (
+                      <img src={other.avatarUrl} alt={other.nickname} className="w-10 h-10 rounded-full object-cover" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-brand-ink">{other?.nickname}</p>
+                      <p className="text-xs text-zinc-400">邀請已接受 · 可以開始聊天了</p>
+                    </div>
+                    <button
+                      onClick={() => router.push(`/chat/${threadId}`)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-sky text-brand-ink font-semibold text-xs active:scale-[0.98] transition-all shadow-card shrink-0"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" strokeWidth={2} />
+                      開始聊天
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Responses received */}
       {responsesReceived.length > 0 && (
         <section>
@@ -136,7 +181,6 @@ export default function InboxPage() {
           <div className="bg-white rounded-2xl border border-brand-lavender shadow-card overflow-hidden">
             {responsesReceived.map((resp, i) => {
               const responder = state.users.find((u) => u.id === resp.userId);
-              const req = state.requests.find((r) => r.id === resp.requestId);
               return (
                 <button
                   key={resp.id}

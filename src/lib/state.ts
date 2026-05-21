@@ -9,8 +9,9 @@ import {
   invitations as seedInvitations,
   updates as seedUpdates,
   follows as seedFollows,
+  seedChatMessages,
 } from '@/lib/mock';
-import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow } from '@/lib/mock';
+import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage } from '@/lib/mock';
 
 const STORAGE_KEY = 'sl_state_v1';
 
@@ -29,6 +30,8 @@ export interface AppState {
   notificationsEnabled: boolean;
   showOnNearby: boolean;
   autoOfflineHours: number;
+  chatMessages: ChatMessage[];
+  directMessages: DirectMessage[];
 }
 
 function getSeedState(): AppState {
@@ -47,6 +50,8 @@ function getSeedState(): AppState {
     notificationsEnabled: true,
     showOnNearby: true,
     autoOfflineHours: 4,
+    chatMessages: seedChatMessages,
+    directMessages: [],
   };
 }
 
@@ -310,6 +315,38 @@ export function useAppState() {
     listeners.forEach((l) => l());
   }, []);
 
+  const sendChatMessage = useCallback((threadId: string, text: string) => {
+    const newMsg: ChatMessage = {
+      id: `cm-${Date.now()}`,
+      threadId,
+      senderId: getState().currentUserId,
+      text,
+      createdAt: new Date().toISOString(),
+    };
+    setState((prev) => ({
+      ...prev,
+      chatMessages: [...prev.chatMessages, newMsg],
+    }));
+    return newMsg;
+  }, []);
+
+  const sendDirectMessage = useCallback(
+    (toUserId: string, msg: Omit<DirectMessage, 'id' | 'createdAt' | 'read'>) => {
+      const newDm: DirectMessage = {
+        ...msg,
+        id: `dm-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      setState((prev) => ({
+        ...prev,
+        directMessages: [...prev.directMessages, newDm],
+      }));
+      return newDm;
+    },
+    []
+  );
+
   return {
     state,
     currentUser,
@@ -331,5 +368,7 @@ export function useAppState() {
     unblockUser,
     markUpdatesRead,
     reset,
+    sendChatMessage,
+    sendDirectMessage,
   };
 }

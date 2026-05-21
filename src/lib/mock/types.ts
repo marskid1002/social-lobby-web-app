@@ -30,7 +30,8 @@ export interface User {
   id: string;
   lineUserId: string;
   nickname: string;
-  avatarUrl: string;        // Use https://i.pravatar.cc/150?u=<id> as deterministic placeholder
+  avatarUrl: string;
+  cardImageUrl?: string;     // Full-bleed card/hero background photo
   bio: string;
   defaultArea: string;
   interests: string[];
@@ -95,5 +96,25 @@ export interface Follow {
   id: string;
   followerId: string;
   followingId: string;
+  createdAt: string;
+}
+
+export interface DirectMessage {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  message: string;
+  requestType?: string;
+  area?: string;
+  note?: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;   // composed as `${userId1}-${userId2}` sorted
+  senderId: string;
+  text: string;
   createdAt: string;
 }

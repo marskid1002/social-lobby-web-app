@@ -5,3 +5,4 @@ export * from './users';
 export * from './requests';
 export * from './updates';
 export * from './i18n';
+export * from './chat';
