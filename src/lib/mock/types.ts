@@ -22,6 +22,7 @@ export type Role = 'user' | 'operator' | 'admin';
 export type UpdateEventType =
   | 'response_received'
   | 'invite_received'
+  | 'invite_accepted'
   | 'follow'
   | 'status_change'
   | 'request_closed';
@@ -80,6 +81,13 @@ export interface Invitation {
   message?: string;
   createdAt: string;         // ISO
   respondedAt?: string;
+  chatExpiresAt?: string;    // ISO — 8h after acceptance; chat locks after this
+  meetupConfirmed?: boolean; // true once user confirms the meetup happened
+}
+
+export interface MeetRecord {
+  userId: string;            // the person you met
+  metAt: string;             // ISO
 }
 
 export interface UpdateEvent {

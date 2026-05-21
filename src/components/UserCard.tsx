@@ -23,9 +23,10 @@ interface Props {
   user: User;
   status?: OnlineStatus;
   index: number;
+  hasMet?: boolean;
 }
 
-export function UserCard({ user, status, index }: Props) {
+export function UserCard({ user, status, index, hasMet }: Props) {
   const router = useRouter();
   const gradient = CARD_GRADIENTS[index % 3];
 
@@ -38,14 +39,16 @@ export function UserCard({ user, status, index }: Props) {
       {/* Blurred photo background */}
       {user.cardImageUrl && (
         <>
-          <img
-            src={user.cardImageUrl}
-            alt=""
-            aria-hidden
-            className="absolute inset-0 w-full h-full object-cover"
-          />
+          <img src={user.cardImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 backdrop-blur-sm bg-black/10" />
         </>
+      )}
+
+      {/* Met badge — top right */}
+      {hasMet && (
+        <div className="absolute top-3 right-3 z-20 w-7 h-7 rounded-full bg-white/90 flex items-center justify-center shadow-sm text-base">
+          ⭐
+        </div>
       )}
 
       {/* Avatar */}
@@ -59,13 +62,13 @@ export function UserCard({ user, status, index }: Props) {
 
       {/* Bottom info */}
       <div className="absolute bottom-0 left-0 right-0 p-4 bg-linear-to-t from-black/50 to-transparent z-10">
-        <p className="text-base font-semibold text-white leading-tight drop-shadow">{user.nickname}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-base font-semibold text-white leading-tight drop-shadow">{user.nickname}</p>
+          {hasMet && <span className="text-sm leading-none">⭐</span>}
+        </div>
         {status && (
           <div className="flex items-center gap-1.5 mt-1">
-            <span
-              className="inline-block w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: STATUS_COLORS[status.status] }}
-            />
+            <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[status.status] }} />
             <span className="text-xs font-medium text-white/80">
               {STATUS_LABELS[status.status]} · {status.area}
             </span>

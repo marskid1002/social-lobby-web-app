@@ -16,6 +16,7 @@ const ALL_INTERESTS = [
 interface Props {
   users: User[];
   getStatus: (userId: string) => OnlineStatus | undefined;
+  hasMet?: (userId: string) => boolean;
   emptyTitle?: string;
   emptyBody?: string;
   emptyCta?: string;
@@ -26,6 +27,7 @@ interface Props {
 export function LobbyGrid({
   users,
   getStatus,
+  hasMet,
   emptyTitle = '這裡還沒有人',
   emptyBody = '',
   emptyCta,
@@ -118,7 +120,7 @@ export function LobbyGrid({
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {filtered.map((user, i) => (
-            <UserCard key={user.id} user={user} status={getStatus(user.id)} index={i} />
+            <UserCard key={user.id} user={user} status={getStatus(user.id)} index={i} hasMet={hasMet?.(user.id)} />
           ))}
         </div>
       )}

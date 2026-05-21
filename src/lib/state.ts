@@ -11,9 +11,10 @@ import {
   follows as seedFollows,
   seedChatMessages,
 } from '@/lib/mock';
-import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage } from '@/lib/mock';
+import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage, MeetRecord } from '@/lib/mock';
 
 const STORAGE_KEY = 'sl_state_v1';
+const PRIVATE_INVITE_CREDIT_COST = 3;
 
 export interface AppState {
   currentUserId: string;
@@ -32,6 +33,7 @@ export interface AppState {
   autoOfflineHours: number;
   chatMessages: ChatMessage[];
   directMessages: DirectMessage[];
+  meetRecords: MeetRecord[];   // who the current user has met
 }
 
 function getSeedState(): AppState {
@@ -52,6 +54,7 @@ function getSeedState(): AppState {
     autoOfflineHours: 4,
     chatMessages: seedChatMessages,
     directMessages: [],
+    meetRecords: [],
   };
 }
 
@@ -61,7 +64,6 @@ function loadState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return getSeedState();
     const parsed = JSON.parse(raw);
-    // Merge with seed to pick up any new fields
     return { ...getSeedState(), ...parsed };
   } catch {
     return getSeedState();
@@ -225,9 +227,12 @@ export function useAppState() {
     }));
   }, []);
 
+  // sendInvite: private invites (requestId=null) cost 3 credits and auto-accept after 1.5s
   const sendInvite = useCallback((toUserId: string, requestId: string | null, message?: string) => {
+    const isPrivate = requestId === null;
+    const inviteId = `i-${Date.now()}`;
     const newInvite: Invitation = {
-      id: `i-${Date.now()}`,
+      id: inviteId,
       requestId,
       fromUserId: getState().currentUserId,
       toUserId,
@@ -244,18 +249,59 @@ export function useAppState() {
       createdAt: new Date().toISOString(),
       read: false,
     };
+
     setState((prev) => ({
       ...prev,
       invitations: [...prev.invitations, newInvite],
       updates: [newUpdate, ...prev.updates],
+      // Deduct 3 credits for private invites
+      users: isPrivate
+        ? prev.users.map((u) =>
+            u.id === prev.currentUserId ? { ...u, credits: Math.max(0, u.credits - PRIVATE_INVITE_CREDIT_COST) } : u
+          )
+        : prev.users,
     }));
+
+    // Auto-accept private invites after 1.5s
+    if (isPrivate) {
+      setTimeout(() => {
+        const senderId = getState().currentUserId;
+        const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
+        const acceptedUpdate: UpdateEvent = {
+          id: `ue-${Date.now()}`,
+          userId: senderId,
+          actorId: toUserId,
+          eventType: 'invite_accepted',
+          createdAt: new Date().toISOString(),
+          read: false,
+        };
+        setState((prev) => ({
+          ...prev,
+          invitations: prev.invitations.map((inv) =>
+            inv.id === inviteId
+              ? { ...inv, status: 'accepted', respondedAt: new Date().toISOString(), chatExpiresAt }
+              : inv
+          ),
+          updates: [acceptedUpdate, ...prev.updates],
+        }));
+      }, 1500);
+    }
   }, []);
 
   const respondToInvite = useCallback((inviteId: string, accept: boolean) => {
     setState((prev) => ({
       ...prev,
       invitations: prev.invitations.map((i) =>
-        i.id === inviteId ? { ...i, status: accept ? 'accepted' : 'declined', respondedAt: new Date().toISOString() } : i
+        i.id === inviteId
+          ? {
+              ...i,
+              status: accept ? 'accepted' : 'declined',
+              respondedAt: new Date().toISOString(),
+              chatExpiresAt: accept
+                ? new Date(Date.now() + 8 * 3_600_000).toISOString()
+                : undefined,
+            }
+          : i
       ),
     }));
   }, []);
@@ -347,6 +393,20 @@ export function useAppState() {
     []
   );
 
+  // Confirm meetup: locks the chat and records the meet
+  const confirmMeetup = useCallback((inviteId: string, otherUserId: string) => {
+    setState((prev) => ({
+      ...prev,
+      invitations: prev.invitations.map((inv) =>
+        inv.id === inviteId ? { ...inv, meetupConfirmed: true } : inv
+      ),
+      meetRecords: [
+        ...prev.meetRecords.filter((r) => r.userId !== otherUserId),
+        { userId: otherUserId, metAt: new Date().toISOString() },
+      ],
+    }));
+  }, []);
+
   return {
     state,
     currentUser,
@@ -370,5 +430,6 @@ export function useAppState() {
     reset,
     sendChatMessage,
     sendDirectMessage,
+    confirmMeetup,
   };
 }

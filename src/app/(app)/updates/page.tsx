@@ -8,6 +8,7 @@ import { zhTW } from 'date-fns/locale';
 
 const EVENT_LABELS: Record<string, (actor: string) => string> = {
   invite_received: (a) => `${a} 邀請你加入需求`,
+  invite_accepted: (a) => `${a} 接受了你的私人邀請 🎉`,
   response_received: (a) => `${a} 對你的需求表示興趣`,
   follow: (a) => `${a} 開始關注你`,
   status_change: (a) => `${a} 上線了`,
@@ -65,7 +66,9 @@ export default function UpdatesPage() {
                 : null;
 
               function handleTap() {
-                if (update.refRequestId) {
+                if (update.eventType === 'invite_accepted') {
+                  router.push('/inbox');
+                } else if (update.refRequestId) {
                   router.push(`/requests/${update.refRequestId}`);
                 } else if (update.eventType === 'follow' || update.eventType === 'status_change') {
                   router.push(`/u/${update.actorId}`);

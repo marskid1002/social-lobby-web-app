@@ -39,6 +39,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const router = useRouter();
   const { state, toggleFollow, blockUser, sendInvite } = useAppState();
+  const hasMet = state.meetRecords.some((r) => r.userId === id);
   const [toast, setToast] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -145,7 +146,11 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="text-center mb-4">
-          <h1 className="text-2xl font-semibold text-brand-ink">{user.nickname}</h1>
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-2xl font-semibold text-brand-ink">{user.nickname}</h1>
+            {hasMet && <span className="text-xl" title="已見面">⭐</span>}
+          </div>
+          {hasMet && <p className="text-xs text-zinc-400 mt-0.5">你們已經見過面了</p>}
           {user.bio && <p className="text-sm text-zinc-500 mt-1">{user.bio}</p>}
         </div>
 

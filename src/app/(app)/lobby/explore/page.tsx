@@ -18,10 +18,15 @@ function ExploreContent() {
     return state.onlineStatuses.find((s) => s.userId === userId);
   }
 
+  function hasMet(userId: string) {
+    return state.meetRecords.some((r) => r.userId === userId);
+  }
+
   return (
     <LobbyGrid
       users={onlineUsers}
       getStatus={getStatus}
+      hasMet={hasMet}
       emptyTitle="目前沒有人在線"
       emptyBody="成為第一個上線的人吧"
       searchQuery={q}
