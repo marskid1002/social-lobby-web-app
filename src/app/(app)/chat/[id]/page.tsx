@@ -92,7 +92,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>(threadMessages);
   const [inputText, setInputText] = useState('');
   const [hasSentMessage, setHasSentMessage] = useState(false);
-  const hasAutoReplied = useRef(false);
+  const [xiaomeiInput, setXiaomeiInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Demo perspective switcher
@@ -114,19 +114,22 @@ export default function ChatPage({ params }: ChatPageProps) {
     const newMsg = sendChatMessage(threadId, text);
     setLocalMessages((prev) => [...prev, newMsg]);
     setInputText('');
-
-    // Xiao Mei auto-replies once after the user's first message
-    if (!hasAutoReplied.current) {
-      hasAutoReplied.current = true;
-      setTimeout(() => {
-        const reply = sendChatMessage(threadId, '好啊！那今晚見 😊 到了再打給你～', otherUserId);
-        setLocalMessages((prev) => [...prev, reply]);
-      }, 1500);
-    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  }
+
+  function handleXiaomeiSend() {
+    const text = xiaomeiInput.trim();
+    if (!text) return;
+    const newMsg = sendChatMessage(threadId, text, otherUserId);
+    setLocalMessages((prev) => [...prev, newMsg]);
+    setXiaomeiInput('');
+  }
+
+  function handleXiaomeiKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleXiaomeiSend(); }
   }
 
   function handleXiaomeiConfirm() {
@@ -160,28 +163,40 @@ export default function ChatPage({ params }: ChatPageProps) {
         className="flex flex-col h-screen overflow-hidden"
         style={{ background: 'linear-gradient(160deg, #fdf2f8 0%, #fce7f3 55%, #faf5ff 100%)' }}
       >
-        {/* Header */}
+        {/* Header — shows the requester (u-001), just like any chat header shows who you're talking to */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/85 backdrop-blur-md border-b border-pink-100 shadow-sm shrink-0">
+          <button
+            onClick={() => setViewAs('user')}
+            aria-label="返回"
+            className="p-1.5 rounded-full hover:bg-pink-50 active:bg-pink-100 transition-colors shrink-0"
+          >
+            <ArrowLeft className="w-5 h-5 text-brand-ink" />
+          </button>
           <div className="relative shrink-0">
             <img
-              src={xiaomeiUser?.avatarUrl ?? ''}
-              alt={xiaomeiUser?.nickname ?? ''}
+              src={requesterUser?.avatarUrl ?? ''}
+              alt={requesterUser?.nickname ?? ''}
               className="w-9 h-9 rounded-full object-cover border-2 border-pink-200"
             />
             <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-line-green border-2 border-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm text-brand-ink">{xiaomeiUser?.nickname}</span>
-              <span className="text-[10px] font-bold text-pink-500 bg-pink-100 px-2 py-0.5 rounded-full shrink-0">
-                收到的邀請
-              </span>
-            </div>
-            <span className="text-xs text-zinc-400 truncate block">
-              與 {requesterUser?.nickname} 的邀請聊天
-            </span>
+            <span className="font-semibold text-sm text-brand-ink truncate block">{requesterUser?.nickname}</span>
+            <span className="text-xs text-zinc-400">私人邀請 · 目前在線</span>
           </div>
+          <span className="text-[10px] font-bold text-pink-500 bg-pink-100 px-2 py-1 rounded-full shrink-0">
+            收到的邀請
+          </span>
         </div>
+
+        {/* Confirm meetup — sticky at top */}
+        <button
+          onClick={handleXiaomeiConfirm}
+          className="shrink-0 w-full flex items-center justify-center gap-2 py-3 bg-line-green text-white font-semibold text-sm active:brightness-90 transition-all"
+        >
+          <CheckCircle className="w-4 h-4" />
+          確認見面・結案
+        </button>
 
         {/* Invite summary card */}
         {inviteParts.length > 0 && (
@@ -241,24 +256,31 @@ export default function ChatPage({ params }: ChatPageProps) {
           <div ref={bottomRef} />
         </div>
 
-        {/* Confirm meetup CTA */}
-        <div className="shrink-0 px-5 pt-3 pb-6 bg-white/85 backdrop-blur-md border-t border-pink-100">
+        {/* Xiao Mei's input bar */}
+        <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-6 bg-white/85 backdrop-blur-md border-t border-pink-100">
+          <input
+            type="text"
+            value={xiaomeiInput}
+            onChange={(e) => setXiaomeiInput(e.target.value)}
+            onKeyDown={handleXiaomeiKeyDown}
+            placeholder="王小美 輸入訊息…"
+            aria-label="輸入訊息"
+            className="flex-1 bg-pink-50 border border-pink-200 rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-pink-300 transition-all"
+          />
           <button
-            onClick={handleXiaomeiConfirm}
-            className="w-full py-4 rounded-2xl bg-line-green font-bold text-base text-white active:scale-[0.98] transition-all shadow-lg flex items-center justify-center gap-2"
+            onClick={handleXiaomeiSend}
+            disabled={!xiaomeiInput.trim()}
+            aria-label="發送"
+            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-pink-300 text-brand-ink disabled:opacity-40 active:scale-95 transition-all shadow-sm"
           >
-            <CheckCircle className="w-5 h-5" />
-            確認見面
+            <Send className="w-4 h-4" />
           </button>
-          <p className="text-xs text-zinc-400 text-center mt-2">確認後，聊天將自動關閉</p>
         </div>
 
         {/* Success overlay */}
         {xiaomeiConfirmSuccess && (
           <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm">
-            <div
-              className="w-20 h-20 rounded-full bg-line-green flex items-center justify-center mb-4"
-            >
+            <div className="w-20 h-20 rounded-full bg-line-green flex items-center justify-center mb-4">
               <CheckCircle className="w-10 h-10 text-white" strokeWidth={2.5} />
             </div>
             <p className="text-xl font-bold text-brand-ink mb-1">見面已確認！</p>
