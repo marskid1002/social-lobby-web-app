@@ -92,6 +92,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>(threadMessages);
   const [inputText, setInputText] = useState('');
   const [hasSentMessage, setHasSentMessage] = useState(false);
+  const hasAutoReplied = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Demo perspective switcher
@@ -113,6 +114,15 @@ export default function ChatPage({ params }: ChatPageProps) {
     const newMsg = sendChatMessage(threadId, text);
     setLocalMessages((prev) => [...prev, newMsg]);
     setInputText('');
+
+    // Xiao Mei auto-replies once after the user's first message
+    if (!hasAutoReplied.current) {
+      hasAutoReplied.current = true;
+      setTimeout(() => {
+        const reply = sendChatMessage(threadId, '好啊！那今晚見 😊 到了再打給你～', otherUserId);
+        setLocalMessages((prev) => [...prev, reply]);
+      }, 1500);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {

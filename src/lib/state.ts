@@ -368,11 +368,11 @@ export function useAppState() {
     listeners.forEach((l) => l());
   }, []);
 
-  const sendChatMessage = useCallback((threadId: string, text: string) => {
+  const sendChatMessage = useCallback((threadId: string, text: string, overrideSenderId?: string) => {
     const newMsg: ChatMessage = {
       id: `cm-${Date.now()}`,
       threadId,
-      senderId: getState().currentUserId,
+      senderId: overrideSenderId ?? getState().currentUserId,
       text,
       createdAt: new Date().toISOString(),
     };
