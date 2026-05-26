@@ -7,7 +7,7 @@ const baseDate = new Date('2026-04-15T10:00:00+08:00').toISOString();
 
 // Asian female portrait photos — randomuser.me seeds are stable
 const CARD_PHOTOS: Record<string, string> = {
-  'u-001': 'https://randomuser.me/api/portraits/women/44.jpg',
+  'u-001': 'https://randomuser.me/api/portraits/men/44.jpg',
   'u-002': 'https://randomuser.me/api/portraits/women/68.jpg',
   'u-003': 'https://randomuser.me/api/portraits/women/65.jpg',
   'u-004': 'https://randomuser.me/api/portraits/women/90.jpg',
@@ -23,6 +23,8 @@ const CARD_PHOTOS: Record<string, string> = {
   'u-014': 'https://randomuser.me/api/portraits/women/58.jpg',
   'u-015': 'https://randomuser.me/api/portraits/women/77.jpg',
   'u-016': 'https://randomuser.me/api/portraits/women/11.jpg',
+  'u-017': 'https://randomuser.me/api/portraits/men/32.jpg',
+  'u-018': 'https://randomuser.me/api/portraits/men/55.jpg',
 };
 
 export const users: User[] = [
@@ -35,9 +37,39 @@ export const users: User[] = [
     bio: '隨意走走，朋友越多越好。',
     defaultArea: '信義區',
     interests: ['夜生活', '酒吧', '電影', '美食', '音樂'],
-    tier: 'pro',
+    tier: 'free',
     role: 'user',
     credits: 50,
+    lineOAFollowed: true,
+    createdAt: baseDate,
+  },
+  {
+    id: 'u-017',
+    lineUserId: 'U017vipDemo',
+    nickname: 'VIP 示範',
+    avatarUrl: CARD_PHOTOS['u-017'],
+    cardImageUrl: CARD_PHOTOS['u-017'],
+    bio: '常跑信義區，找人一起喝一杯。',
+    defaultArea: '信義區',
+    interests: ['威士忌', '夜生活', '酒吧', 'After Party'],
+    tier: 'vip',
+    role: 'user',
+    credits: 200,
+    lineOAFollowed: true,
+    createdAt: baseDate,
+  },
+  {
+    id: 'u-018',
+    lineUserId: 'U018ganbu01',
+    nickname: '陳幹部',
+    avatarUrl: CARD_PHOTOS['u-018'],
+    cardImageUrl: CARD_PHOTOS['u-018'],
+    bio: '帶隊出來玩，人脈廣，反應快。',
+    defaultArea: '信義區',
+    interests: ['夜生活', '酒吧', 'KTV'],
+    tier: 'vip',
+    role: 'operator',
+    credits: 500,
     lineOAFollowed: true,
     createdAt: baseDate,
   },

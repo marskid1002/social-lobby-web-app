@@ -47,6 +47,33 @@ export const updates: UpdateEvent[] = [
     createdAt: minsAgo(240),
     read: true,
   },
+  {
+    id: 'ue-op-001',
+    userId: 'u-018',
+    actorId: 'u-017',
+    eventType: 'invite_received',
+    refRequestId: 'r-009',
+    createdAt: minsAgo(3),
+    read: false,
+  },
+  {
+    id: 'ue-op-002',
+    userId: 'u-018',
+    actorId: 'u-012',
+    eventType: 'invite_received',
+    refRequestId: 'r-010',
+    createdAt: minsAgo(10),
+    read: false,
+  },
+  {
+    id: 'ue-op-003',
+    userId: 'u-018',
+    actorId: 'u-005',
+    eventType: 'invite_received',
+    refRequestId: 'r-011',
+    createdAt: minsAgo(2),
+    read: false,
+  },
 ];
 
 // Demo user follows these people — drives the Following lobby tab.
