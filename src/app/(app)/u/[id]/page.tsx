@@ -10,10 +10,10 @@ import { TAIPEI_AREAS } from '@/lib/mock';
 import type { RequestType } from '@/lib/mock';
 
 const STATUS_LABELS: Record<string, string> = {
-  available: '可接局',
-  fill_spot: '可補位',
-  bring_people: '可帶人',
-  busy: '忙碌',
+  available: '有空',
+  fill_spot: '臨時有空',
+  bring_people: '可同行',
+  busy: '忙碌中',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -59,8 +59,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     (f) => f.followerId === state.currentUserId && f.followingId === id
   );
 
+  const currentUser = state.users.find((u) => u.id === state.currentUserId);
   const heroGradient = CARD_GRADIENTS[parseInt(id.replace('u-', ''), 10) % 3];
-  const canSendPrivateInvite = id === 'u-002';
+  const isVip = currentUser?.tier === 'vip';
+  const canSendPrivateInvite = isVip && id !== state.currentUserId;
 
   function showToast(msg: string) {
     setToast(msg);
@@ -178,18 +180,22 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             {isFollowing ? <UserCheck className="w-4 h-4" strokeWidth={1.75} /> : <UserPlus className="w-4 h-4" strokeWidth={1.75} />}
             {isFollowing ? '已關注' : '關注'}
           </button>
-          <button
-            onClick={() => canSendPrivateInvite ? setInviteOpen(true) : undefined}
-            disabled={!canSendPrivateInvite}
-            title={!canSendPrivateInvite ? '僅限示範功能' : undefined}
-            className={`flex-1 py-3 rounded-2xl font-semibold text-sm transition-all ${
-              canSendPrivateInvite
-                ? 'bg-brand-sky text-brand-ink active:scale-[0.98] shadow-card'
-                : 'bg-brand-lavender/50 text-zinc-400 cursor-not-allowed'
-            }`}
-          >
-            私人邀請
-          </button>
+          {canSendPrivateInvite ? (
+            <button
+              onClick={() => setInviteOpen(true)}
+              className="flex-1 py-3 rounded-2xl font-semibold text-sm bg-brand-sky text-brand-ink active:scale-[0.98] transition-all shadow-card"
+            >
+              發訊息
+            </button>
+          ) : id !== state.currentUserId && (
+            <button
+              disabled
+              title="升級至 VIP 即可直接發訊息"
+              className="flex-1 py-3 rounded-2xl font-semibold text-sm bg-brand-lavender/50 text-zinc-400 cursor-not-allowed"
+            >
+              🔒 發訊息
+            </button>
+          )}
         </div>
 
         {user.interests.length > 0 && (

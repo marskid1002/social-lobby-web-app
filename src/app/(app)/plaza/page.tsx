@@ -100,8 +100,6 @@ export default function PlazaPage() {
               key={post.id}
               post={post}
               author={author}
-              isVip={isVip}
-              canInteract={true}
             />
           );
         })}
