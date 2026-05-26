@@ -15,7 +15,7 @@ export type ResponseStatus = 'interested' | 'joining' | 'declined' | 'withdrawn'
 
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired';
 
-export type Tier = 'free' | 'pro' | 'vip';
+export type Tier = 'free' | 'standard' | 'premium' | 'vip';
 
 export type Role = 'user' | 'operator' | 'admin';
 
@@ -41,6 +41,7 @@ export interface User {
   credits: number;
   lineOAFollowed: boolean;
   createdAt: string;         // ISO
+  following?: string[];
 }
 
 export interface OnlineStatus {
@@ -105,6 +106,16 @@ export interface Follow {
   followerId: string;
   followingId: string;
   createdAt: string;
+}
+
+export interface MomentPost {
+  id: string;
+  authorId: string;
+  content: string;
+  imageUrl?: string;
+  likeCount: number;
+  commentCount: number;
+  createdAt: string; // ISO
 }
 
 export interface DirectMessage {

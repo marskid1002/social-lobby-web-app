@@ -14,10 +14,12 @@ const PAGE_TITLES: Record<string, string> = {
   '/updates': '動態',
   '/me': '我的個人檔案',
   '/settings': '設定',
+  '/plaza': '廣場',
 };
 
 function getTitle(pathname: string) {
   if (pathname.startsWith('/lobby')) return undefined;
+  if (pathname.startsWith('/plaza')) return undefined;
   if (pathname.startsWith('/u/')) return undefined;
   if (pathname.startsWith('/requests/') && pathname !== '/requests') return '需求詳情';
   return PAGE_TITLES[pathname] ?? 'Social Lobby';

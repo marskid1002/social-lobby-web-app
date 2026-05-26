@@ -7,14 +7,14 @@ import { RequestCard } from '@/components/RequestCard';
 import { OperatorHome } from '@/components/OperatorHome';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Lock, Crown } from 'lucide-react';
+import { Lock, Crown, Users } from 'lucide-react';
 
 const DISTRICTS = ['全部', '信義區', '大安區', '中山區', '松山區'];
 
 const STATUS_LABELS: Record<string, string> = {
-  available: '可接局',
-  bring_people: '可帶人',
-  fill_spot: '補位',
+  available: '有空',
+  bring_people: '可同行',
+  fill_spot: '臨時有空',
   busy: '忙碌中',
 };
 
@@ -23,6 +23,13 @@ const STATUS_COLORS: Record<string, string> = {
   bring_people: 'bg-blue-100 text-blue-700',
   fill_spot: 'bg-yellow-100 text-yellow-700',
   busy: 'bg-zinc-100 text-zinc-500',
+};
+
+const SECTION_B_LIMIT: Record<string, number> = {
+  free: 0,
+  standard: 3,
+  premium: 10,
+  vip: Infinity,
 };
 
 function FemaleListRow({ userId }: { userId: string }) {
@@ -83,6 +90,12 @@ function ExploreContent() {
     .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime())
     .map((s) => s.userId);
 
+  const limit = SECTION_B_LIMIT[currentUser?.tier ?? 'free'] ?? 0;
+  const visibleFemaleIds = limit === Infinity
+    ? femaleUserIds
+    : femaleUserIds.slice(0, limit);
+  const hasMoreFemales = femaleUserIds.length > visibleFemaleIds.length;
+
   return (
     <div className="pb-24">
       {/* Section A */}
@@ -120,33 +133,49 @@ function ExploreContent() {
       <div className="flex items-center gap-3 px-4 py-3 bg-brand-snow border-y border-zinc-100">
         {isVip ? (
           <Crown size={14} className="text-amber-500 shrink-0" />
-        ) : (
+        ) : currentUser?.tier === 'free' ? (
           <Lock size={14} className="text-zinc-400 shrink-0" />
+        ) : (
+          <Users size={14} className="text-zinc-400 shrink-0" />
         )}
-        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">女生名單</p>
+        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">今晚在線</p>
       </div>
 
       {/* Section B */}
       <div className="relative">
-        <div className={isVip ? '' : 'filter blur-[6px] pointer-events-none select-none'}>
-          {femaleUserIds.map((uid) => (
+        <div className={currentUser?.tier === 'free' ? 'filter blur-[6px] pointer-events-none select-none' : ''}>
+          {visibleFemaleIds.map((uid) => (
             <FemaleListRow key={uid} userId={uid} />
           ))}
         </div>
 
-        {!isVip && (
+        {/* Free user lock overlay */}
+        {currentUser?.tier === 'free' && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3 px-6 text-center">
               <span className="text-3xl">🔒</span>
-              <p className="text-base font-bold text-brand-ink">升級解鎖女生名單</p>
-              <p className="text-sm text-zinc-500">VIP 會員可瀏覽所有線上女生</p>
+              <p className="text-base font-bold text-brand-ink">探索更多，認識更多</p>
+              <p className="text-sm text-zinc-500">升級會員，認識今晚在線的用戶</p>
               <button
                 disabled
                 className="mt-1 px-6 py-2.5 rounded-xl bg-amber-400 text-white text-sm font-bold opacity-70 cursor-not-allowed"
               >
-                升級會員
+                了解會員方案
               </button>
             </div>
+          </div>
+        )}
+
+        {/* More users prompt for Standard / Premium */}
+        {hasMoreFemales && !isVip && currentUser?.tier !== 'free' && (
+          <div className="px-4 py-5 text-center border-t border-zinc-100">
+            <p className="text-sm text-zinc-500 mb-3">還有更多今晚在線的用戶</p>
+            <button
+              disabled
+              className="px-5 py-2.5 rounded-xl bg-brand-snow border border-brand-lavender text-sm font-semibold text-zinc-400 cursor-not-allowed"
+            >
+              升級擴展你的社交圈
+            </button>
           </div>
         )}
       </div>

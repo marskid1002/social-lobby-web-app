@@ -2,14 +2,14 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Home, ClipboardList, Inbox, Bell, Plus } from 'lucide-react';
+import { Home, Sparkles, Inbox, Bell, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { PostRequestSheet } from './PostRequestSheet';
 import { useAppState } from '@/lib/state';
 
 const NAV_ITEMS = [
   { href: '/lobby/explore', icon: Home, label: '首頁' },
-  { href: '/requests', icon: ClipboardList, label: '需求' },
+  { href: '/plaza', icon: Sparkles, label: '廣場' },
   null, // FAB
   { href: '/inbox', icon: Inbox, label: '收件匣' },
   { href: '/updates', icon: Bell, label: '動態' },

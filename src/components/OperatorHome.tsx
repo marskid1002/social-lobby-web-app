@@ -26,9 +26,9 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  available: '可接局',
-  bring_people: '可帶人',
-  fill_spot: '補位',
+  available: '有空',
+  bring_people: '可同行',
+  fill_spot: '臨時有空',
   busy: '忙碌中',
 };
 
@@ -61,7 +61,7 @@ export function OperatorHome() {
     setDispatched((prev) => ({ ...prev, [dispatchSheet]: selectedGirl }));
     setDispatchSheet(null);
     setSelectedGirl(null);
-    setToast(`✅ 已派 ${girl?.nickname} 接單，通知已發送`);
+    setToast(`✅ 已安排 ${girl?.nickname} 出席，通知已發送`);
     setTimeout(() => setToast(''), 3000);
   }
 
@@ -87,7 +87,7 @@ export function OperatorHome() {
 
       {/* Header */}
       <div className="px-4 pt-3 pb-2">
-        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider mb-4">新進局邀請</p>
+        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider mb-4">新進活動邀請</p>
 
         <div className="flex flex-col gap-3">
           {incomingRequests.map((req) => {
@@ -132,14 +132,14 @@ export function OperatorHome() {
                   {isDispatched ? (
                     <div className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-zinc-100 text-sm font-semibold text-zinc-400">
                       <Check size={14} />
-                      <span>已派遣</span>
+                      <span>已安排</span>
                     </div>
                   ) : (
                     <button
                       onClick={() => { setDispatchSheet(req.id); setSelectedGirl(null); }}
                       className="flex-1 py-2.5 rounded-xl bg-purple-100 text-sm font-semibold text-purple-700 border border-purple-200 active:bg-purple-200 transition-colors"
                     >
-                      派人接單
+                      安排出席
                     </button>
                   )}
                 </div>
@@ -151,7 +151,7 @@ export function OperatorHome() {
 
       {/* Roster section */}
       <div className="flex items-center gap-3 px-4 py-3 mt-2 bg-brand-snow border-y border-zinc-100">
-        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">我的女生名單</p>
+        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">我的社群</p>
       </div>
 
       <div>
@@ -202,7 +202,7 @@ export function OperatorHome() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
-            <p className="text-base font-bold text-brand-ink mb-4 text-center">派誰去這個局？</p>
+            <p className="text-base font-bold text-brand-ink mb-4 text-center">安排出席人選</p>
 
             <div className="flex flex-col gap-2 mb-5">
               {rosterGirls.map((user) => {
@@ -241,7 +241,7 @@ export function OperatorHome() {
               disabled={!selectedGirl}
               className="w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
             >
-              確認派遣
+              確認出席
             </button>
           </div>
         </div>

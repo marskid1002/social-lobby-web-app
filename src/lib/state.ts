@@ -11,11 +11,12 @@ import {
   follows as seedFollows,
   seedChatMessages,
   seedTeaserMessages,
+  momentPosts as seedMomentPosts,
 } from '@/lib/mock';
-import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage, MeetRecord } from '@/lib/mock';
+import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage, MeetRecord, MomentPost } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
 
-const STORAGE_KEY = 'sl_state_v1';
+const STORAGE_KEY = 'sl_state_v2';
 const PRIVATE_INVITE_CREDIT_COST = 3;
 
 export interface AppState {
@@ -38,6 +39,8 @@ export interface AppState {
   meetRecords: MeetRecord[];
   teaserMessages: TeaserMessage[];
   inboxUnread: boolean;      // true when a new accepted invite is waiting in inbox
+  momentPosts: MomentPost[];
+  likedPostIds: string[];
 }
 
 function getSeedState(): AppState {
@@ -61,6 +64,8 @@ function getSeedState(): AppState {
     meetRecords: [],
     teaserMessages: seedTeaserMessages,
     inboxUnread: false,
+    momentPosts: seedMomentPosts,
+    likedPostIds: [],
   };
 }
 
@@ -418,6 +423,23 @@ export function useAppState() {
     setState((prev) => ({ ...prev, inboxUnread: false }));
   }, []);
 
+  const likePost = useCallback((postId: string) => {
+    setState((prev) => {
+      const alreadyLiked = prev.likedPostIds.includes(postId);
+      return {
+        ...prev,
+        likedPostIds: alreadyLiked
+          ? prev.likedPostIds.filter((id) => id !== postId)
+          : [...prev.likedPostIds, postId],
+        momentPosts: prev.momentPosts.map((p) =>
+          p.id === postId
+            ? { ...p, likeCount: p.likeCount + (alreadyLiked ? -1 : 1) }
+            : p
+        ),
+      };
+    });
+  }, []);
+
   return {
     state,
     currentUser,
@@ -443,5 +465,6 @@ export function useAppState() {
     sendDirectMessage,
     confirmMeetup,
     clearInboxUnread,
+    likePost,
   };
 }

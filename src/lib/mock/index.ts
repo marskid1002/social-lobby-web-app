@@ -6,3 +6,4 @@ export * from './requests';
 export * from './updates';
 export * from './i18n';
 export * from './chat';
+export * from './posts';

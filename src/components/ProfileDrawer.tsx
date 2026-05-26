@@ -52,8 +52,8 @@ export function ProfileDrawer({ open, onClose }: Props) {
     router.push(path);
   }
 
-  const tierLabel = currentUser?.tier === 'vip' ? 'VIP' : currentUser?.tier === 'pro' ? 'Pro' : 'Free';
-  const tierColor = currentUser?.tier === 'vip' ? '#F59E0B' : currentUser?.tier === 'pro' ? '#3B82F6' : '#6B7280';
+  const tierLabel = currentUser?.tier === 'vip' ? 'VIP' : currentUser?.tier === 'premium' ? '進階' : currentUser?.tier === 'standard' ? '標準' : 'Free';
+  const tierColor = currentUser?.tier === 'vip' ? '#F59E0B' : currentUser?.tier === 'premium' ? '#7C3AED' : currentUser?.tier === 'standard' ? '#3B82F6' : '#6B7280';
 
   if (!open) return null;
 
