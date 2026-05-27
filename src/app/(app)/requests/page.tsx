@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { RequestCard } from '@/components/RequestCard';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
@@ -15,10 +16,19 @@ const TYPE_FILTERS = [
 ];
 
 export default function RequestsPage() {
-  const { state } = useAppState();
+  const { state, currentUser } = useAppState();
+  const router = useRouter();
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [areaFilter, setAreaFilter] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (currentUser?.role === 'user') {
+      router.replace('/lobby/explore');
+    }
+  }, [currentUser, router]);
+
+  if (currentUser?.role === 'user') return null;
 
   const openRequests = state.requests.filter(
     (r) => r.status === 'open' && r.creatorId !== state.currentUserId

@@ -1,15 +1,21 @@
 'use client';
 
-import { useState, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
-import { RequestCard } from '@/components/RequestCard';
 import { OperatorHome } from '@/components/OperatorHome';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Lock, Crown, Users } from 'lucide-react';
+import { Lock, Crown, Users, Eye, UserCheck, Zap } from 'lucide-react';
+import type { Request, User } from '@/lib/mock/types';
 
-const DISTRICTS = ['全部', '信義區', '大安區', '中山區', '松山區'];
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  after_party: '派對後',
+  drinking: '酒局',
+  fill_spot: '補位',
+  last_minute: '臨時約',
+  other: '其他',
+};
 
 const STATUS_LABELS: Record<string, string> = {
   available: '有空',
@@ -31,6 +37,82 @@ const SECTION_B_LIMIT: Record<string, number> = {
   premium: 10,
   vip: Infinity,
 };
+
+function shouldShowBoostNudge(req: Request): boolean {
+  const impressions = req.metrics?.impressions ?? 0;
+  const minutesOld = differenceInMinutes(new Date(), new Date(req.createdAt));
+  return impressions < 5 && minutesOld >= 60;
+}
+
+function MyRequestCard({ request, responders }: { request: Request; responders: User[] }) {
+  const router = useRouter();
+  const showNudge = shouldShowBoostNudge(request);
+  const metrics = request.metrics ?? { impressions: 0, views: 0, joins: 0 };
+  const visibleResponders = responders.slice(0, 3);
+  const extraCount = responders.length - visibleResponders.length;
+
+  return (
+    <div
+      onClick={() => router.push(`/requests/${request.id}`)}
+      className="bg-white rounded-2xl shadow-sm border border-zinc-100 p-4 cursor-pointer active:bg-brand-snow transition-colors"
+    >
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-semibold text-brand-sky bg-brand-ice px-2 py-0.5 rounded-full">
+            {REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType}
+          </span>
+          <span className="text-xs text-zinc-400">{request.area}</span>
+          <span className="text-xs text-zinc-400">· {request.peopleCount} 人</span>
+        </div>
+        <span className="text-[11px] text-zinc-400 shrink-0">
+          {formatDistanceToNow(new Date(request.createdAt), { locale: zhTW, addSuffix: true })}
+        </span>
+      </div>
+
+      <p className="text-sm text-brand-ink leading-snug line-clamp-2 mb-3">{request.note}</p>
+
+      {visibleResponders.length > 0 && (
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex -space-x-2">
+            {visibleResponders.map((u) => (
+              <img
+                key={u.id}
+                src={u.avatarUrl}
+                alt={u.nickname}
+                className="w-6 h-6 rounded-full border-2 border-white object-cover"
+              />
+            ))}
+          </div>
+          <span className="text-xs text-zinc-500">
+            {extraCount > 0 ? `${metrics.joins} 人想加入` : `${visibleResponders.map(u => u.nickname.split('')[0]).join('、')} 等人有興趣`}
+          </span>
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 text-xs text-zinc-400">
+        <span className="flex items-center gap-1">
+          <Eye size={13} />
+          <span className="font-semibold text-zinc-600">{metrics.impressions}</span> 曝光
+        </span>
+        <span className="flex items-center gap-1">
+          <Users size={13} />
+          <span className="font-semibold text-zinc-600">{metrics.views}</span> 查看
+        </span>
+        <span className="flex items-center gap-1">
+          <UserCheck size={13} />
+          <span className="font-semibold text-zinc-600">{metrics.joins}</span> 想加入
+        </span>
+
+        {showNudge && (
+          <span className="ml-auto flex items-center gap-1 text-[11px] text-amber-600 font-semibold bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+            <Zap size={11} />
+            提升曝光
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function FemaleListRow({ userId }: { userId: string }) {
   const { state } = useAppState();
@@ -70,7 +152,6 @@ function FemaleListRow({ userId }: { userId: string }) {
 
 function ExploreContent() {
   const { state, currentUser } = useAppState();
-  const [district, setDistrict] = useState('全部');
 
   if (currentUser?.role === 'operator') {
     return <OperatorHome />;
@@ -78,8 +159,8 @@ function ExploreContent() {
 
   const isVip = currentUser?.tier === 'vip';
 
-  const filteredRequests = state.requests
-    .filter((r) => r.status === 'open' && (district === '全部' || r.area === district))
+  const myRequests = state.requests
+    .filter((r) => r.creatorId === currentUser?.id && r.status === 'open')
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const femaleUserIds = state.onlineStatuses
@@ -91,46 +172,43 @@ function ExploreContent() {
     .map((s) => s.userId);
 
   const limit = SECTION_B_LIMIT[currentUser?.tier ?? 'free'] ?? 0;
-  const visibleFemaleIds = limit === Infinity
-    ? femaleUserIds
-    : femaleUserIds.slice(0, limit);
+  const visibleFemaleIds = limit === Infinity ? femaleUserIds : femaleUserIds.slice(0, limit);
   const hasMoreFemales = femaleUserIds.length > visibleFemaleIds.length;
+  const hasMyRequests = myRequests.length > 0;
 
   return (
-    <div className="pb-24">
-      {/* Section A */}
-      <div className="px-4 pt-4 pb-2">
-        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider mb-3">今晚有什麼局</p>
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {DISTRICTS.map((d) => (
-            <button
-              key={d}
-              onClick={() => setDistrict(d)}
-              className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                district === d
-                  ? 'bg-brand-ink text-white'
-                  : 'bg-brand-snow text-zinc-500 border border-zinc-200'
-              }`}
-            >
-              {d}
-            </button>
-          ))}
+    <div
+      className="flex flex-col overflow-hidden"
+      style={{ height: 'calc(100dvh - 57px)' }}
+    >
+      {/* === SECTION A: My Requests === */}
+      <div className={hasMyRequests ? 'flex-1 min-h-0 overflow-y-auto' : 'shrink-0'}>
+        <div className="px-4 pt-4 pb-2">
+          <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">我的邀請</p>
         </div>
-      </div>
 
-      <div className="flex flex-col gap-3 px-4 pb-4">
-        {filteredRequests.length === 0 ? (
-          <p className="text-sm text-zinc-400 text-center py-6">目前沒有開放的局</p>
+        {hasMyRequests ? (
+          <div className="px-4 pb-4 flex flex-col gap-3">
+            {myRequests.map((req) => {
+              const responders = state.responses
+                .filter((r) => r.requestId === req.id)
+                .map((r) => state.users.find((u) => u.id === r.userId))
+                .filter((u): u is User => !!u);
+              return <MyRequestCard key={req.id} request={req} responders={responders} />;
+            })}
+          </div>
         ) : (
-          filteredRequests.map((req) => {
-            const creator = state.users.find((u) => u.id === req.creatorId);
-            return <RequestCard key={req.id} request={req} variant="ledger" creator={creator} />;
-          })
+          <div className="px-4 pb-4">
+            <div className="rounded-2xl border border-dashed border-zinc-200 bg-white/60 p-6 flex flex-col items-center text-center gap-1.5">
+              <p className="text-sm font-semibold text-brand-ink">今晚想做什麼？</p>
+              <p className="text-xs text-zinc-400 leading-snug">發出邀請，讓今晚在線的人看到你</p>
+            </div>
+          </div>
         )}
       </div>
 
       {/* Section B divider */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-brand-snow border-y border-zinc-100">
+      <div className="flex items-center gap-3 px-4 py-3 bg-brand-snow border-y border-zinc-100 shrink-0">
         {isVip ? (
           <Crown size={14} className="text-amber-500 shrink-0" />
         ) : currentUser?.tier === 'free' ? (
@@ -141,15 +219,14 @@ function ExploreContent() {
         <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">今晚在線</p>
       </div>
 
-      {/* Section B */}
-      <div className="relative">
+      {/* === SECTION B: Online Women === */}
+      <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
         <div className={currentUser?.tier === 'free' ? 'filter blur-[6px] pointer-events-none select-none' : ''}>
           {visibleFemaleIds.map((uid) => (
             <FemaleListRow key={uid} userId={uid} />
           ))}
         </div>
 
-        {/* Free user lock overlay */}
         {currentUser?.tier === 'free' && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3 px-6 text-center">
@@ -166,7 +243,6 @@ function ExploreContent() {
           </div>
         )}
 
-        {/* More users prompt for Standard / Premium */}
         {hasMoreFemales && !isVip && currentUser?.tier !== 'free' && (
           <div className="px-4 py-5 text-center border-t border-zinc-100">
             <p className="text-sm text-zinc-500 mb-3">還有更多今晚在線的用戶</p>

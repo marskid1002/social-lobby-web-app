@@ -193,7 +193,7 @@ export function useAppState() {
     }));
   }, []);
 
-  const postRequest = useCallback((req: Omit<Request, 'id' | 'creatorId' | 'createdAt' | 'expiresAt' | 'status'>) => {
+  const postRequest = useCallback((req: Omit<Request, 'id' | 'creatorId' | 'createdAt' | 'expiresAt' | 'status' | 'metrics'>) => {
     const newReq: Request = {
       ...req,
       id: `r-${Date.now()}`,
@@ -201,6 +201,7 @@ export function useAppState() {
       status: 'open',
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+      metrics: { impressions: 0, views: 0, joins: 0 },
     };
     setState((prev) => ({
       ...prev,

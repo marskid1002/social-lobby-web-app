@@ -1,26 +1,51 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Heart, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Heart, MessageCircle, Send, PenLine, CornerDownRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { useAppState } from '@/lib/state';
 
-// Mock comment interactions seeded per post — keyed by postId
-const MOCK_COMMENTS: Record<string, { userId: string; text: string; minsAgo: number }[]> = {
+const PREMIUM_DAILY_LIMIT = 5;
+
+type SeedReply = { userId: string; text: string; minsAgo: number };
+type SeedComment = { userId: string; text: string; minsAgo: number; replies?: SeedReply[] };
+
+const MOCK_COMMENTS: Record<string, SeedComment[]> = {
   'mp-001': [
-    { userId: 'u-005', text: '這種事真的太常發生了 😅 上週我也遇到一樣的狀況', minsAgo: 20 },
+    {
+      userId: 'u-005', text: '這種事真的太常發生了 😅 上週我也遇到一樣的狀況', minsAgo: 20,
+      replies: [
+        { userId: 'u-002', text: '對吧！朋友真的不可靠哈哈', minsAgo: 18 },
+      ],
+    },
     { userId: 'u-011', text: '那個位子你去了嗎？結果怎樣', minsAgo: 15 },
-    { userId: 'u-002', text: '最後一個人去了，結果意外很好玩哈哈', minsAgo: 10 },
+    {
+      userId: 'u-002', text: '最後一個人去了，結果意外很好玩哈哈', minsAgo: 10,
+      replies: [
+        { userId: 'u-011', text: '哇這樣也可以！下次我也要試試', minsAgo: 8 },
+        { userId: 'u-009', text: '一個人去真的很勇 🙌', minsAgo: 5 },
+      ],
+    },
   ],
   'mp-002': [
     { userId: 'u-009', text: '是哪家？推薦一下！', minsAgo: 50 },
-    { userId: 'u-005', text: '下次帶我去 🙋‍♀️', minsAgo: 40 },
+    {
+      userId: 'u-005', text: '下次帶我去 🙋‍♀️', minsAgo: 40,
+      replies: [
+        { userId: 'u-005', text: '認真的，我一直在找這種地方', minsAgo: 38 },
+      ],
+    },
   ],
   'mp-003': [
     { userId: 'u-002', text: '松山區的 The Diner 最近很不錯', minsAgo: 8 },
-    { userId: 'u-015', text: '跟我說一聲，我也在松山', minsAgo: 6 },
+    {
+      userId: 'u-015', text: '跟我說一聲，我也在松山', minsAgo: 6,
+      replies: [
+        { userId: 'u-009', text: '我也！我們可以一起', minsAgo: 4 },
+      ],
+    },
     { userId: 'u-011', text: '今晚要去嗎，我也快下班了', minsAgo: 3 },
     { userId: 'u-009', text: '等我！', minsAgo: 1 },
     { userId: 'u-005', text: '我也想去 😭', minsAgo: 0 },
@@ -29,42 +54,160 @@ const MOCK_COMMENTS: Record<string, { userId: string; text: string; minsAgo: num
     { userId: 'u-002', text: '辛苦了 🤍 週末要出來放鬆一下！', minsAgo: 35 },
   ],
   'mp-005': [
-    { userId: 'u-009', text: '完全同意，平日的信義區才是真的好逛', minsAgo: 75 },
+    {
+      userId: 'u-009', text: '完全同意，平日的信義區才是真的好逛', minsAgo: 75,
+      replies: [
+        { userId: 'u-003', text: '而且咖啡廳都有位子！', minsAgo: 72 },
+      ],
+    },
     { userId: 'u-011', text: '而且平日找位子超容易', minsAgo: 70 },
     { userId: 'u-003', text: '就是這樣！週末人太多根本聊不下去', minsAgo: 65 },
     { userId: 'u-005', text: '揪一天平日晚上出來啊', minsAgo: 60 },
   ],
   'mp-006': [
-    { userId: 'u-002', text: '哪個品牌？我也想試試', minsAgo: 115 },
+    {
+      userId: 'u-002', text: '哪個品牌？我也想試試', minsAgo: 115,
+      replies: [
+        { userId: 'u-011', text: 'Kavalan 吧？台灣之光', minsAgo: 112 },
+        { userId: 'u-002', text: '還是 Omar？那個也很順', minsAgo: 110 },
+      ],
+    },
     { userId: 'u-011', text: 'Kavalan 或 Omar？', minsAgo: 110 },
   ],
+  'mp-007': [
+    { userId: 'u-002', text: '這個天台的夜景也太美了吧！', minsAgo: 5 },
+    { userId: 'u-009', text: '在哪裡？快說！', minsAgo: 3 },
+    { userId: 'u-005', text: '下次揪我 🙏', minsAgo: 1 },
+  ],
+  'mp-008': [
+    {
+      userId: 'u-003', text: '這看起來也太好吃了！', minsAgo: 20,
+      replies: [
+        { userId: 'u-013', text: '真的，鮭魚的部分超厲害', minsAgo: 18 },
+      ],
+    },
+    { userId: 'u-011', text: '大安區哪家？', minsAgo: 15 },
+  ],
+  'mp-009': [
+    { userId: 'u-005', text: '週五必備 🍹', minsAgo: 10 },
+    {
+      userId: 'u-014', text: '我也想要一杯！', minsAgo: 7,
+      replies: [
+        { userId: 'u-007', text: '來啊，今晚有空嗎', minsAgo: 5 },
+        { userId: 'u-014', text: '認真的？！', minsAgo: 3 },
+      ],
+    },
+    { userId: 'u-002', text: '明明就是 girlsnight 的配置', minsAgo: 4 },
+  ],
 };
+
+function getDailyCommentKey(userId: string) {
+  const today = new Date().toISOString().split('T')[0];
+  return `sl_comment_count_${userId}_${today}`;
+}
+
+function getDailyCount(userId: string): number {
+  if (typeof window === 'undefined') return 0;
+  return parseInt(localStorage.getItem(getDailyCommentKey(userId)) ?? '0', 10);
+}
+
+function incrementDailyCount(userId: string): number {
+  const next = getDailyCount(userId) + 1;
+  localStorage.setItem(getDailyCommentKey(userId), String(next));
+  return next;
+}
+
+type LocalEntry = { userId: string; text: string };
 
 export default function PostThreadPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = use(params);
   const router = useRouter();
   const { state, likePost } = useAppState();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const post = state.momentPosts.find((p) => p.id === postId);
   const currentUser = state.users.find((u) => u.id === state.currentUserId);
+  const tier = currentUser?.tier ?? 'free';
+  const isVip = tier === 'vip';
+  const canComment = tier === 'premium' || tier === 'vip';
+
+  const [commentText, setCommentText] = useState('');
+  const [dailyCount, setDailyCount] = useState(() => getDailyCount(currentUser?.id ?? ''));
+  // localComments: new top-level comments keyed by generated id
+  const [localComments, setLocalComments] = useState<{ key: string; userId: string; text: string }[]>([]);
+  // localReplies: replies added to any comment, keyed by comment key
+  const [localReplies, setLocalReplies] = useState<Record<string, LocalEntry[]>>({});
+  // replyingTo: comment key + author nickname
+  const [replyingTo, setReplyingTo] = useState<{ key: string; nickname: string } | null>(null);
+
+  const hitLimit = !isVip && dailyCount >= PREMIUM_DAILY_LIMIT;
+  const remainingCount = isVip ? Infinity : PREMIUM_DAILY_LIMIT - dailyCount;
+
+  useEffect(() => {
+    if (replyingTo) inputRef.current?.focus();
+  }, [replyingTo]);
 
   if (!post) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
-        <p>找不到這則貼文</p>
-      </div>
-    );
+    return <div className="flex items-center justify-center py-20 text-zinc-400">找不到這則貼文</div>;
   }
 
   const author = state.users.find((u) => u.id === post.authorId);
   if (!author) return null;
 
   const isLiked = state.likedPostIds.includes(post.id);
-  const canInteract = currentUser?.tier !== 'free';
-  const comments = MOCK_COMMENTS[postId] ?? [];
+  const canInteract = tier !== 'free';
+
+  const seedComments = (MOCK_COMMENTS[postId] ?? []).map((c, i) => ({ key: `s${i}`, ...c }));
+  const allComments = [
+    ...seedComments.map((c) => ({
+      ...c,
+      replies: [
+        ...(c.replies ?? []).map((r) => ({ ...r })),
+        ...(localReplies[c.key] ?? []).map((r) => ({ ...r, minsAgo: 0 })),
+      ],
+    })),
+    ...localComments.map((c) => ({
+      key: c.key,
+      userId: c.userId,
+      text: c.text,
+      minsAgo: 0,
+      replies: (localReplies[c.key] ?? []).map((r) => ({ ...r, minsAgo: 0 })),
+    })),
+  ];
+
+  const totalCommentCount = allComments.length + allComments.reduce((sum, c) => sum + c.replies.length, 0);
+
+  function handleStartReply(key: string, nickname: string) {
+    setReplyingTo({ key, nickname });
+    inputRef.current?.focus();
+  }
+
+  function handleCancelReply() {
+    setReplyingTo(null);
+    setCommentText('');
+  }
+
+  function handleSubmit() {
+    if (!commentText.trim() || !currentUser || hitLimit) return;
+    const text = commentText.trim();
+
+    if (replyingTo) {
+      setLocalReplies((prev) => ({
+        ...prev,
+        [replyingTo.key]: [...(prev[replyingTo.key] ?? []), { userId: currentUser.id, text }],
+      }));
+      setReplyingTo(null);
+    } else {
+      setLocalComments((prev) => [...prev, { key: `l${Date.now()}`, userId: currentUser.id, text }]);
+    }
+
+    const next = incrementDailyCount(currentUser.id);
+    setDailyCount(next);
+    setCommentText('');
+  }
 
   return (
-    <div className="min-h-screen bg-brand-snow pb-24">
+    <div className="min-h-screen bg-brand-snow pb-20">
       {/* Header */}
       <div className="sticky top-0 z-20 bg-white border-b border-brand-lavender px-4 py-3 flex items-center gap-3">
         <button
@@ -81,17 +224,10 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
       <div className="bg-white px-4 pt-5 pb-4 border-b border-zinc-100">
         <div className="flex items-center gap-3 mb-4">
           <button onClick={() => router.push(`/u/${author.id}`)}>
-            <img
-              src={author.avatarUrl}
-              alt={author.nickname}
-              className="w-10 h-10 rounded-full object-cover"
-            />
+            <img src={author.avatarUrl} alt={author.nickname} className="w-10 h-10 rounded-full object-cover" />
           </button>
           <div>
-            <button
-              onClick={() => router.push(`/u/${author.id}`)}
-              className="text-sm font-semibold text-brand-ink hover:underline"
-            >
+            <button onClick={() => router.push(`/u/${author.id}`)} className="text-sm font-semibold text-brand-ink hover:underline">
               {author.nickname}
             </button>
             <p className="text-xs text-zinc-400">
@@ -102,19 +238,10 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
 
         <p className="text-base text-zinc-800 leading-relaxed mb-4">{post.content}</p>
 
-        {post.imageUrl && (
-          <div className="rounded-xl overflow-hidden mb-4">
-            <img src={post.imageUrl} alt="" className="w-full object-cover max-h-64" />
-          </div>
-        )}
-
-        {/* Stats row */}
         <div className="flex items-center gap-5 pt-3 border-t border-zinc-100">
           <button
             onClick={() => canInteract && likePost(post.id)}
-            className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${
-              isLiked ? 'text-red-500' : 'text-zinc-400'
-            }`}
+            className={`flex items-center gap-1.5 text-sm font-semibold transition-colors ${isLiked ? 'text-red-500' : 'text-zinc-400'}`}
             aria-label="按讚"
           >
             <Heart className={`w-5 h-5 ${isLiked ? 'fill-red-500' : ''}`} strokeWidth={1.75} />
@@ -122,46 +249,134 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
           </button>
           <div className="flex items-center gap-1.5 text-sm text-zinc-400">
             <MessageCircle className="w-5 h-5" strokeWidth={1.75} />
-            {comments.length} 則留言
+            {totalCommentCount} 則留言
           </div>
         </div>
       </div>
 
-      {/* Comments */}
-      <div className="flex flex-col divide-y divide-zinc-100 bg-white">
-        {comments.length === 0 && (
+      {/* Comment threads */}
+      <div className="flex flex-col bg-white divide-y divide-zinc-100">
+        {allComments.length === 0 && (
           <p className="text-sm text-zinc-400 text-center py-10">還沒有人留言，來第一個吧</p>
         )}
-        {comments.map((c, i) => {
-          const commenter = state.users.find((u) => u.id === c.userId);
+
+        {allComments.map((comment) => {
+          const commenter = state.users.find((u) => u.id === comment.userId);
           if (!commenter) return null;
-          const createdAt = new Date(Date.now() - c.minsAgo * 60_000).toISOString();
+          const createdAt = new Date(Date.now() - comment.minsAgo * 60_000).toISOString();
+
           return (
-            <div key={i} className="flex items-start gap-3 px-4 py-4">
-              <button onClick={() => router.push(`/u/${commenter.id}`)}>
-                <img
-                  src={commenter.avatarUrl}
-                  alt={commenter.nickname}
-                  className="w-8 h-8 rounded-full object-cover shrink-0"
-                />
-              </button>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2 mb-0.5">
-                  <button
-                    onClick={() => router.push(`/u/${commenter.id}`)}
-                    className="text-sm font-semibold text-brand-ink"
-                  >
-                    {commenter.nickname}
-                  </button>
-                  <span className="text-xs text-zinc-400">
-                    {formatDistanceToNow(new Date(createdAt), { locale: zhTW, addSuffix: true })}
-                  </span>
+            <div key={comment.key} className="px-4 pt-4 pb-2">
+              {/* Top-level comment */}
+              <div className="flex items-start gap-3">
+                <button onClick={() => router.push(`/u/${commenter.id}`)}>
+                  <img src={commenter.avatarUrl} alt={commenter.nickname} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 mb-0.5">
+                    <button onClick={() => router.push(`/u/${commenter.id}`)} className="text-sm font-semibold text-brand-ink">
+                      {commenter.nickname}
+                    </button>
+                    <span className="text-xs text-zinc-400">
+                      {formatDistanceToNow(new Date(createdAt), { locale: zhTW, addSuffix: true })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-zinc-700 leading-relaxed">{comment.text}</p>
+                  {canComment && !hitLimit && (
+                    <button
+                      onClick={() => handleStartReply(comment.key, commenter.nickname)}
+                      className="mt-1.5 text-xs text-zinc-400 hover:text-brand-sky transition-colors"
+                    >
+                      回覆
+                    </button>
+                  )}
                 </div>
-                <p className="text-sm text-zinc-700 leading-relaxed">{c.text}</p>
               </div>
+
+              {/* Replies */}
+              {comment.replies.length > 0 && (
+                <div className="ml-11 mt-3 flex flex-col gap-3 border-l-2 border-brand-lavender pl-3">
+                  {comment.replies.map((reply, ri) => {
+                    const replier = state.users.find((u) => u.id === reply.userId);
+                    if (!replier) return null;
+                    const replyCreatedAt = new Date(Date.now() - reply.minsAgo * 60_000).toISOString();
+                    return (
+                      <div key={ri} className="flex items-start gap-2">
+                        <button onClick={() => router.push(`/u/${replier.id}`)}>
+                          <img src={replier.avatarUrl} alt={replier.nickname} className="w-6 h-6 rounded-full object-cover shrink-0" />
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 mb-0.5">
+                            <button onClick={() => router.push(`/u/${replier.id}`)} className="text-xs font-semibold text-brand-ink">
+                              {replier.nickname}
+                            </button>
+                            <span className="text-[11px] text-zinc-400">
+                              {formatDistanceToNow(new Date(replyCreatedAt), { locale: zhTW, addSuffix: true })}
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-700 leading-relaxed">{reply.text}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-2" />
             </div>
           );
         })}
+      </div>
+
+      {/* Comment input bar */}
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-107.5 bg-white border-t border-brand-lavender px-4 pt-2 pb-3 z-30">
+        {canComment ? (
+          <>
+            {/* Reply indicator */}
+            {replyingTo && (
+              <div className="flex items-center gap-1.5 mb-2">
+                <CornerDownRight size={12} className="text-zinc-400" />
+                <span className="text-xs text-zinc-500">回覆 <span className="font-semibold text-brand-ink">@{replyingTo.nickname}</span></span>
+                <button onClick={handleCancelReply} className="ml-auto text-xs text-zinc-400 px-2 py-0.5 rounded-full border border-zinc-200">取消</button>
+              </div>
+            )}
+
+            {/* Count indicator for premium */}
+            {!isVip && !replyingTo && (
+              <p className="text-[11px] text-zinc-400 text-right mb-1">
+                {hitLimit ? '今日互動次數已達上限' : `今日剩餘 ${remainingCount} 次`}
+              </p>
+            )}
+
+            <div className="flex items-center gap-3">
+              {currentUser && (
+                <img src={currentUser.avatarUrl} alt={currentUser.nickname} className="w-8 h-8 rounded-full object-cover shrink-0" />
+              )}
+              <input
+                ref={inputRef}
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+                placeholder={hitLimit ? '今日互動次數已達上限' : replyingTo ? `回覆 @${replyingTo.nickname}...` : '留言...'}
+                disabled={hitLimit}
+                className="flex-1 bg-brand-snow rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none border border-brand-lavender disabled:opacity-50"
+              />
+              <button
+                onClick={handleSubmit}
+                disabled={!commentText.trim() || hitLimit}
+                className="w-9 h-9 rounded-full bg-brand-sky flex items-center justify-center disabled:opacity-40 active:scale-95 transition-all shrink-0"
+                aria-label="送出"
+              >
+                <Send size={15} className="text-brand-ink" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center gap-2 py-1">
+            <PenLine className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
+            <p className="text-sm text-zinc-400">升級至進階會員即可留言</p>
+          </div>
+        )}
       </div>
     </div>
   );

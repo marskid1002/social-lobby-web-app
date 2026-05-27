@@ -46,6 +46,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
   const pathname = usePathname();
   const isUserProfile = pathname.startsWith('/u/');
+  const isPlazaThread = /^\/plaza\/.+/.test(pathname);
 
   return (
     <div className="flex flex-col min-h-screen bg-brand-snow">
@@ -62,11 +63,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      <main className="flex-1 pb-24">
+      <main className={`flex-1 ${isPlazaThread ? '' : 'pb-24'}`}>
         {children}
       </main>
 
-      <BottomNav />
+      {!isPlazaThread && <BottomNav />}
       <ProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );

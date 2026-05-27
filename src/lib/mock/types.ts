@@ -52,6 +52,12 @@ export interface OnlineStatus {
   expiresAt: string;         // ISO
 }
 
+export interface RequestMetrics {
+  impressions: number;
+  views: number;
+  joins: number;
+}
+
 export interface Request {
   id: string;
   creatorId: string;
@@ -62,6 +68,7 @@ export interface Request {
   status: RequestStatus;
   createdAt: string;         // ISO
   expiresAt: string;         // ISO
+  metrics?: RequestMetrics;
 }
 
 export interface Response {
