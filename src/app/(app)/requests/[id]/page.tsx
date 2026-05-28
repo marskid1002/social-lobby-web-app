@@ -1,12 +1,11 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, MoreVertical, Clock, MapPin, Users, Share2 } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, Users, Share2, Eye, ShoppingBag } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { useState } from 'react';
 
 const TYPE_LABELS: Record<string, string> = {
   after_party: 'After Party',
@@ -24,13 +23,6 @@ const TYPE_COLORS: Record<string, string> = {
   other: '#DED9E5',
 };
 
-const RESPONSE_LABELS: Record<string, string> = {
-  interested: '有興趣',
-  joining: '加入',
-  declined: '婉拒',
-  withdrawn: '已取消',
-};
-
 const INVITE_LABELS: Record<string, string> = {
   pending: '待回應',
   accepted: '已接受',
@@ -41,11 +33,15 @@ const INVITE_LABELS: Record<string, string> = {
 export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { state, respondToRequest, respondToInvite, closeRequest } = useAppState();
+  const { state, currentUser, respondToRequest, respondToInvite, closeRequest, declineResponder, buyExtraSlot } = useAppState();
   const [toast, setToast] = useState('');
 
+  // Reject flow state
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
+  const [showNoSlotSheet, setShowNoSlotSheet] = useState(false);
+
   const request = state.requests.find((r) => r.id === id);
-  if (!request) return <div className="p-8 text-center text-zinc-400">找不到此需求</div>;
+  if (!request) return <div className="p-8 text-center text-zinc-400">找不到此邀請</div>;
 
   const creator = state.users.find((u) => u.id === request.creatorId);
   const responses = state.responses.filter((r) => r.requestId === id);
@@ -55,58 +51,89 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const myResponse = responses.find((r) => r.userId === state.currentUserId);
   const myInvite = invitations.find((i) => i.toUserId === state.currentUserId && i.status === 'pending');
 
+  // Separate active joiners from declined/withdrawn
+  const joiners = responses.filter((r) => r.responseStatus === 'joining');
+  const interested = responses.filter((r) => r.responseStatus === 'interested');
+  const isAtCap = joiners.length >= request.peopleCount;
+
+  // FOMO viewers — users who opened request but didn't join
+  const viewerUsers = (request.requestViewers ?? [])
+    .map((uid) => state.users.find((u) => u.id === uid))
+    .filter(Boolean) as typeof state.users;
+
   const typeColor = TYPE_COLORS[request.requestType] ?? '#DED9E5';
   const typeLabel = TYPE_LABELS[request.requestType] ?? request.requestType;
-
   const expiresIn = formatDistance(new Date(request.expiresAt), new Date(), { locale: zhTW });
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2500);
+  }
 
   function handleRespond() {
     respondToRequest(id);
-    setToast('已表示興趣');
-    setTimeout(() => setToast(''), 2000);
+    showToast('已表示興趣');
   }
 
   function handleInviteAccept() {
-    if (myInvite) {
-      respondToInvite(myInvite.id, true);
-      setToast('已接受邀請');
-      setTimeout(() => setToast(''), 2000);
-    }
+    if (myInvite) { respondToInvite(myInvite.id, true); showToast('已接受邀請'); }
   }
 
   function handleInviteDecline() {
-    if (myInvite) {
-      respondToInvite(myInvite.id, false);
-      setToast('已婉拒邀請');
-      setTimeout(() => setToast(''), 2000);
-    }
+    if (myInvite) { respondToInvite(myInvite.id, false); showToast('已婉拒邀請'); }
   }
 
   function handleClose() {
     closeRequest(id);
-    setToast('需求已關閉');
-    setTimeout(() => {
-      setToast('');
-      router.back();
-    }, 1000);
+    showToast('邀請已關閉');
+    setTimeout(() => router.back(), 1200);
   }
 
   function handleShare() {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href);
     }
-    setToast('連結已複製');
-    setTimeout(() => setToast(''), 2000);
+    showToast('連結已複製');
   }
 
+  function handleRejectTap(responseId: string) {
+    setRejectTargetId(responseId);
+    const slotsLeft = currentUser?.monthlyRequestsLeft ?? 0;
+    const isVip = currentUser?.tier === 'vip';
+    if (!isVip && slotsLeft <= 0) {
+      setShowNoSlotSheet(true);
+    }
+    // if slots available, the confirmation sheet shows via rejectTargetId && !showNoSlotSheet
+  }
+
+  function handleConfirmReject() {
+    if (!rejectTargetId) return;
+    declineResponder(rejectTargetId);
+    setRejectTargetId(null);
+    showToast('已拒絕，名額重新開放 🔓');
+  }
+
+  function handleBuySlotAndReject() {
+    if (!rejectTargetId) return;
+    buyExtraSlot();
+    declineResponder(rejectTargetId);
+    setRejectTargetId(null);
+    setShowNoSlotSheet(false);
+    showToast('已使用 35 💗，名額重新開放 🔓');
+  }
+
+  const slotsLeft = currentUser?.monthlyRequestsLeft ?? 0;
+  const isVip = currentUser?.tier === 'vip';
+  const canAffordSlot = (currentUser?.credits ?? 0) >= 35;
+
   return (
-    <div className="min-h-screen bg-brand-snow">
+    <div className="min-h-screen bg-brand-snow pb-32">
       {/* Top bar */}
       <div className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-brand-lavender px-4 py-3 flex items-center gap-3">
         <button onClick={() => router.back()} className="p-1.5 rounded-full hover:bg-brand-ice" aria-label="返回">
           <ArrowLeft className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
         </button>
-        <h1 className="flex-1 text-base font-semibold text-brand-ink">需求詳情</h1>
+        <h1 className="flex-1 text-base font-semibold text-brand-ink">邀請詳情</h1>
         <button onClick={handleShare} className="p-1.5 rounded-full hover:bg-brand-ice" aria-label="分享">
           <Share2 className="w-5 h-5 text-zinc-500" strokeWidth={1.75} />
         </button>
@@ -123,15 +150,15 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               <MapPin className="w-3 h-3" strokeWidth={1.75} /> {request.area}
             </span>
             <span className="flex items-center gap-1 text-xs text-zinc-500">
-              <Users className="w-3 h-3" strokeWidth={1.75} /> {request.peopleCount} 人
+              <Users className="w-3 h-3" strokeWidth={1.75} /> {joiners.length}/{request.peopleCount} 人
             </span>
           </div>
           <p className="text-sm text-brand-ink mb-3 leading-relaxed">{request.note}</p>
           <div className="flex items-center gap-1 text-xs text-zinc-400">
             <Clock className="w-3 h-3" strokeWidth={1.75} />
             <span>
-              發布於 {formatDistanceToNow(new Date(request.createdAt), { locale: zhTW, addSuffix: true })} ·{' '}
-              {expiresIn}後自動關閉
+              {formatDistanceToNow(new Date(request.createdAt), { locale: zhTW, addSuffix: true })} ·{' '}
+              {new Date(request.expiresAt) > new Date() ? `${expiresIn}後關閉` : '已過期'}
             </span>
           </div>
         </div>
@@ -147,6 +174,106 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               <img src={creator.avatarUrl} alt={creator.nickname} className="w-10 h-10 rounded-full object-cover" />
               <span className="text-sm font-semibold text-brand-ink">{creator.nickname}</span>
             </button>
+          </div>
+        )}
+
+        {/* FOMO: viewers row */}
+        {viewerUsers.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-card">
+            <div className="flex items-center gap-2 mb-3">
+              <Eye className="w-4 h-4 text-zinc-400" strokeWidth={1.75} />
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">查看過</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex -space-x-2">
+                {viewerUsers.slice(0, 3).map((u) => (
+                  <img
+                    key={u.id}
+                    src={u.avatarUrl}
+                    alt={u.nickname}
+                    className="w-9 h-9 rounded-full border-2 border-white object-cover"
+                  />
+                ))}
+              </div>
+              <p className="text-sm text-zinc-500">
+                {viewerUsers.length > 3
+                  ? `${viewerUsers.slice(0, 3).map((u) => u.nickname.slice(0, 1)).join('、')} 等 ${viewerUsers.length} 人查看過`
+                  : `${viewerUsers.map((u) => u.nickname.slice(0, 1) + u.nickname.slice(1, 2)).join('、')} 查看過你的邀請`}
+              </p>
+            </div>
+            {isCreator && (
+              <p className="text-xs text-zinc-400 mt-2 leading-snug">
+                她們看到了你的邀請，說不定下一個就是她 👀
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Joiners — creator sees reject button when at cap */}
+        {joiners.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-card">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+                已加入 ({joiners.length}/{request.peopleCount})
+              </p>
+              {isAtCap && (
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-500 border border-red-200">
+                  已滿
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-3">
+              {joiners.map((resp) => {
+                const joiner = state.users.find((u) => u.id === resp.userId);
+                return joiner ? (
+                  <div key={resp.id} className="flex items-center gap-3">
+                    <button onClick={() => router.push(`/u/${joiner.id}`)}>
+                      <img src={joiner.avatarUrl} alt={joiner.nickname} className="w-9 h-9 rounded-full object-cover" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-semibold text-brand-ink">{joiner.nickname}</span>
+                      {resp.note && <p className="text-xs text-zinc-400 truncate">「{resp.note}」</p>}
+                    </div>
+                    {isCreator && isAtCap && (
+                      <button
+                        onClick={() => handleRejectTap(resp.id)}
+                        className="shrink-0 text-xs px-3 py-1.5 rounded-xl border border-red-200 text-red-500 font-semibold active:bg-red-50 transition-colors"
+                      >
+                        拒絕
+                      </button>
+                    )}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Interested (not yet joined) */}
+        {interested.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-card">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">
+              有興趣 ({interested.length})
+            </p>
+            <div className="flex flex-col gap-3">
+              {interested.map((resp) => {
+                const responder = state.users.find((u) => u.id === resp.userId);
+                return responder ? (
+                  <div key={resp.id} className="flex items-center gap-3">
+                    <button onClick={() => router.push(`/u/${responder.id}`)}>
+                      <img src={responder.avatarUrl} alt={responder.nickname} className="w-9 h-9 rounded-full object-cover" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-brand-ink font-medium">{responder.nickname}</span>
+                      {resp.note && <p className="text-xs text-zinc-400 truncate">「{resp.note}」</p>}
+                    </div>
+                    <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-blue-50 text-blue-500">
+                      有興趣
+                    </span>
+                  </div>
+                ) : null;
+              })}
+            </div>
           </div>
         )}
 
@@ -172,32 +299,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
         )}
-
-        {/* Responders */}
-        {responses.length > 0 && (
-          <div className="bg-white rounded-2xl p-4 shadow-card">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">
-              回應的人 ({responses.length})
-            </p>
-            <div className="flex flex-col gap-2">
-              {responses.map((resp) => {
-                const responder = state.users.find((u) => u.id === resp.userId);
-                return responder ? (
-                  <div key={resp.id} className="flex items-center gap-3">
-                    <img src={responder.avatarUrl} alt={responder.nickname} className="w-8 h-8 rounded-full object-cover" />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm text-brand-ink font-medium">{responder.nickname}</span>
-                      {resp.note && <p className="text-xs text-zinc-400 truncate">「{resp.note}」</p>}
-                    </div>
-                    <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ backgroundColor: '#8BD8F120', color: '#3B82F6' }}>
-                      {RESPONSE_LABELS[resp.responseStatus]}
-                    </span>
-                  </div>
-                ) : null;
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Sticky CTA */}
@@ -208,7 +309,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             disabled={request.status === 'closed'}
             className="w-full py-3.5 rounded-2xl border-2 border-red-200 text-red-500 font-semibold text-sm bg-white active:bg-red-50 disabled:opacity-40 transition-colors"
           >
-            {request.status === 'closed' ? '需求已關閉' : '關閉需求'}
+            {request.status === 'closed' ? '邀請已關閉' : '關閉邀請'}
           </button>
         ) : myResponse ? (
           <button disabled className="w-full py-3.5 rounded-2xl bg-brand-lavender text-zinc-400 font-semibold text-sm">
@@ -216,31 +317,113 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </button>
         ) : myInvite ? (
           <div className="flex gap-2">
-            <button
-              onClick={handleInviteAccept}
-              className="flex-1 py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all"
-            >
+            <button onClick={handleInviteAccept} className="flex-1 py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all">
               接受
             </button>
-            <button
-              onClick={handleInviteDecline}
-              className="flex-1 py-3.5 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm active:scale-[0.98] transition-all"
-            >
+            <button onClick={handleInviteDecline} className="flex-1 py-3.5 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm active:scale-[0.98] transition-all">
               婉拒
             </button>
           </div>
         ) : (
           <button
             onClick={handleRespond}
-            className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base active:scale-[0.98] transition-all shadow-card"
+            disabled={isAtCap}
+            className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base active:scale-[0.98] transition-all shadow-card disabled:opacity-40"
           >
-            我想加入
+            {isAtCap ? '已額滿' : '我想加入'}
           </button>
         )}
       </div>
 
+      {/* ── Confirmation sheet (slots available) ── */}
+      {rejectTargetId && !showNoSlotSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setRejectTargetId(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-5" />
+            <p className="text-base font-bold text-brand-ink mb-1">確認拒絕？</p>
+            <p className="text-sm text-zinc-500 mb-1 leading-snug">
+              她將被移除，名額重新開放給其他人。
+            </p>
+            <p className="text-sm text-red-500 font-semibold mb-5">
+              此操作將消耗 1 次本月邀請名額
+              （{isVip ? '∞' : slotsLeft} → {isVip ? '∞' : slotsLeft - 1}）
+            </p>
+            <button
+              onClick={handleConfirmReject}
+              className="w-full py-3.5 rounded-2xl bg-red-500 text-white font-semibold text-base active:scale-[0.98] transition-all mb-2 shadow-card"
+            >
+              確認拒絕（−1 名額）
+            </button>
+            <button
+              onClick={() => setRejectTargetId(null)}
+              className="w-full py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── No-slot upsell sheet ── */}
+      {showNoSlotSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => { setShowNoSlotSheet(false); setRejectTargetId(null); }}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-5" />
+            <p className="text-base font-bold text-brand-ink mb-1">本月名額已用完</p>
+            <p className="text-sm text-zinc-500 mb-4 leading-snug">
+              消耗 35 💗 點數可獲得 1 次額外名額，拒絕她並重新開放邀請。
+            </p>
+
+            {/* Credit balance */}
+            <div className="flex items-center justify-between bg-brand-ice rounded-2xl px-4 py-3 mb-4">
+              <span className="text-sm text-zinc-500">目前點數</span>
+              <span className="text-lg font-bold text-brand-ink">
+                {currentUser?.credits ?? 0} 💗
+              </span>
+            </div>
+
+            {canAffordSlot ? (
+              <button
+                onClick={handleBuySlotAndReject}
+                className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base active:scale-[0.98] transition-all mb-2 shadow-card"
+              >
+                消耗 35 💗 並拒絕
+              </button>
+            ) : (
+              <>
+                <p className="text-xs text-red-500 text-center mb-3 font-semibold">
+                  點數不足（需要 35 💗，目前 {currentUser?.credits ?? 0} 💗）
+                </p>
+                <button
+                  onClick={() => { setShowNoSlotSheet(false); setRejectTargetId(null); router.push('/store'); }}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-amber-400 text-white font-semibold text-base active:scale-[0.98] transition-all mb-2 shadow-card"
+                >
+                  <ShoppingBag className="w-5 h-5" strokeWidth={1.75} />
+                  前往購買點數
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={() => { setShowNoSlotSheet(false); setRejectTargetId(null); }}
+              className="w-full py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
       {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50 pointer-events-none">
           {toast}
         </div>
       )}

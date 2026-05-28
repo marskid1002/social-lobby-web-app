@@ -5,18 +5,19 @@ const minsAgo = (m: number) => new Date(now() - m * 60_000).toISOString();
 const hoursFromNow = (h: number) => new Date(now() + h * 3_600_000).toISOString();
 
 export const requests: Request[] = [
-  // --- Free (u-001): cold metrics, boost nudge on older request ---
+  // --- Free (u-001): slots exhausted, 1 joiner at cap, FOMO viewers ---
   {
     id: 'r-u001-1',
     creatorId: 'u-001',
     area: '信義區',
     requestType: 'drinking',
-    peopleCount: 2,
+    peopleCount: 1,
     note: '信義區有個小酒館，想找個聊得來的人坐下來喝一杯 🍸',
     status: 'open',
     createdAt: minsAgo(35),
-    expiresAt: hoursFromNow(3),
-    metrics: { impressions: 18, views: 5, joins: 2 },
+    expiresAt: hoursFromNow(1),
+    metrics: { impressions: 18, views: 5, joins: 1 },
+    requestViewers: ['u-002', 'u-011', 'u-005'],
   },
   {
     id: 'r-u001-2',
@@ -27,21 +28,23 @@ export const requests: Request[] = [
     note: '剛下班，臨時想找人喝點東西，松山區附近有空嗎',
     status: 'open',
     createdAt: minsAgo(90),
-    expiresAt: hoursFromNow(2),
+    expiresAt: hoursFromNow(0.5),
     metrics: { impressions: 3, views: 1, joins: 0 },
+    requestViewers: ['u-003'],
   },
-  // --- Standard (u-019): moderate traffic, a couple of interested girls ---
+  // --- Standard (u-019): slots exhausted, 2 joiners at cap on first request ---
   {
     id: 'r-u019-1',
     creatorId: 'u-019',
     area: '信義區',
     requestType: 'drinking',
-    peopleCount: 2,
+    peopleCount: 3,
     note: '威士忌品酒會，找懂酒或想學的朋友一起 🥃',
     status: 'open',
     createdAt: minsAgo(45),
-    expiresAt: hoursFromNow(3),
+    expiresAt: hoursFromNow(2),
     metrics: { impressions: 42, views: 14, joins: 3 },
+    requestViewers: ['u-002', 'u-014', 'u-015'],
   },
   {
     id: 'r-u019-2',
@@ -54,19 +57,21 @@ export const requests: Request[] = [
     createdAt: minsAgo(20),
     expiresAt: hoursFromNow(2),
     metrics: { impressions: 28, views: 9, joins: 1 },
+    requestViewers: ['u-012'],
   },
-  // --- Premium (u-020): healthy numbers, 3 responders ---
+  // --- Premium (u-020): 5 slots left, healthy ---
   {
     id: 'r-u020-1',
     creatorId: 'u-020',
     area: '信義區',
     requestType: 'after_party',
-    peopleCount: 4,
+    peopleCount: 5,
     note: 'OMNI VIP 桌，找幾個今晚有空的朋友一起，場子夠大 🎶',
     status: 'open',
     createdAt: minsAgo(30),
-    expiresAt: hoursFromNow(5),
+    expiresAt: hoursFromNow(2),
     metrics: { impressions: 87, views: 31, joins: 5 },
+    requestViewers: ['u-003', 'u-007', 'u-009', 'u-013'],
   },
   {
     id: 'r-u020-2',
@@ -79,8 +84,9 @@ export const requests: Request[] = [
     createdAt: minsAgo(55),
     expiresAt: hoursFromNow(2),
     metrics: { impressions: 64, views: 22, joins: 3 },
+    requestViewers: ['u-006', 'u-008'],
   },
-  // --- VIP (u-017): high traffic, 5 responders ---
+  // --- VIP (u-017): unlimited, high traffic ---
   {
     id: 'r-u017-1',
     creatorId: 'u-017',
@@ -90,8 +96,9 @@ export const requests: Request[] = [
     note: 'Club Wave 剛散場，繼續 bar hopping，找幾個今晚有空的朋友喝到天亮 🍻',
     status: 'open',
     createdAt: minsAgo(8),
-    expiresAt: hoursFromNow(4),
+    expiresAt: hoursFromNow(2),
     metrics: { impressions: 156, views: 68, joins: 9 },
+    requestViewers: ['u-004', 'u-006', 'u-008', 'u-013'],
   },
   {
     id: 'r-u017-2',
@@ -102,8 +109,9 @@ export const requests: Request[] = [
     note: '今晚信義區包廂，朋友圈不夠熱鬧，找幾個今晚有空的人',
     status: 'open',
     createdAt: minsAgo(3),
-    expiresAt: hoursFromNow(4),
+    expiresAt: hoursFromNow(2),
     metrics: { impressions: 94, views: 40, joins: 6 },
+    requestViewers: ['u-007', 'u-009'],
   },
   {
     id: 'r-001',
@@ -230,6 +238,15 @@ export const requests: Request[] = [
 ];
 
 export const responses: Response[] = [
+  // --- Free (u-001): 蔡佳蓉 joined, request at cap (1/1) ---
+  {
+    id: 'rr-u001-1',
+    requestId: 'r-u001-1',
+    userId: 'u-009',
+    responseStatus: 'joining',
+    note: '我在附近！',
+    createdAt: minsAgo(15),
+  },
   // --- Standard (u-019) responses ---
   {
     id: 'rr-u019-1',

@@ -2,14 +2,15 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pencil, X, Plus } from 'lucide-react';
-import { useAppState } from '@/lib/state';
+import { Pencil, X, Plus, ShoppingBag } from 'lucide-react';
+import { useAppState, TIER_MONTHLY_LIMITS } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
 
 const TIER_STYLES: Record<string, { label: string; bg: string; color: string }> = {
-  free: { label: 'Free', bg: '#6B728020', color: '#6B7280' },
-  pro: { label: 'Pro', bg: '#3B82F620', color: '#3B82F6' },
-  vip: { label: 'VIP', bg: '#F59E0B20', color: '#F59E0B' },
+  free:     { label: '基本',   bg: '#6B728020', color: '#6B7280' },
+  standard: { label: '標準',   bg: '#3B82F620', color: '#3B82F6' },
+  premium:  { label: '進階',   bg: '#A78BFA20', color: '#A78BFA' },
+  vip:      { label: 'VIP',    bg: '#F59E0B20', color: '#F59E0B' },
 };
 
 export default function MyProfilePage() {
@@ -77,14 +78,38 @@ export default function MyProfilePage() {
         </button>
 
         {/* Info row */}
-        <div className="flex items-center justify-center gap-3 mb-6">
+        <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">
           <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: tier.bg, color: tier.color }}>
             {tier.label}
           </span>
-          <span className="text-sm text-zinc-500">💰 {currentUser.credits} 點</span>
+          <span className="text-sm text-zinc-500">💗 {currentUser.credits} 點</span>
           <span className="text-sm text-zinc-400">·</span>
           <span className="text-xs text-zinc-400">加入於 2026 年 4 月</span>
         </div>
+
+        {/* Monthly slot counter */}
+        <div className="flex items-center justify-between bg-brand-ice rounded-2xl px-4 py-3 mb-4">
+          <div>
+            <p className="text-xs font-semibold text-brand-ink">本月邀請名額</p>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              {currentUser.tier === 'vip'
+                ? 'VIP · 無限制'
+                : `${tier.label} · 每月 ${TIER_MONTHLY_LIMITS[currentUser.tier] ?? 3} 次`}
+            </p>
+          </div>
+          <span className="text-2xl font-bold text-brand-ink">
+            {currentUser.tier === 'vip' ? '∞' : currentUser.monthlyRequestsLeft}
+          </span>
+        </div>
+
+        {/* Store entry */}
+        <button
+          onClick={() => router.push('/store')}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-amber-400/10 border border-amber-400/40 text-amber-600 font-semibold text-sm mb-4 active:scale-[0.98] transition-all"
+        >
+          <ShoppingBag className="w-4 h-4" strokeWidth={1.75} />
+          點數商城 · 升級方案
+        </button>
 
         {/* Interests */}
         {currentUser.interests.length > 0 && (

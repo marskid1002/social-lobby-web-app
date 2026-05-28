@@ -2,17 +2,17 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Sparkles, Inbox, Bell, Plus } from 'lucide-react';
+import { Home, Sparkles, Bell, ShoppingBag, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { PostRequestSheet } from './PostRequestSheet';
 import { useAppState } from '@/lib/state';
 
 const NAV_ITEMS = [
-  { href: '/lobby/explore', icon: Home, label: '首頁' },
-  { href: '/plaza', icon: Sparkles, label: '廣場' },
+  { href: '/lobby/explore', icon: Home,        label: '首頁' },
+  { href: '/plaza',         icon: Sparkles,    label: '廣場' },
   null, // FAB
-  { href: '/inbox', icon: Inbox, label: '收件匣' },
-  { href: '/updates', icon: Bell, label: '動態' },
+  { href: '/inbox',         icon: Bell,        label: '通知' },
+  { href: '/store',         icon: ShoppingBag, label: '商城' },
 ];
 
 export function BottomNav() {
@@ -22,6 +22,7 @@ export function BottomNav() {
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');
+    if (href === '/inbox') return pathname === '/inbox' || pathname === '/updates';
     return pathname.startsWith(href);
   }
 
@@ -45,8 +46,7 @@ export function BottomNav() {
               );
             }
             const active = isActive(item.href);
-            const showInboxBadge = item.href === '/inbox' && state.inboxUnread;
-            const showUpdatesBadge = item.href === '/updates' && unreadCount > 0;
+            const showNotifBadge = item.href === '/inbox' && (state.inboxUnread || unreadCount > 0);
             return (
               <Link
                 key={item.href}
@@ -59,7 +59,7 @@ export function BottomNav() {
                     className={`w-5 h-5 ${active ? 'text-brand-sky' : 'text-zinc-400'}`}
                     strokeWidth={active ? 2 : 1.75}
                   />
-                  {(showInboxBadge || showUpdatesBadge) && (
+                  {showNotifBadge && (
                     <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 border border-white" />
                   )}
                 </div>

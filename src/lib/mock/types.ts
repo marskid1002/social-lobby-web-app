@@ -25,7 +25,9 @@ export type UpdateEventType =
   | 'invite_accepted'
   | 'follow'
   | 'status_change'
-  | 'request_closed';
+  | 'request_closed'
+  | 'milestone_views'   // request reached a view count milestone
+  | 'plaza_reply';      // someone replied to your plaza comment
 
 export interface User {
   id: string;
@@ -39,6 +41,7 @@ export interface User {
   tier: Tier;
   role: Role;
   credits: number;
+  monthlyRequestsLeft: number;  // resets monthly; VIP seeded at 999 (unlimited)
   lineOAFollowed: boolean;
   createdAt: string;         // ISO
   following?: string[];
@@ -69,6 +72,7 @@ export interface Request {
   createdAt: string;         // ISO
   expiresAt: string;         // ISO
   metrics?: RequestMetrics;
+  requestViewers?: string[]; // user IDs who opened but didn't join — FOMO display only
 }
 
 export interface Response {
@@ -104,6 +108,8 @@ export interface UpdateEvent {
   actorId: string;
   eventType: UpdateEventType;
   refRequestId?: string;
+  refPostId?: string;        // for plaza_reply events
+  milestoneCount?: number;   // for milestone_views events
   createdAt: string;         // ISO
   read?: boolean;
 }

@@ -3,49 +3,38 @@ import type { UpdateEvent, Follow } from './types';
 const now = () => Date.now();
 const minsAgo = (m: number) => new Date(now() - m * 60_000).toISOString();
 
-// Updates feed events targeted at the demo user (u-001).
+// Notification feed events targeted at the demo user (u-001).
 export const updates: UpdateEvent[] = [
+  // 蔡佳蓉 joined u-001's request
   {
-    id: 'ue-001',
+    id: 'ue-join-001',
     userId: 'u-001',
-    actorId: 'u-002',
-    eventType: 'invite_received',
-    refRequestId: 'r-008',
-    createdAt: minsAgo(12),
+    actorId: 'u-009',
+    eventType: 'response_received',
+    refRequestId: 'r-u001-1',
+    createdAt: minsAgo(15),
     read: false,
   },
+  // View milestone on r-u001-1 (reached 10 views)
   {
-    id: 'ue-002',
+    id: 'ue-milestone-001',
     userId: 'u-001',
-    actorId: 'u-015',
-    eventType: 'invite_received',
-    refRequestId: 'r-004',
-    createdAt: minsAgo(40),
+    actorId: 'u-001',
+    eventType: 'milestone_views',
+    refRequestId: 'r-u001-1',
+    milestoneCount: 10,
+    createdAt: minsAgo(25),
     read: false,
   },
+  // Plaza reply: 陳怡安 replied to u-001's comment on mp-001
   {
-    id: 'ue-003',
+    id: 'ue-plaza-001',
     userId: 'u-001',
     actorId: 'u-005',
-    eventType: 'follow',
-    createdAt: minsAgo(120),
-    read: true,
-  },
-  {
-    id: 'ue-004',
-    userId: 'u-001',
-    actorId: 'u-008',
-    eventType: 'status_change',
-    createdAt: minsAgo(180),
-    read: true,
-  },
-  {
-    id: 'ue-005',
-    userId: 'u-001',
-    actorId: 'u-011',
-    eventType: 'follow',
-    createdAt: minsAgo(240),
-    read: true,
+    eventType: 'plaza_reply',
+    refPostId: 'mp-001',
+    createdAt: minsAgo(50),
+    read: false,
   },
   {
     id: 'ue-op-001',

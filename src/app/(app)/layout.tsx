@@ -47,6 +47,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isUserProfile = pathname.startsWith('/u/');
   const isPlazaThread = /^\/plaza\/.+/.test(pathname);
+  const isStore = pathname === '/store';
 
   return (
     <div className="flex flex-col min-h-screen bg-brand-snow">
@@ -54,7 +55,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <AsParamHandler />
       </Suspense>
 
-      {!isUserProfile && (
+      {!isUserProfile && !isStore && (
         <TopBar
           title={getTitle(pathname)}
           showSearch={pathname.startsWith('/lobby')}
@@ -63,11 +64,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      <main className={`flex-1 ${isPlazaThread ? '' : 'pb-24'}`}>
+      <main className={`flex-1 ${isPlazaThread || isStore ? '' : 'pb-24'}`}>
         {children}
       </main>
 
-      {!isPlazaThread && <BottomNav />}
+      {!isPlazaThread && !isStore && <BottomNav />}
       <ProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );

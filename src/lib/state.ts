@@ -16,8 +16,23 @@ import {
 import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage, MeetRecord, MomentPost } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
 
-const STORAGE_KEY = 'sl_state_v2';
+const STORAGE_KEY = 'sl_state_v3';
 const PRIVATE_INVITE_CREDIT_COST = 3;
+const EXTRA_SLOT_CREDIT_COST = 35;
+
+export const TIER_MONTHLY_LIMITS: Record<string, number> = {
+  free: 3,
+  standard: 5,
+  premium: 10,
+  vip: 999,
+};
+
+export const TIER_SLOT_CAPS: Record<string, number> = {
+  free: 1,
+  standard: 3,
+  premium: 5,
+  vip: 999,
+};
 
 export interface AppState {
   currentUserId: string;
@@ -200,14 +215,16 @@ export function useAppState() {
       creatorId: getState().currentUserId,
       status: 'open',
       createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+      expiresAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
       metrics: { impressions: 0, views: 0, joins: 0 },
     };
     setState((prev) => ({
       ...prev,
       requests: [newReq, ...prev.requests],
       users: prev.users.map((u) =>
-        u.id === prev.currentUserId ? { ...u, credits: Math.max(0, u.credits - 1) } : u
+        u.id === prev.currentUserId
+          ? { ...u, monthlyRequestsLeft: Math.max(0, u.monthlyRequestsLeft - 1) }
+          : u
       ),
     }));
     return newReq;
@@ -328,6 +345,37 @@ export function useAppState() {
     }));
   }, []);
 
+  // Decline a joiner: marks them declined, re-opens the slot, costs 1 monthly request.
+  const declineResponder = useCallback((responseId: string) => {
+    setState((prev) => ({
+      ...prev,
+      responses: prev.responses.map((r) =>
+        r.id === responseId ? { ...r, responseStatus: 'declined' } : r
+      ),
+      users: prev.users.map((u) =>
+        u.id === prev.currentUserId
+          ? { ...u, monthlyRequestsLeft: Math.max(0, u.monthlyRequestsLeft - 1) }
+          : u
+      ),
+    }));
+  }, []);
+
+  // Spend 35 credits to buy 1 extra monthly request slot.
+  const buyExtraSlot = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      users: prev.users.map((u) =>
+        u.id === prev.currentUserId
+          ? {
+              ...u,
+              credits: Math.max(0, u.credits - EXTRA_SLOT_CREDIT_COST),
+              monthlyRequestsLeft: u.monthlyRequestsLeft + 1,
+            }
+          : u
+      ),
+    }));
+  }, []);
+
   const toggleFollow = useCallback((targetId: string) => {
     setState((prev) => {
       const existing = prev.follows.find(
@@ -371,6 +419,7 @@ export function useAppState() {
     globalState = getSeedState();
     saveState(globalState);
     localStorage.removeItem('sl_onboarded');
+    localStorage.removeItem('sl_state_v2');
     listeners.forEach((l) => l());
   }, []);
 
@@ -457,6 +506,8 @@ export function useAppState() {
     sendInvite,
     respondToInvite,
     closeRequest,
+    declineResponder,
+    buyExtraSlot,
     toggleFollow,
     blockUser,
     unblockUser,

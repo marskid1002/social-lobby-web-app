@@ -72,7 +72,7 @@ export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Prop
         </div>
 
         {/* Bell */}
-        <Link href="/updates" className="relative shrink-0 p-1.5 rounded-full hover:bg-brand-ice transition-colors" aria-label="動態通知">
+        <Link href="/inbox" className="relative shrink-0 p-1.5 rounded-full hover:bg-brand-ice transition-colors" aria-label="通知">
           <Bell className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
           {unreadCount > 0 && (
             <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-brand-pink rounded-full flex items-center justify-center text-[9px] font-bold text-brand-ink">
