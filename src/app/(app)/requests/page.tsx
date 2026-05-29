@@ -25,27 +25,30 @@ const TYPE_COLORS: Record<string, string> = {
   other:       '#DED9E5',
 };
 
+type EscortTab = 'area' | 'all' | 'sent';
+
 export default function RequestsPage() {
   const { state, currentUser } = useAppState();
   const router = useRouter();
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [escortTab, setEscortTab] = useState<EscortTab>('area');
 
   const role = currentUser?.role;
+  const isEscort = role === 'escort';
 
-  // Regular users go home; operators/managers stay; escorts also stay
+  // Regular users go home; operators/managers and escorts stay
   useEffect(() => {
     if (role === 'user') router.replace('/lobby/explore');
   }, [role, router]);
 
   if (role === 'user') return null;
 
-  // Manager/operator view: all open requests from others
+  // ── Manager/operator view ────────────────────────────────────────────────
   if (role === 'manager' || role === 'operator') {
     const openRequests = state.requests.filter(
       (r) => r.status === 'open' && r.creatorId !== state.currentUserId
     );
     const filtered = openRequests.filter((r) => !typeFilter || r.requestType === typeFilter);
-
     return (
       <div className="px-4 py-3">
         <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
@@ -65,76 +68,117 @@ export default function RequestsPage() {
           {filtered.map((req) => (
             <RequestCard key={req.id} request={req} variant="ledger" creator={state.users.find((u) => u.id === req.creatorId)} />
           ))}
-          {filtered.length === 0 && (
-            <div className="text-center py-16 text-zinc-400 text-sm">目前沒有公開需求</div>
-          )}
+          {filtered.length === 0 && <div className="text-center py-16 text-zinc-400 text-sm">目前沒有公開需求</div>}
         </div>
       </div>
     );
   }
 
-  // ── Escort view ──────────────────────────────────────────────────────────────
-  // Only show requests that: are open, not at cap, not already joined by this escort
-  const myJoinedRequestIds = new Set(
+  // ── Escort view ──────────────────────────────────────────────────────────
+  const myArea = currentUser?.defaultArea ?? '信義區';
+  const now = new Date();
+
+  // Requests this escort has already submitted a response for
+  const myRespondedRequestIds = new Set(
     state.responses
-      .filter((r) => r.userId === state.currentUserId && r.responseStatus === 'joining')
+      .filter((r) => r.userId === state.currentUserId &&
+        (r.responseStatus === 'interested' || r.responseStatus === 'joining'))
       .map((r) => r.requestId)
   );
 
+  // Base: open, not expired, not created by escort herself
+  const baseRequests = state.requests.filter(
+    (r) => r.status === 'open' &&
+           new Date(r.expiresAt) > now &&
+           r.creatorId !== state.currentUserId
+  );
+
+  // Compute joiner counts for cap filtering
   const joinerCounts = Object.fromEntries(
-    state.requests.map((r) => [
+    baseRequests.map((r) => [
       r.id,
       state.responses.filter((resp) => resp.requestId === r.id && resp.responseStatus === 'joining').length,
     ])
   );
 
-  const availableRequests = state.requests.filter(
-    (r) =>
-      r.status === 'open' &&
-      !myJoinedRequestIds.has(r.id) &&
-      joinerCounts[r.id] < r.peopleCount
+  // Browseable = not yet responded to + not at cap
+  const browseable = baseRequests.filter(
+    (r) => !myRespondedRequestIds.has(r.id) && joinerCounts[r.id] < r.peopleCount
   );
 
-  const filtered = availableRequests.filter((r) => !typeFilter || r.requestType === typeFilter);
+  const areaRequests = browseable.filter((r) => r.area === myArea);
+  const allRequests  = browseable;
+
+  // Sent requests (awaiting or accepted)
+  const sentRequests = baseRequests.filter((r) => myRespondedRequestIds.has(r.id));
+
+  const activeList = escortTab === 'area' ? areaRequests
+    : escortTab === 'all'  ? allRequests
+    : sentRequests;
 
   return (
     <div className="pb-24">
       {/* Header */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="px-4 pt-4 pb-3">
         <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">今晚的局</p>
-        <p className="text-xs text-zinc-400 mt-0.5">點擊查看詳情，直接加入</p>
       </div>
 
-      {/* Type filter */}
-      <div className="flex gap-2 overflow-x-auto px-4 pb-2 mb-2 scrollbar-hide">
-        {TYPE_FILTERS.map((f) => (
+      {/* 3-chip tab bar */}
+      <div className="flex gap-2 px-4 mb-3">
+        {([
+          { key: 'area', label: `我的區域` },
+          { key: 'all',  label: '全部區域' },
+          { key: 'sent', label: `我送出的請求${sentRequests.length > 0 ? ` (${sentRequests.length})` : ''}` },
+        ] as { key: EscortTab; label: string }[]).map((tab) => (
           <button
-            key={String(f.value)}
-            onClick={() => setTypeFilter(f.value)}
-            className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-              typeFilter === f.value ? 'bg-brand-ink text-white' : 'bg-white text-zinc-600 border border-brand-lavender'
+            key={tab.key}
+            onClick={() => setEscortTab(tab.key)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              escortTab === tab.key ? 'bg-brand-ink text-white' : 'bg-white text-zinc-600 border border-brand-lavender'
             }`}
           >
-            {f.label}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#8BD8F1] to-[#F7BEF1] flex items-center justify-center mb-4 shadow-card">
-            <span className="text-4xl">🎉</span>
+      {activeList.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+          <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-card" style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #F7BEF1 100%)' }}>
+            <span className="text-3xl">{escortTab === 'sent' ? '⏳' : '🎉'}</span>
           </div>
-          <p className="text-base font-semibold text-brand-ink mb-1">目前沒有可加入的活動</p>
-          <p className="text-sm text-zinc-400">稍後再來看看，或試試其他篩選條件</p>
+          <p className="text-sm font-semibold text-brand-ink mb-1">
+            {escortTab === 'sent' ? '還沒有送出請求' : escortTab === 'area' ? `${myArea}目前沒有開放邀請` : '目前沒有開放邀請'}
+          </p>
+          <p className="text-xs text-zinc-400">
+            {escortTab === 'area' ? '試試切換到全部區域 👀' : escortTab === 'sent' ? '找一個喜歡的局，送出加入請求' : '稍後再來看看'}
+          </p>
+          {escortTab === 'area' && (
+            <button onClick={() => setEscortTab('all')} className="mt-3 px-4 py-2 rounded-xl bg-brand-ice text-brand-ink text-xs font-semibold border border-brand-lavender">
+              切換到全部區域
+            </button>
+          )}
         </div>
       ) : (
         <div className="px-4 flex flex-col gap-3">
-          {filtered.map((req) => {
+          {activeList.map((req) => {
+            if (escortTab === 'sent') {
+              const myResp = state.responses.find(
+                (r) => r.requestId === req.id && r.userId === state.currentUserId
+              );
+              return (
+                <RequestCard
+                  key={req.id}
+                  request={req}
+                  creator={state.users.find((u) => u.id === req.creatorId)}
+                  variant={myResp?.responseStatus === 'joining' ? 'ledger' : 'sent'}
+                />
+              );
+            }
+
             const creator = state.users.find((u) => u.id === req.creatorId);
             const typeColor = TYPE_COLORS[req.requestType] ?? '#DED9E5';
-            const joinedCount = joinerCounts[req.id] ?? 0;
-            const slotsLeft = req.peopleCount - joinedCount;
+            const slotsLeft = req.peopleCount - (joinerCounts[req.id] ?? 0);
 
             return (
               <button
@@ -153,13 +197,9 @@ export default function RequestsPage() {
                     <Users className="w-3 h-3" strokeWidth={2} /> 還剩 {slotsLeft} 位
                   </span>
                 </div>
-
                 <p className="text-sm text-brand-ink line-clamp-2 mb-3 leading-snug">{req.note}</p>
-
                 <div className="flex items-center gap-3">
-                  {creator && (
-                    <img src={creator.avatarUrl} alt={creator.nickname} className="w-6 h-6 rounded-full object-cover" />
-                  )}
+                  {creator && <img src={creator.avatarUrl} alt={creator.nickname} className="w-6 h-6 rounded-full object-cover" />}
                   <span className="text-xs text-zinc-500 flex-1">{creator?.nickname}</span>
                   <span className="flex items-center gap-1 text-xs text-zinc-400">
                     <Clock className="w-3 h-3" strokeWidth={1.75} />

@@ -132,7 +132,7 @@ export default function MyProfilePage() {
         {/* Recent meets (7-day window) */}
         {(() => {
           const recentMeets = state.meetRecords.filter(
-            (r) => Date.now() - new Date(r.metAt).getTime() < SEVEN_DAYS_MS
+            (r) => new Date(r.expiresAt).getTime() > Date.now()
           );
           if (recentMeets.length === 0) return null;
           return (

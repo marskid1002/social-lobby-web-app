@@ -72,7 +72,8 @@ export interface Request {
   createdAt: string;         // ISO
   expiresAt: string;         // ISO
   metrics?: RequestMetrics;
-  requestViewers?: string[]; // user IDs who opened but didn't join — FOMO display only
+  /** User IDs who opened the detail page but did NOT submit a join response. Used for FOMO display only. */
+  requestViewers?: string[];
 }
 
 export interface Response {
@@ -100,6 +101,7 @@ export interface Invitation {
 export interface MeetRecord {
   userId: string;            // the person you met
   metAt: string;             // ISO
+  expiresAt: string;         // ISO — metAt + 7 days; UI filters records past this
 }
 
 export interface UpdateEvent {

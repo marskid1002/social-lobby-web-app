@@ -352,69 +352,159 @@ export function useAppState() {
     });
   }, []);
 
-  // Escort joins a request: creates a 'joining' response + accepted invitation + 8h chat.
+  // Escort asks to join: creates an 'interested' response + notifies creator. No invitation yet.
   const joinRequest = useCallback((requestId: string) => {
     const s = getState();
     const request = s.requests.find((r) => r.id === requestId);
     if (!request) return;
-
     const escortId = s.currentUserId;
-    const requesterId = request.creatorId;
-    const inviteId = `i-join-${Date.now()}`;
-    const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
-    const now = new Date().toISOString();
 
-    const newJoinResponse: import('@/lib/mock').Response = {
-      id: `rr-join-${Date.now()}`,
+    // Guard: don't double-respond
+    if (s.responses.some(
+      (r) => r.requestId === requestId && r.userId === escortId &&
+             (r.responseStatus === 'interested' || r.responseStatus === 'joining')
+    )) return;
+
+    const now = new Date().toISOString();
+    const newResp: import('@/lib/mock').Response = {
+      id: `rr-ask-${Date.now()}`,
       requestId,
       userId: escortId,
-      responseStatus: 'joining',
+      responseStatus: 'interested',
       createdAt: now,
     };
-
-    const newInvite: Invitation = {
-      id: inviteId,
-      requestId,
-      fromUserId: escortId,
-      toUserId: requesterId,
-      status: 'accepted',
-      createdAt: now,
-      respondedAt: now,
-      chatExpiresAt,
-    };
-
     const notif: UpdateEvent = {
-      id: `ue-join-${Date.now()}`,
-      userId: requesterId,
+      id: `ue-ask-${Date.now()}`,
+      userId: request.creatorId,
       actorId: escortId,
-      eventType: 'invite_accepted',
+      eventType: 'response_received',
       refRequestId: requestId,
       createdAt: now,
       read: false,
     };
-
     setState((prev) => ({
       ...prev,
-      responses: [...prev.responses, newJoinResponse],
-      invitations: [...prev.invitations, newInvite],
+      responses: [...prev.responses, newResp],
       updates: [notif, ...prev.updates],
-      inboxUnread: true,
     }));
   }, []);
 
-  // Decline a joiner: marks them declined, re-opens the slot, costs 1 monthly request.
-  const declineResponder = useCallback((responseId: string) => {
+  // Creator accepts an 'interested' joiner: flips to 'joining', creates invitation + chat.
+  const acceptResponder = useCallback((responseId: string) => {
+    setState((prev) => {
+      const target = prev.responses.find((r) => r.id === responseId);
+      if (!target || target.responseStatus !== 'interested') return prev;
+
+      const now = new Date().toISOString();
+      const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
+
+      const newInvite: Invitation = {
+        id: `i-accept-${Date.now()}`,
+        requestId: target.requestId,
+        fromUserId: target.userId,     // escort
+        toUserId: prev.currentUserId,  // creator
+        status: 'accepted',
+        createdAt: now,
+        respondedAt: now,
+        chatExpiresAt,
+      };
+
+      const escortNotif: UpdateEvent = {
+        id: `ue-accept-${Date.now()}`,
+        userId: target.userId,
+        actorId: prev.currentUserId,
+        eventType: 'invite_accepted',
+        refRequestId: target.requestId,
+        createdAt: now,
+        read: false,
+      };
+
+      const updatedResponses = prev.responses.map((r) =>
+        r.id === responseId ? { ...r, responseStatus: 'joining' as const } : r
+      );
+
+      // Auto-close request if now at cap
+      const joinersCount = updatedResponses.filter(
+        (r) => r.requestId === target.requestId && r.responseStatus === 'joining'
+      ).length;
+      const req = prev.requests.find((r) => r.id === target.requestId);
+      const autoClose = req && joinersCount >= req.peopleCount;
+
+      return {
+        ...prev,
+        responses: updatedResponses,
+        requests: autoClose
+          ? prev.requests.map((r) => r.id === target.requestId ? { ...r, status: 'closed' as const } : r)
+          : prev.requests,
+        invitations: [...prev.invitations, newInvite],
+        updates: [escortNotif, ...prev.updates],
+        inboxUnread: true,
+      };
+    });
+  }, []);
+
+  // Record that an escort viewed this request detail (FOMO tracking).
+  const recordRequestViewer = useCallback((requestId: string) => {
+    const s = getState();
+    const request = s.requests.find((r) => r.id === requestId);
+    if (!request) return;
+    if (request.creatorId === s.currentUserId) return;
+    const viewerId = s.currentUserId;
+    if (request.requestViewers?.includes(viewerId)) return;
+    // Only record for escorts
+    const viewer = s.users.find((u) => u.id === viewerId);
+    if (viewer?.role !== 'escort') return;
+
     setState((prev) => ({
       ...prev,
-      responses: prev.responses.map((r) =>
-        r.id === responseId ? { ...r, responseStatus: 'declined' } : r
-      ),
-      users: prev.users.map((u) =>
-        u.id === prev.currentUserId
-          ? { ...u, monthlyRequestsLeft: Math.max(0, u.monthlyRequestsLeft - 1) }
-          : u
+      requests: prev.requests.map((r) =>
+        r.id === requestId
+          ? { ...r, requestViewers: [...(r.requestViewers ?? []), viewerId] }
+          : r
       ),
     }));
+  }, []);
+
+  // Decline a joiner. Penalty (−1 slot) ONLY when rejecting an already-accepted ('joining') response.
+  const declineResponder = useCallback((responseId: string) => {
+    setState((prev) => {
+      const target = prev.responses.find((r) => r.id === responseId);
+      if (!target) return prev;
+      const wasAccepted = target.responseStatus === 'joining';
+
+      const responses = prev.responses.map((r) =>
+        r.id === responseId ? { ...r, responseStatus: 'declined' as const } : r
+      );
+
+      // Reopen request if it was auto-closed by this joiner's slot
+      const req = prev.requests.find((r) => r.id === target.requestId);
+      const remainingJoiners = responses.filter(
+        (r) => r.requestId === target.requestId && r.responseStatus === 'joining'
+      ).length;
+      const requests = (req && req.status === 'closed' && remainingJoiners < req.peopleCount)
+        ? prev.requests.map((r) => r.id === req.id ? { ...r, status: 'open' as const } : r)
+        : prev.requests;
+
+      // Decline the matching invitation too (if one existed from accept)
+      const invitations = wasAccepted
+        ? prev.invitations.map((i) =>
+            i.requestId === target.requestId && i.fromUserId === target.userId && i.status === 'accepted'
+              ? { ...i, status: 'declined' as const, respondedAt: new Date().toISOString() }
+              : i
+          )
+        : prev.invitations;
+
+      // Penalty only when rejecting an already-accepted joiner
+      const users = wasAccepted
+        ? prev.users.map((u) =>
+            u.id === prev.currentUserId
+              ? { ...u, monthlyRequestsLeft: Math.max(0, u.monthlyRequestsLeft - 1) }
+              : u
+          )
+        : prev.users;
+
+      return { ...prev, responses, requests, invitations, users };
+    });
   }, []);
 
   // Spend 35 credits to buy 1 extra monthly request slot.
@@ -521,7 +611,11 @@ export function useAppState() {
       ),
       meetRecords: [
         ...prev.meetRecords.filter((r) => r.userId !== otherUserId),
-        { userId: otherUserId, metAt: new Date().toISOString() },
+        {
+          userId: otherUserId,
+          metAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        },
       ],
     }));
   }, []);
@@ -566,6 +660,8 @@ export function useAppState() {
     declineResponder,
     buyExtraSlot,
     joinRequest,
+    acceptResponder,
+    recordRequestViewer,
     toggleFollow,
     blockUser,
     unblockUser,

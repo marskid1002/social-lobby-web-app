@@ -17,41 +17,41 @@ const TYPE_LABELS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#F7BEF1',
-  drinking: '#F59E0B',
-  fill_spot: '#8BD8F1',
+  drinking:    '#F59E0B',
+  fill_spot:   '#8BD8F1',
   last_minute: '#EF4444',
-  other: '#DED9E5',
+  other:       '#DED9E5',
 };
 
 interface Props {
   request: Request;
-  variant: 'ledger' | 'inbox';
+  variant: 'ledger' | 'inbox' | 'sent';
   creator?: User;
 }
 
 export function RequestCard({ request, variant, creator }: Props) {
   const router = useRouter();
-  const { state, respondToRequest, closeRequest } = useAppState();
+  const { state, closeRequest } = useAppState();
   const [toast, setToast] = useState('');
 
-  const hasResponded = state.responses.some(
-    (r) => r.requestId === request.id && r.userId === state.currentUserId
+  const typeColor = TYPE_COLORS[request.requestType] ?? '#DED9E5';
+  const typeLabel = TYPE_LABELS[request.requestType] ?? request.requestType;
+
+  // Counts for the demand signal row
+  const allResponses = state.responses.filter((r) => r.requestId === request.id);
+  const joinAskCount = allResponses.filter(
+    (r) => r.responseStatus === 'interested' || r.responseStatus === 'joining'
+  ).length;
+  const joinersCount = allResponses.filter((r) => r.responseStatus === 'joining').length;
+  const views = Math.max(
+    request.metrics?.views ?? 0,
+    request.requestViewers?.length ?? 0
   );
-
-  const responseCount = state.responses.filter((r) => r.requestId === request.id).length;
-
-  function handleRespond() {
-    respondToRequest(request.id);
-    setToast('已表示興趣');
-    setTimeout(() => setToast(''), 2000);
-  }
+  const showCounts = views > 0 || joinAskCount > 0 || joinersCount > 0;
 
   function handleClose() {
     closeRequest(request.id);
   }
-
-  const typeColor = TYPE_COLORS[request.requestType] ?? '#DED9E5';
-  const typeLabel = TYPE_LABELS[request.requestType] ?? request.requestType;
 
   return (
     <div className="bg-white rounded-2xl border border-brand-lavender p-4 shadow-card">
@@ -72,22 +72,30 @@ export function RequestCard({ request, variant, creator }: Props) {
 
       {/* Row 2: type badge + meta */}
       <div className="flex items-center gap-2 mb-2">
-        <span
-          className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-brand-ink"
-          style={{ backgroundColor: typeColor }}
-        >
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-brand-ink" style={{ backgroundColor: typeColor }}>
           {typeLabel}
         </span>
         <span className="text-xs text-zinc-500">{request.area} · {request.peopleCount} 人</span>
-        {variant === 'inbox' && responseCount > 0 && (
-          <span className="ml-auto text-xs font-semibold text-brand-sky">{responseCount} 人回應</span>
+        {variant === 'inbox' && joinAskCount > 0 && (
+          <span className="ml-auto text-xs font-semibold text-brand-sky">{joinAskCount} 人回應</span>
         )}
       </div>
 
       {/* Row 3: note */}
-      <p className="text-sm text-zinc-700 line-clamp-2 mb-3">{request.note}</p>
+      <p className="text-sm text-zinc-700 line-clamp-2 mb-2">{request.note}</p>
 
-      {/* Row 4: actions */}
+      {/* Row 4: demand signal counts (hidden when all zero) */}
+      {showCounts && (
+        <p className="text-[11px] text-zinc-500 flex items-center gap-1.5 mb-3">
+          {views > 0 && <span>👀 {views} 觀看</span>}
+          {views > 0 && joinAskCount > 0 && <span>·</span>}
+          {joinAskCount > 0 && <span>🙋 {joinAskCount} 想加入</span>}
+          {joinAskCount > 0 && joinersCount > 0 && <span>·</span>}
+          {joinersCount > 0 && <span>✅ {joinersCount}/{request.peopleCount} 已加入</span>}
+        </p>
+      )}
+
+      {/* Row 5: actions */}
       <div className="flex gap-2">
         <button
           onClick={() => router.push(`/requests/${request.id}`)}
@@ -95,20 +103,13 @@ export function RequestCard({ request, variant, creator }: Props) {
         >
           查看
         </button>
-        {variant === 'ledger' && (
-          hasResponded ? (
-            <button disabled className="flex-1 py-2.5 rounded-xl bg-brand-lavender text-sm font-semibold text-zinc-400">
-              已回應
-            </button>
-          ) : (
-            <button
-              onClick={handleRespond}
-              className="flex-1 py-2.5 rounded-xl bg-brand-sky text-sm font-semibold text-brand-ink active:scale-[0.98] transition-all"
-            >
-              我想加入
-            </button>
-          )
+
+        {variant === 'sent' && (
+          <button disabled className="flex-1 py-2.5 rounded-xl bg-brand-lavender text-sm font-semibold text-zinc-400">
+            等待對方回應 ⏳
+          </button>
         )}
+
         {variant === 'inbox' && (
           <button
             onClick={handleClose}

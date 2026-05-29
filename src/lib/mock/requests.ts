@@ -123,6 +123,7 @@ export const requests: Request[] = [
     status: 'open',
     createdAt: minsAgo(8),
     expiresAt: hoursFromNow(2),
+    requestViewers: ['u-002', 'u-005', 'u-008'],
   },
   {
     id: 'r-002',
@@ -157,6 +158,7 @@ export const requests: Request[] = [
     status: 'open',
     createdAt: minsAgo(3),
     expiresAt: hoursFromNow(4),
+    requestViewers: ['u-014', 'u-008'],
   },
   {
     id: 'r-010',
@@ -168,6 +170,7 @@ export const requests: Request[] = [
     status: 'open',
     createdAt: minsAgo(10),
     expiresAt: hoursFromNow(5),
+    requestViewers: ['u-005'],
   },
   {
     id: 'r-011',

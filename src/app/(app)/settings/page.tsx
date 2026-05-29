@@ -12,7 +12,7 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 export default function SettingsPage() {
   const { state, currentUser, unblockUser } = useAppState();
   const recentMeets = state.meetRecords.filter(
-    (r) => Date.now() - new Date(r.metAt).getTime() < SEVEN_DAYS_MS
+    (r) => new Date(r.expiresAt).getTime() > Date.now()
   );
   const router = useRouter();
   const [notifs, setNotifs] = useState(state.notificationsEnabled ?? true);
