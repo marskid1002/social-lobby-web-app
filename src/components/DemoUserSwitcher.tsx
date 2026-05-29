@@ -38,9 +38,16 @@ const PERSONAS = [
     badgeLabel: 'VIP',
   },
   {
+    userId: 'u-002',
+    label: '獨立女伴',
+    sublabel: '瀏覽可加入的局・直接加入・確認見面',
+    badgeColor: 'bg-pink-100 text-pink-600 border border-pink-200',
+    badgeLabel: '女伴',
+  },
+  {
     userId: 'u-018',
-    label: '幹部視角',
-    sublabel: '接單・安排出席・管理社群',
+    label: '經紀人 / 幹部',
+    sublabel: '管理旗下女伴・接單・安排出席',
     badgeColor: 'bg-purple-100 text-purple-600 border border-purple-200',
     badgeLabel: '幹部',
   },

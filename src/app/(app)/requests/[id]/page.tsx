@@ -33,7 +33,7 @@ const INVITE_LABELS: Record<string, string> = {
 export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { state, currentUser, respondToRequest, respondToInvite, closeRequest, declineResponder, buyExtraSlot, joinRequest } = useAppState();
+  const { state, currentUser, respondToInvite, closeRequest, declineResponder, buyExtraSlot, joinRequest } = useAppState();
   const [toast, setToast] = useState('');
 
   // Reject flow state
@@ -53,9 +53,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const myInvite = invitations.find((i) => i.toUserId === state.currentUserId && i.status === 'pending');
   const alreadyJoined = myResponse?.responseStatus === 'joining';
 
-  // Separate active joiners from declined/withdrawn
   const joiners = responses.filter((r) => r.responseStatus === 'joining');
-  const interested = responses.filter((r) => r.responseStatus === 'interested');
   const isAtCap = joiners.length >= request.peopleCount;
 
   // FOMO viewers — users who opened request but didn't join
@@ -70,11 +68,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
-  }
-
-  function handleRespond() {
-    respondToRequest(id);
-    showToast('已表示興趣');
   }
 
   function handleInviteAccept() {
@@ -249,34 +242,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                         拒絕
                       </button>
                     )}
-                  </div>
-                ) : null;
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Interested (not yet joined) */}
-        {interested.length > 0 && (
-          <div className="bg-white rounded-2xl p-4 shadow-card">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">
-              有興趣 ({interested.length})
-            </p>
-            <div className="flex flex-col gap-3">
-              {interested.map((resp) => {
-                const responder = state.users.find((u) => u.id === resp.userId);
-                return responder ? (
-                  <div key={resp.id} className="flex items-center gap-3">
-                    <button onClick={() => router.push(`/u/${responder.id}`)}>
-                      <img src={responder.avatarUrl} alt={responder.nickname} className="w-9 h-9 rounded-full object-cover" />
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm text-brand-ink font-medium">{responder.nickname}</span>
-                      {resp.note && <p className="text-xs text-zinc-400 truncate">「{resp.note}」</p>}
-                    </div>
-                    <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-blue-50 text-blue-500">
-                      有興趣
-                    </span>
                   </div>
                 ) : null;
               })}
