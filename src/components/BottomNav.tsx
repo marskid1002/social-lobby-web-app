@@ -18,7 +18,8 @@ const NAV_ITEMS = [
 export function BottomNav() {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const { state, unreadCount } = useAppState();
+  const { state, currentUser, unreadCount } = useAppState();
+  const isEscort = currentUser?.role === 'escort';
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');
@@ -32,6 +33,9 @@ export function BottomNav() {
         <div className="flex items-end justify-around px-2 pt-2 pb-1">
           {NAV_ITEMS.map((item, i) => {
             if (!item) {
+              if (isEscort) {
+                return <div key="fab" className="w-14" />;
+              }
               return (
                 <div key="fab" className="flex flex-col items-center -mt-5">
                   <button

@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { Pencil, X, Plus, ShoppingBag } from 'lucide-react';
 import { useAppState, TIER_MONTHLY_LIMITS } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
+import { formatDistanceToNow } from 'date-fns';
+import { zhTW } from 'date-fns/locale';
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const TIER_STYLES: Record<string, { label: string; bg: string; color: string }> = {
   free:     { label: '基本',   bg: '#6B728020', color: '#6B7280' },
@@ -14,7 +18,7 @@ const TIER_STYLES: Record<string, { label: string; bg: string; color: string }> 
 };
 
 export default function MyProfilePage() {
-  const { currentUser, updateUser } = useAppState();
+  const { state, currentUser, updateUser } = useAppState();
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [nickname, setNickname] = useState(currentUser?.nickname ?? '');
@@ -124,6 +128,38 @@ export default function MyProfilePage() {
             </div>
           </div>
         )}
+
+        {/* Recent meets (7-day window) */}
+        {(() => {
+          const recentMeets = state.meetRecords.filter(
+            (r) => Date.now() - new Date(r.metAt).getTime() < SEVEN_DAYS_MS
+          );
+          if (recentMeets.length === 0) return null;
+          return (
+            <div className="mb-6">
+              <p className="text-sm font-semibold text-brand-ink mb-2">近期見面記錄</p>
+              <div className="flex flex-wrap gap-2">
+                {recentMeets.map((r) => {
+                  const metUser = state.users.find((u) => u.id === r.userId);
+                  if (!metUser) return null;
+                  return (
+                    <button
+                      key={r.userId}
+                      onClick={() => router.push(`/u/${metUser.id}`)}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-ice border border-brand-lavender active:bg-brand-sky/20 transition-colors"
+                    >
+                      <img src={metUser.avatarUrl} alt={metUser.nickname} className="w-5 h-5 rounded-full object-cover" />
+                      <span className="text-xs font-medium text-brand-ink">{metUser.nickname}</span>
+                      <span className="text-[10px] text-zinc-400">
+                        {formatDistanceToNow(new Date(r.metAt), { locale: zhTW, addSuffix: true })}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Media grid */}
         {/* TODO: wire up user_media once we decide on MVP scope */}

@@ -63,9 +63,11 @@ export default function ChatPage({ params }: ChatPageProps) {
   const otherUser = state.users.find((u) => u.id === otherUserId);
   const isOtherOnline = state.onlineUserIds.includes(otherUserId);
 
+  const isEscort = currentUser?.role === 'escort';
+
+  // Match any accepted invite between these two users — private or request-based
   const activeInvite = state.invitations.find(
     (inv) =>
-      inv.requestId === null &&
       inv.status === 'accepted' &&
       !inv.meetupConfirmed &&
       ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
@@ -74,7 +76,6 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   const confirmedInvite = state.invitations.find(
     (inv) =>
-      inv.requestId === null &&
       inv.meetupConfirmed &&
       ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
         (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
@@ -395,6 +396,17 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       </div>
 
+      {/* Escort-only: confirm meetup sticky banner */}
+      {isEscort && activeInvite && !expired && (
+        <button
+          onClick={() => handleXiaomeiConfirm()}
+          className="shrink-0 w-full flex items-center justify-center gap-2 py-3 bg-line-green text-white font-semibold text-sm active:brightness-90 transition-all"
+        >
+          <CheckCircle className="w-4 h-4" />
+          確認見面・結案
+        </button>
+      )}
+
       {/* Timer banner */}
       {activeInvite && !expired && (
         <div
@@ -457,8 +469,8 @@ export default function ChatPage({ params }: ChatPageProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Demo switcher pill — appears after first message sent */}
-      {hasSentMessage && (
+      {/* Demo switcher pill — appears after first message sent (hidden for real escort accounts) */}
+      {hasSentMessage && !isEscort && (
         <div className="shrink-0 px-4 pb-2">
           <button
             onClick={() => setViewAs('xiaomei')}

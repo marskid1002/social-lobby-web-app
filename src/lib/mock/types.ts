@@ -17,7 +17,7 @@ export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired';
 
 export type Tier = 'free' | 'standard' | 'premium' | 'vip';
 
-export type Role = 'user' | 'operator' | 'admin';
+export type Role = 'user' | 'escort' | 'manager' | 'operator' | 'admin';
 
 export type UpdateEventType =
   | 'response_received'

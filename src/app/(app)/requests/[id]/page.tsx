@@ -33,7 +33,7 @@ const INVITE_LABELS: Record<string, string> = {
 export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { state, currentUser, respondToRequest, respondToInvite, closeRequest, declineResponder, buyExtraSlot } = useAppState();
+  const { state, currentUser, respondToRequest, respondToInvite, closeRequest, declineResponder, buyExtraSlot, joinRequest } = useAppState();
   const [toast, setToast] = useState('');
 
   // Reject flow state
@@ -48,8 +48,10 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const invitations = state.invitations.filter((i) => i.requestId === id);
 
   const isCreator = state.currentUserId === request.creatorId;
+  const isEscort = currentUser?.role === 'escort';
   const myResponse = responses.find((r) => r.userId === state.currentUserId);
   const myInvite = invitations.find((i) => i.toUserId === state.currentUserId && i.status === 'pending');
+  const alreadyJoined = myResponse?.responseStatus === 'joining';
 
   // Separate active joiners from declined/withdrawn
   const joiners = responses.filter((r) => r.responseStatus === 'joining');
@@ -87,6 +89,11 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     closeRequest(id);
     showToast('邀請已關閉');
     setTimeout(() => router.back(), 1200);
+  }
+
+  function handleJoin() {
+    joinRequest(id);
+    showToast('已加入！聊天視窗已開啟 ✨');
   }
 
   function handleShare() {
@@ -304,17 +311,44 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       {/* Sticky CTA */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-brand-lavender px-4 py-3 pb-safe">
         {isCreator ? (
-          <button
-            onClick={handleClose}
-            disabled={request.status === 'closed'}
-            className="w-full py-3.5 rounded-2xl border-2 border-red-200 text-red-500 font-semibold text-sm bg-white active:bg-red-50 disabled:opacity-40 transition-colors"
-          >
-            {request.status === 'closed' ? '邀請已關閉' : '關閉邀請'}
-          </button>
-        ) : myResponse ? (
-          <button disabled className="w-full py-3.5 rounded-2xl bg-brand-lavender text-zinc-400 font-semibold text-sm">
-            已回應
-          </button>
+          joiners.length > 0 ? (
+            // Has joiners — can't close directly, must reject them first
+            <div className="text-center">
+              <p className="text-xs text-zinc-400 mb-1">有人已加入，請先拒絕所有人才能關閉</p>
+              <button
+                disabled
+                className="w-full py-3.5 rounded-2xl bg-zinc-100 text-zinc-400 font-semibold text-sm cursor-not-allowed"
+              >
+                關閉邀請（不可用）
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleClose}
+              disabled={request.status === 'closed'}
+              className="w-full py-3.5 rounded-2xl border-2 border-red-200 text-red-500 font-semibold text-sm bg-white active:bg-red-50 disabled:opacity-40 transition-colors"
+            >
+              {request.status === 'closed' ? '邀請已關閉' : '關閉邀請'}
+            </button>
+          )
+        ) : isEscort ? (
+          alreadyJoined ? (
+            <button disabled className="w-full py-3.5 rounded-2xl bg-brand-lavender text-zinc-400 font-semibold text-sm">
+              已加入 · 前往收件匣查看聊天
+            </button>
+          ) : isAtCap ? (
+            <button disabled className="w-full py-3.5 rounded-2xl bg-zinc-100 text-zinc-400 font-semibold text-sm">
+              此局已額滿
+            </button>
+          ) : (
+            <button
+              onClick={handleJoin}
+              className="w-full py-3.5 rounded-2xl font-semibold text-base active:scale-[0.98] transition-all shadow-card text-brand-ink"
+              style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #F7BEF1 100%)' }}
+            >
+              加入這個局 ✨
+            </button>
+          )
         ) : myInvite ? (
           <div className="flex gap-2">
             <button onClick={handleInviteAccept} className="flex-1 py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all">
@@ -325,12 +359,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </button>
           </div>
         ) : (
-          <button
-            onClick={handleRespond}
-            disabled={isAtCap}
-            className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base active:scale-[0.98] transition-all shadow-card disabled:opacity-40"
-          >
-            {isAtCap ? '已額滿' : '我想加入'}
+          <button disabled className="w-full py-3.5 rounded-2xl bg-zinc-100 text-zinc-400 font-semibold text-sm">
+            {isAtCap ? '已額滿' : '僅限女性用戶加入'}
           </button>
         )}
       </div>

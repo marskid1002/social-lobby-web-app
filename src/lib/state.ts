@@ -336,12 +336,69 @@ export function useAppState() {
     }));
   }, []);
 
+  // Only allowed when no active joiners. UI must enforce this guard before calling.
   const closeRequest = useCallback((requestId: string) => {
+    setState((prev) => {
+      const activeJoiners = prev.responses.filter(
+        (r) => r.requestId === requestId && r.responseStatus === 'joining'
+      ).length;
+      if (activeJoiners > 0) return prev; // blocked — must reject all joiners first
+      return {
+        ...prev,
+        requests: prev.requests.map((r) =>
+          r.id === requestId ? { ...r, status: 'closed' } : r
+        ),
+      };
+    });
+  }, []);
+
+  // Escort joins a request: creates a 'joining' response + accepted invitation + 8h chat.
+  const joinRequest = useCallback((requestId: string) => {
+    const s = getState();
+    const request = s.requests.find((r) => r.id === requestId);
+    if (!request) return;
+
+    const escortId = s.currentUserId;
+    const requesterId = request.creatorId;
+    const inviteId = `i-join-${Date.now()}`;
+    const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
+    const now = new Date().toISOString();
+
+    const newJoinResponse: import('@/lib/mock').Response = {
+      id: `rr-join-${Date.now()}`,
+      requestId,
+      userId: escortId,
+      responseStatus: 'joining',
+      createdAt: now,
+    };
+
+    const newInvite: Invitation = {
+      id: inviteId,
+      requestId,
+      fromUserId: escortId,
+      toUserId: requesterId,
+      status: 'accepted',
+      createdAt: now,
+      respondedAt: now,
+      chatExpiresAt,
+    };
+
+    const notif: UpdateEvent = {
+      id: `ue-join-${Date.now()}`,
+      userId: requesterId,
+      actorId: escortId,
+      eventType: 'invite_accepted',
+      refRequestId: requestId,
+      createdAt: now,
+      read: false,
+    };
+
     setState((prev) => ({
       ...prev,
-      requests: prev.requests.map((r) =>
-        r.id === requestId ? { ...r, status: 'closed' } : r
-      ),
+      responses: [...prev.responses, newJoinResponse],
+      invitations: [...prev.invitations, newInvite],
+      updates: [notif, ...prev.updates],
+      inboxUnread: true,
     }));
   }, []);
 
@@ -508,6 +565,7 @@ export function useAppState() {
     closeRequest,
     declineResponder,
     buyExtraSlot,
+    joinRequest,
     toggleFollow,
     blockUser,
     unblockUser,

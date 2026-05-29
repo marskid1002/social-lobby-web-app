@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { OperatorHome } from '@/components/OperatorHome';
@@ -152,8 +152,15 @@ function FemaleListRow({ userId }: { userId: string }) {
 
 function ExploreContent() {
   const { state, currentUser } = useAppState();
+  const router = useRouter();
 
-  if (currentUser?.role === 'operator') {
+  useEffect(() => {
+    if (currentUser?.role === 'escort') router.replace('/requests');
+  }, [currentUser?.role]);
+
+  if (currentUser?.role === 'escort') return null;
+
+  if (currentUser?.role === 'manager' || currentUser?.role === 'operator') {
     return <OperatorHome />;
   }
 
