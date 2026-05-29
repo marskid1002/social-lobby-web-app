@@ -5,6 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export const REQUEST_TYPE_LABELS: Record<string, string> = {
+  after_party: 'After Party',
+  drinking: '喝一杯',
+  fill_spot: '補位',
+  last_minute: '臨時局',
+  other: '其他',
+};
+
 // Deterministic gradient per request — hashes the ID to one of 6 subtle palettes
 // all within the sky/pink/lavender/mint/peach/lilac family
 const REQUEST_GRADIENTS = [

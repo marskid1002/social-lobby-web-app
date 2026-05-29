@@ -8,15 +8,7 @@ import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
-import { getRequestGradient, getRequestAccentColor } from '@/lib/utils';
-
-const REQUEST_TYPE_LABELS: Record<string, string> = {
-  after_party: '派對後',
-  drinking: '酒局',
-  fill_spot: '補位',
-  last_minute: '臨時約',
-  other: '其他',
-};
+import { getRequestGradient, getRequestAccentColor, REQUEST_TYPE_LABELS } from '@/lib/utils';
 
 const STATUS_LABELS: Record<string, string> = {
   available: '有空',
