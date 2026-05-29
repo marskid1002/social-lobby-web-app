@@ -6,7 +6,7 @@ import { useAppState } from '@/lib/state';
 import { OperatorHome } from '@/components/OperatorHome';
 import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Lock, Crown, Users, Eye, UserCheck, Zap } from 'lucide-react';
+import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
@@ -91,18 +91,10 @@ function MyRequestCard({ request, responders }: { request: Request; responders: 
         </div>
       )}
 
-      <div className="flex items-center gap-4 text-xs text-zinc-400">
-        <span className="flex items-center gap-1">
-          <Eye size={13} />
-          <span className="font-semibold text-zinc-600">{metrics.impressions}</span> 曝光
-        </span>
-        <span className="flex items-center gap-1">
-          <Users size={13} />
-          <span className="font-semibold text-zinc-600">{metrics.views}</span> 查看
-        </span>
+      <div className="flex items-center gap-3 text-xs text-zinc-400">
         <span className="flex items-center gap-1">
           <UserCheck size={13} />
-          <span className="font-semibold text-zinc-600">{metrics.joins}</span> 想加入
+          <span className="font-semibold text-zinc-600">{metrics.joins}</span> 人想加入
         </span>
 
         {showNudge && (

@@ -204,8 +204,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 已加入 ({joiners.length}/{request.peopleCount})
               </p>
               {isAtCap && (
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-500 border border-red-200">
-                  已滿
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-red-50 text-red-500">
+                  額滿
                 </span>
               )}
             </div>
@@ -221,7 +221,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                       <span className="text-sm font-semibold text-brand-ink">{joiner.nickname}</span>
                       {resp.note && <p className="text-xs text-zinc-400 truncate">「{resp.note}」</p>}
                     </div>
-                    {isCreator && isAtCap && (
+                    {isCreator && (
                       <button
                         onClick={() => handleRejectTap(resp.id)}
                         className="shrink-0 text-xs px-3 py-1.5 rounded-xl border border-red-200 text-red-500 font-semibold active:bg-red-50 transition-colors"

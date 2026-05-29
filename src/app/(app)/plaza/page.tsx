@@ -80,10 +80,13 @@ export default function PlazaPage() {
   }
 
   return (
-    <div className="relative">
-      {/* Free users: blur the entire feed and show a lock overlay on top */}
+    <div className="relative" style={{ minHeight: 'calc(100dvh - 57px - 56px)' }}>
+      {/* Free users: blur first few posts + centered viewport lock overlay */}
       {tier === 'free' && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">
+        <div
+          className="fixed z-10 flex items-center justify-center bg-white/60 backdrop-blur-[2px]"
+          style={{ top: '57px', left: 0, right: 0, bottom: '56px' }}
+        >
           <div className="flex flex-col items-center gap-3 px-6 text-center">
             <span className="text-3xl">🔒</span>
             <p className="text-base font-bold text-brand-ink">探索更多，認識更多</p>
