@@ -8,6 +8,7 @@ import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
+import { getRequestGradient, getRequestAccentColor } from '@/lib/utils';
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
   after_party: '派對後',
@@ -44,29 +45,57 @@ function shouldShowBoostNudge(req: Request): boolean {
   return impressions < 5 && minutesOld >= 60;
 }
 
-function MyRequestCard({ request, responders }: { request: Request; responders: User[] }) {
+function MyRequestCard({
+  request,
+  responders,
+  atCap,
+}: {
+  request: Request;
+  responders: User[];
+  atCap: boolean;
+}) {
   const router = useRouter();
-  const showNudge = shouldShowBoostNudge(request);
+  const showNudge = !atCap && shouldShowBoostNudge(request);
   const metrics = request.metrics ?? { impressions: 0, views: 0, joins: 0 };
   const visibleResponders = responders.slice(0, 3);
   const extraCount = responders.length - visibleResponders.length;
+  const accent = getRequestAccentColor(request.id);
+  const gradient = getRequestGradient(request.id);
 
   return (
     <div
       onClick={() => router.push(`/requests/${request.id}`)}
-      className="bg-white rounded-2xl shadow-sm border border-zinc-100 p-4 cursor-pointer active:bg-brand-snow transition-colors"
+      className={`rounded-2xl shadow-sm border p-4 cursor-pointer transition-colors overflow-hidden ${
+        atCap ? 'bg-zinc-50 border-zinc-200 opacity-80' : 'bg-white border-zinc-100 active:bg-brand-snow'
+      }`}
     >
+      {/* Colored top accent bar */}
+      <div
+        className="h-1 rounded-full mb-3 -mx-4 -mt-4 px-4"
+        style={{ background: gradient, height: '4px', marginTop: '-16px', marginLeft: '-16px', marginRight: '-16px', marginBottom: '12px' }}
+      />
+
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-brand-sky bg-brand-ice px-2 py-0.5 rounded-full">
+          <span
+            className="text-xs font-semibold px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: accent + '55', color: '#020102' }}
+          >
             {REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType}
           </span>
           <span className="text-xs text-zinc-400">{request.area}</span>
           <span className="text-xs text-zinc-400">· {request.peopleCount} 人</span>
         </div>
-        <span className="text-[11px] text-zinc-400 shrink-0">
-          {formatDistanceToNow(new Date(request.createdAt), { locale: zhTW, addSuffix: true })}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {atCap && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-500">
+              額滿
+            </span>
+          )}
+          <span className="text-[11px] text-zinc-400">
+            {formatDistanceToNow(new Date(request.createdAt), { locale: zhTW, addSuffix: true })}
+          </span>
+        </div>
       </div>
 
       <p className="text-sm text-brand-ink leading-snug line-clamp-2 mb-3">{request.note}</p>
@@ -85,18 +114,25 @@ function MyRequestCard({ request, responders }: { request: Request; responders: 
           </div>
           <span className="text-xs text-zinc-500">
             {extraCount > 0
-              ? `${visibleResponders.map(u => u.nickname.slice(0,2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已加入`
-              : `${visibleResponders.map(u => u.nickname.slice(0,2)).join('、')} 已加入`}
+              ? `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已加入`
+              : `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 已加入`}
           </span>
         </div>
       )}
 
       <div className="flex items-center gap-3 text-xs text-zinc-400">
-        <span className="flex items-center gap-1">
-          <UserCheck size={13} />
-          <span className="font-semibold text-zinc-600">{metrics.joins}</span> 人想加入
-        </span>
-
+        {!atCap && (
+          <span className="flex items-center gap-1">
+            <UserCheck size={13} />
+            <span className="font-semibold text-zinc-600">{metrics.joins}</span> 人想加入
+          </span>
+        )}
+        {atCap && (
+          <span className="flex items-center gap-1 text-zinc-400">
+            <Users size={13} />
+            {responders.length}/{request.peopleCount} 人 · 點擊查看群組聊天
+          </span>
+        )}
         {showNudge && (
           <span className="ml-auto flex items-center gap-1 text-[11px] text-amber-600 font-semibold bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
             <Zap size={11} />
@@ -160,9 +196,24 @@ function ExploreContent() {
 
   const isVip = currentUser?.tier === 'vip';
 
+  // Include open + closed (at-cap auto-closed) requests by this user
   const myRequests = state.requests
-    .filter((r) => r.creatorId === currentUser?.id && r.status === 'open')
+    .filter((r) => r.creatorId === currentUser?.id && (r.status === 'open' || r.status === 'closed'))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // Split: at-cap = joiners >= peopleCount OR closed
+  const withJoinerCount = myRequests.map((req) => {
+    const joiners = state.responses
+      .filter((r) => r.requestId === req.id && r.responseStatus === 'joining')
+      .map((r) => state.users.find((u) => u.id === r.userId))
+      .filter((u): u is User => !!u);
+    const atCap = req.status === 'closed' || joiners.length >= req.peopleCount;
+    return { req, joiners, atCap };
+  });
+
+  const gathering = withJoinerCount.filter((x) => !x.atCap);
+  const atCapList = withJoinerCount.filter((x) => x.atCap);
+  const hasMyRequests = myRequests.length > 0;
 
   const femaleUserIds = state.onlineStatuses
     .filter((s) => {
@@ -175,9 +226,7 @@ function ExploreContent() {
   const limit = SECTION_B_LIMIT[currentUser?.tier ?? 'free'] ?? 0;
   const visibleFemaleIds = limit === Infinity ? femaleUserIds : femaleUserIds.slice(0, limit);
   const hasMoreFemales = femaleUserIds.length > visibleFemaleIds.length;
-  // For free users: show all girls blurred in background so the lock feels real
   const sectionBRenderIds = currentUser?.tier === 'free' ? femaleUserIds : visibleFemaleIds;
-  const hasMyRequests = myRequests.length > 0;
 
   return (
     <div
@@ -192,13 +241,28 @@ function ExploreContent() {
 
         {hasMyRequests ? (
           <div className="px-4 pb-4 flex flex-col gap-3">
-            {myRequests.map((req) => {
-              const responders = state.responses
-                .filter((r) => r.requestId === req.id && r.responseStatus === 'joining')
-                .map((r) => state.users.find((u) => u.id === r.userId))
-                .filter((u): u is User => !!u);
-              return <MyRequestCard key={req.id} request={req} responders={responders} />;
-            })}
+            {/* Still gathering */}
+            {gathering.map(({ req, joiners }) => (
+              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={false} />
+            ))}
+
+            {/* Divider — only shown when both groups have items */}
+            {gathering.length > 0 && atCapList.length > 0 && (
+              <div className="flex items-center gap-3 py-1">
+                <div className="flex-1 h-px bg-zinc-200" />
+                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide shrink-0">已額滿</span>
+                <div className="flex-1 h-px bg-zinc-200" />
+              </div>
+            )}
+            {/* Only at-cap, no gathering — show header inline */}
+            {gathering.length === 0 && atCapList.length > 0 && (
+              <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">已額滿</p>
+            )}
+
+            {/* At-cap */}
+            {atCapList.map(({ req, joiners }) => (
+              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={true} />
+            ))}
           </div>
         ) : (
           <div className="px-4 pb-4">
@@ -224,7 +288,6 @@ function ExploreContent() {
 
       {/* === SECTION B: Online Women === */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
-        {/* Render real content; blurred for free users so lock overlay has substance behind it */}
         <div className={currentUser?.tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}>
           {sectionBRenderIds.map((uid) => (
             <FemaleListRow key={uid} userId={uid} />

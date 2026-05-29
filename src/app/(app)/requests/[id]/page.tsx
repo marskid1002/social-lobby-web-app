@@ -38,6 +38,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     respondToInvite, closeRequest,
     declineResponder, buyExtraSlot,
     joinRequest, acceptResponder,
+    cancelJoinRequest,
     recordRequestViewer,
   } = useAppState();
   const [toast, setToast] = useState('');
@@ -55,7 +56,10 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
   const isCreator  = state.currentUserId === request.creatorId;
   const isEscort   = currentUser?.role === 'escort';
-  const myResponse = responses.find((r) => r.userId === state.currentUserId);
+  // Only count active responses (not withdrawn) for the escort's CTA state
+  const myResponse = responses.find(
+    (r) => r.userId === state.currentUserId && r.responseStatus !== 'withdrawn'
+  );
   const myInvite   = invitations.find((i) => i.toUserId === state.currentUserId && i.status === 'pending');
 
   // Split responses by status
@@ -104,6 +108,11 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     closeRequest(id);
     showToast('邀請已關閉');
     setTimeout(() => router.back(), 1200);
+  }
+
+  function handleCancelJoin() {
+    cancelJoinRequest(id);
+    showToast('已取消加入請求');
   }
 
   function handleJoin() {
@@ -221,8 +230,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 <span className="text-sm font-bold text-green-600">✓ 已加入 · 前往收件匣查看聊天</span>
               </div>
             ) : myResponse?.responseStatus === 'interested' ? (
-              <div className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-brand-lavender/40">
-                <span className="text-sm font-semibold text-zinc-500">已送出請求，等待對方回應 ⏳</span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-brand-lavender/40">
+                  <span className="text-sm font-semibold text-zinc-500">已送出請求，等待對方回應 ⏳</span>
+                </div>
+                <button
+                  onClick={handleCancelJoin}
+                  className="w-full py-2.5 rounded-2xl border border-red-200 text-xs font-semibold text-red-500 bg-red-50 active:bg-red-100 transition-colors"
+                >
+                  取消加入請求
+                </button>
               </div>
             ) : isAtCap ? (
               <div className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-zinc-100">
@@ -273,8 +290,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     </div>
                     <div className="flex gap-1.5 shrink-0">
                       <button
-                        onClick={() => handleAccept(resp.id)}
-                        className="text-xs px-3 py-1.5 rounded-xl bg-brand-sky text-brand-ink font-semibold active:scale-95 transition-all"
+                        onClick={() => !isAtCap && handleAccept(resp.id)}
+                        disabled={isAtCap}
+                        className={`text-xs px-3 py-1.5 rounded-xl font-semibold transition-all ${
+                          isAtCap
+                            ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed'
+                            : 'bg-brand-sky text-brand-ink active:scale-95'
+                        }`}
                       >
                         接受
                       </button>

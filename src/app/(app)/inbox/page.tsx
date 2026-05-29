@@ -5,13 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { MessageCircle, TrendingUp, MessageSquare, UserCheck, CheckCircle } from 'lucide-react';
+import { MessageCircle, TrendingUp, MessageSquare, UserCheck, CheckCircle, Users } from 'lucide-react';
+import { getRequestGradient } from '@/lib/utils';
 
 function getThreadId(a: string, b: string) {
   return [a, b].sort().join('-');
 }
-
-const MATCH_GRADIENT = 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)';
 
 export default function InboxPage() {
   const { state, currentUser, clearInboxUnread, markUpdatesRead, confirmMeetup } = useAppState();
@@ -28,47 +27,101 @@ export default function InboxPage() {
     if (unreadIds.length > 0) markUpdatesRead(unreadIds);
   }, []);
 
-  // ── Match cards ──────────────────────────────────────────────────────────────
+  // ── Match cards — one per request ───────────────────────────────────────────
 
-  // User side: any accepted invitation sent TO me (private) OR sent FROM escort to me (request-based)
-  const userMatchCards = !isEscort
-    ? state.invitations.filter(
-        (i) =>
-          i.status === 'accepted' &&
-          !i.meetupConfirmed &&
-          (i.toUserId === state.currentUserId || i.fromUserId === state.currentUserId) &&
-          // For request-based: escort joined MY request; for private: I sent invite
-          (i.requestId !== null
-            ? i.toUserId === state.currentUserId  // escort joined → toUserId = me (requester)
-            : i.fromUserId === state.currentUserId) // private invite I sent → accepted
-      )
-    : [];
+  // Collect all accepted, unconfirmed invitations relevant to current user
+  const relevantInvites = state.invitations.filter((i) => {
+    if (i.status !== 'accepted') return false;
+    if (isEscort) return i.fromUserId === state.currentUserId && !i.meetupConfirmed;
+    // User (creator): escort joined MY request, or private invite I sent
+    return (
+      (i.requestId !== null && i.toUserId === state.currentUserId && !i.meetupConfirmed) ||
+      (i.requestId === null && i.fromUserId === state.currentUserId && !i.meetupConfirmed)
+    );
+  });
 
-  // Escort side: invitations I sent (by joining requests) that are accepted and not confirmed
-  const escortMatchCards = isEscort
-    ? state.invitations.filter(
-        (i) =>
-          i.status === 'accepted' &&
-          !i.meetupConfirmed &&
-          i.fromUserId === state.currentUserId
-      )
-    : [];
+  // Deduplicate by requestId — one card per request (private invites keep their own card)
+  const seenRequestIds = new Set<string>();
+  const matchCards: Array<{
+    key: string;
+    requestId: string | null;
+    threadId: string;
+    isGroup: boolean;
+    joinerUsers: typeof state.users;
+    otherUserId: string;
+    gradient: string;
+    chatExpiresAt?: string;
+    inviteId: string; // for 1:1 confirmMeetup
+  }> = [];
 
-  const matchCards = isEscort ? escortMatchCards : userMatchCards;
+  for (const inv of relevantInvites) {
+    if (inv.requestId !== null) {
+      if (seenRequestIds.has(inv.requestId)) continue;
+      seenRequestIds.add(inv.requestId);
 
-  // ── Notification feed (users only) ──────────────────────────────────────────
+      const req = state.requests.find((r) => r.id === inv.requestId);
+      const isGroup = (req?.peopleCount ?? 1) > 1;
+      const threadId = isGroup ? `g-${inv.requestId}` : getThreadId(state.currentUserId, isEscort ? inv.toUserId : inv.fromUserId);
+
+      // All joiners for this request
+      const joinerIds = state.responses
+        .filter((r) => r.requestId === inv.requestId && r.responseStatus === 'joining')
+        .map((r) => r.userId);
+      const joinerUsers = joinerIds
+        .map((id) => state.users.find((u) => u.id === id))
+        .filter(Boolean) as typeof state.users;
+
+      const otherUserId = isEscort ? inv.toUserId : inv.fromUserId;
+
+      matchCards.push({
+        key: inv.requestId,
+        requestId: inv.requestId,
+        threadId,
+        isGroup,
+        joinerUsers,
+        otherUserId,
+        gradient: getRequestGradient(inv.requestId),
+        chatExpiresAt: inv.chatExpiresAt,
+        inviteId: inv.id,
+      });
+    } else {
+      // Private invite — always 1:1
+      const otherId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
+      matchCards.push({
+        key: inv.id,
+        requestId: null,
+        threadId: getThreadId(state.currentUserId, otherId),
+        isGroup: false,
+        joinerUsers: [],
+        otherUserId: otherId,
+        gradient: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)',
+        chatExpiresAt: inv.chatExpiresAt,
+        inviteId: inv.id,
+      });
+    }
+  }
+
+  // ── Notification feed ───────────────────────────────────────────────────────
   const myRequestIds = new Set(
     state.requests.filter((r) => r.creatorId === state.currentUserId).map((r) => r.id)
   );
 
+  const interestedNotifs = !isEscort
+    ? state.responses
+        .filter((r) => r.responseStatus === 'interested' && myRequestIds.has(r.requestId))
+        .map((r) => ({
+          id: `interested-${r.id}`,
+          type: 'interested' as const,
+          actorId: r.userId,
+          refRequestId: r.requestId,
+          createdAt: r.createdAt,
+        }))
+    : [];
+
   const joinNotifs = !isEscort
     ? state.responses
         .filter((r) => r.responseStatus === 'joining' && myRequestIds.has(r.requestId))
-        .filter((r) => !matchCards.some((mc) => {
-          // Don't double-show if already in a match card
-          const inv = state.invitations.find(i => i.requestId === r.requestId && i.fromUserId === r.userId);
-          return !!inv;
-        }))
+        .filter((r) => !matchCards.some((mc) => mc.requestId === r.requestId))
         .map((r) => ({
           id: `join-${r.id}`,
           type: 'join' as const,
@@ -96,7 +149,7 @@ export default function InboxPage() {
         }))
     : [];
 
-  const allNotifs = [...joinNotifs, ...eventNotifs].sort(
+  const allNotifs = [...interestedNotifs, ...joinNotifs, ...eventNotifs].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
@@ -107,7 +160,7 @@ export default function InboxPage() {
       <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
         <div
           className="w-20 h-20 rounded-3xl flex items-center justify-center mb-4 shadow-card"
-          style={{ background: MATCH_GRADIENT }}
+          style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)' }}
         >
           <span className="text-4xl">{isEscort ? '🌟' : '🔔'}</span>
         </div>
@@ -121,7 +174,7 @@ export default function InboxPage() {
           <button
             onClick={() => router.push('/requests')}
             className="mt-4 px-6 py-2.5 rounded-2xl font-semibold text-sm text-brand-ink active:scale-95 transition-all shadow-card"
-            style={{ background: MATCH_GRADIENT }}
+            style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)' }}
           >
             查看今晚的局
           </button>
@@ -133,60 +186,79 @@ export default function InboxPage() {
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
 
-      {/* ── Match cards ── */}
-      {matchCards.map((inv) => {
-        const otherId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
-        const other = state.users.find((u) => u.id === otherId);
-        const threadId = getThreadId(state.currentUserId, otherId);
-        const request = inv.requestId ? state.requests.find((r) => r.id === inv.requestId) : null;
+      {/* ── Match cards — one per request ── */}
+      {matchCards.map((card) => {
+        const request = card.requestId ? state.requests.find((r) => r.id === card.requestId) : null;
+        const otherUser = state.users.find((u) => u.id === card.otherUserId);
+        const creatorUser = request ? state.users.find((u) => u.id === request.creatorId) : null;
 
         function handleConfirm() {
-          confirmMeetup(inv.id, otherId);
+          confirmMeetup(card.inviteId, card.otherUserId);
         }
 
         return (
           <div
-            key={inv.id}
+            key={card.key}
             className="relative rounded-3xl overflow-hidden shadow-card"
-            style={{ background: MATCH_GRADIENT }}
+            style={{ background: card.gradient }}
           >
             <div className="absolute inset-0 bg-white/20 rounded-3xl" />
             <div className="relative p-4">
               <div className="flex items-center gap-3 mb-3">
-                {other && (
-                  <div className="relative">
-                    <img
-                      src={other.avatarUrl}
-                      alt={other.nickname}
-                      className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md"
-                    />
-                    <span className="absolute -bottom-0.5 -right-0.5 text-base leading-none">✨</span>
+                {/* Avatar(s) */}
+                {card.isGroup ? (
+                  <div className="relative w-12 h-10 shrink-0">
+                    {card.joinerUsers.slice(0, 3).map((u, idx) => (
+                      <img
+                        key={u.id}
+                        src={u.avatarUrl}
+                        alt={u.nickname}
+                        className="absolute w-8 h-8 rounded-full object-cover ring-2 ring-white"
+                        style={{ left: idx * 9, top: idx % 2 === 0 ? 0 : 4, zIndex: 3 - idx }}
+                      />
+                    ))}
                   </div>
+                ) : (
+                  otherUser && (
+                    <div className="relative shrink-0">
+                      <img
+                        src={otherUser.avatarUrl}
+                        alt={otherUser.nickname}
+                        className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-md"
+                      />
+                      <span className="absolute -bottom-0.5 -right-0.5 text-base leading-none">✨</span>
+                    </div>
+                  )
                 )}
+
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-brand-ink">
                     {isEscort
-                      ? `你加入了 ${other?.nickname} 的活動`
-                      : `${other?.nickname} 加入了你的邀請！`}
+                      ? `你加入了 ${creatorUser?.nickname ?? '某人'} 的活動`
+                      : card.isGroup
+                        ? `${card.joinerUsers.length} 位女伴加入了你的邀請！`
+                        : `${otherUser?.nickname} 加入了你的邀請！`}
                   </p>
                   {request && (
                     <p className="text-xs text-brand-ink/60 mt-0.5 truncate">
-                      {request.area} · {request.note.slice(0, 24)}…
+                      {request.area} · {request.note.slice(0, 28)}…
                     </p>
                   )}
-                  <p className="text-xs text-brand-ink/50 mt-0.5">聊天視窗已開啟 · 8 小時後關閉</p>
+                  <p className="text-xs text-brand-ink/50 mt-0.5">
+                    {card.isGroup ? '群組聊天已開啟 · 8 小時後關閉' : '聊天視窗已開啟 · 8 小時後關閉'}
+                  </p>
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <button
-                  onClick={() => router.push(`/chat/${threadId}`)}
+                  onClick={() => router.push(`/chat/${card.threadId}`)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-white/70 backdrop-blur text-brand-ink font-bold text-sm active:scale-[0.98] transition-all shadow-sm"
                 >
                   <MessageCircle className="w-4 h-4" strokeWidth={2} />
-                  聊天
+                  {card.isGroup ? '群組聊天' : '聊天'}
                 </button>
-                {isEscort && (
+                {isEscort && !card.isGroup && (
                   <button
                     onClick={handleConfirm}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-brand-ink/80 text-white font-bold text-sm active:scale-[0.98] transition-all"
@@ -201,7 +273,7 @@ export default function InboxPage() {
         );
       })}
 
-      {/* ── Notification feed (users only) ── */}
+      {/* ── Notification feed ── */}
       {allNotifs.length > 0 && (
         <div className="bg-white rounded-2xl border border-brand-lavender shadow-card overflow-hidden">
           {allNotifs.map((notif, i) => {
@@ -209,12 +281,27 @@ export default function InboxPage() {
             const request = notif.refRequestId
               ? state.requests.find((r) => r.id === notif.refRequestId)
               : null;
+            const notifGradient = notif.refRequestId ? getRequestGradient(notif.refRequestId) : undefined;
 
             let icon: React.ReactNode;
             let text: React.ReactNode;
             let onTap: () => void;
 
-            if (notif.type === 'join') {
+            if (notif.type === 'interested') {
+              icon = (
+                <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                  <Users className="w-4 h-4 text-amber-500" strokeWidth={2} />
+                </div>
+              );
+              text = (
+                <>
+                  <span className="font-semibold">{actor?.nickname ?? '某人'}</span>
+                  {' 想加入你的局'}
+                  {request && <span className="text-zinc-400"> · {request.area}</span>}
+                </>
+              );
+              onTap = () => notif.refRequestId && router.push(`/requests/${notif.refRequestId}`);
+            } else if (notif.type === 'join') {
               icon = (
                 <div className="w-9 h-9 rounded-full bg-brand-sky/20 flex items-center justify-center shrink-0">
                   <UserCheck className="w-4 h-4 text-brand-sky" strokeWidth={2} />
@@ -237,7 +324,7 @@ export default function InboxPage() {
               text = (
                 <>
                   {'你的邀請達到 '}
-                  <span className="font-semibold text-amber-600">{notif.milestoneCount} 次</span>
+                  <span className="font-semibold text-amber-600">{(notif as { milestoneCount?: number }).milestoneCount} 次</span>
                   {' 查看！'}
                 </>
               );
@@ -254,7 +341,7 @@ export default function InboxPage() {
                   {' 回覆了你在廣場的留言'}
                 </>
               );
-              onTap = () => notif.refPostId && router.push(`/plaza/${notif.refPostId}`);
+              onTap = () => (notif as { refPostId?: string }).refPostId && router.push(`/plaza/${(notif as { refPostId?: string }).refPostId}`);
             }
 
             return (
@@ -265,7 +352,14 @@ export default function InboxPage() {
                   i > 0 ? 'border-t border-brand-lavender' : ''
                 }`}
               >
-                {notif.type === 'join' && actor ? (
+                {/* Color dot for request-linked notifs */}
+                {notifGradient && (
+                  <div
+                    className="w-1 self-stretch rounded-full shrink-0"
+                    style={{ background: notifGradient, minHeight: '32px' }}
+                  />
+                )}
+                {(notif.type === 'join' || notif.type === 'interested') && actor ? (
                   <img src={actor.avatarUrl} alt={actor.nickname} className="w-9 h-9 rounded-full object-cover shrink-0" />
                 ) : (
                   icon
@@ -276,7 +370,12 @@ export default function InboxPage() {
                     {formatDistanceToNow(new Date(notif.createdAt), { locale: zhTW, addSuffix: true })}
                   </p>
                 </div>
-                {notif.type !== 'join' && actor && (
+                {notif.type === 'interested' && (
+                  <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-600">
+                    待回應
+                  </span>
+                )}
+                {notif.type !== 'join' && notif.type !== 'interested' && actor && (
                   <img src={actor.avatarUrl} alt={actor.nickname ?? ''} className="w-7 h-7 rounded-full object-cover shrink-0 opacity-70" />
                 )}
               </button>

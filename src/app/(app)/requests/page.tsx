@@ -28,7 +28,7 @@ const TYPE_COLORS: Record<string, string> = {
 type EscortTab = 'area' | 'all' | 'sent';
 
 export default function RequestsPage() {
-  const { state, currentUser, joinRequest } = useAppState();
+  const { state, currentUser, joinRequest, cancelJoinRequest } = useAppState();
   const router = useRouter();
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [escortTab, setEscortTab] = useState<EscortTab>('area');
@@ -173,6 +173,7 @@ export default function RequestsPage() {
                   request={req}
                   creator={state.users.find((u) => u.id === req.creatorId)}
                   variant={myResp?.responseStatus === 'joining' ? 'ledger' : 'sent'}
+                  onCancelJoin={myResp?.responseStatus === 'interested' ? () => cancelJoinRequest(req.id) : undefined}
                 />
               );
             }

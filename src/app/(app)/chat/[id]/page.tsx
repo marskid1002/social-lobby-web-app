@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Clock, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Send, Clock, CheckCircle, Users } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import type { ChatMessage } from '@/lib/mock';
 
@@ -35,7 +35,7 @@ function useCountdown(expiresAt: string | undefined) {
 
 function parseInviteMessage(message: string): { label: string; value: string }[] {
   return message
-    .split('　') // full-width space used as separator
+    .split('　')
     .map((part) => {
       const idx = part.indexOf('：');
       if (idx === -1) return null;
@@ -55,37 +55,64 @@ const INVITE_EMOJIS: Record<string, string> = {
 export default function ChatPage({ params }: ChatPageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const { state, currentUser, sendChatMessage, confirmMeetup } = useAppState();
+  const { state, currentUser, sendChatMessage, confirmMeetup, confirmGroupAttendance } = useAppState();
 
   const threadId = id;
-  const userIdMatches = id.match(/u-\d+/g) ?? [];
+  const isGroup = id.startsWith('g-');
+  const requestId = isGroup ? id.slice(2) : null;
+
+  // ── Group chat logic ──────────────────────────────────────────────────────
+  const groupRequest = requestId ? state.requests.find((r) => r.id === requestId) : null;
+  const groupCreator = groupRequest ? state.users.find((u) => u.id === groupRequest.creatorId) : null;
+  const groupJoiners = groupRequest
+    ? state.responses
+        .filter((r) => r.requestId === groupRequest.id && r.responseStatus === 'joining')
+        .map((r) => state.users.find((u) => u.id === r.userId))
+        .filter(Boolean)
+    : [];
+  const groupInvites = groupRequest
+    ? state.invitations.filter((i) => i.requestId === groupRequest.id && i.status === 'accepted')
+    : [];
+  const myGroupInvite = groupInvites.find((i) => i.fromUserId === currentUser?.id);
+  const iAlreadyConfirmed = myGroupInvite?.meetupConfirmed ?? false;
+  const allConfirmed = groupInvites.length > 0 && groupInvites.every((i) => i.meetupConfirmed);
+  const groupChatExpiresAt = groupInvites[0]?.chatExpiresAt;
+
+  const isEscort = currentUser?.role === 'escort';
+  const isGroupCreator = groupRequest?.creatorId === currentUser?.id;
+
+  // ── 1:1 chat logic ────────────────────────────────────────────────────────
+  const userIdMatches = !isGroup ? (id.match(/u-\d+/g) ?? []) : [];
   const otherUserId = userIdMatches.find((uid) => uid !== currentUser?.id) ?? userIdMatches[0] ?? '';
   const otherUser = state.users.find((u) => u.id === otherUserId);
   const isOtherOnline = state.onlineUserIds.includes(otherUserId);
 
-  const isEscort = currentUser?.role === 'escort';
+  const activeInvite = !isGroup
+    ? state.invitations.find(
+        (inv) =>
+          inv.status === 'accepted' &&
+          !inv.meetupConfirmed &&
+          ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
+            (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
+      )
+    : null;
 
-  // Match any accepted invite between these two users — private or request-based
-  const activeInvite = state.invitations.find(
-    (inv) =>
-      inv.status === 'accepted' &&
-      !inv.meetupConfirmed &&
-      ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
-        (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
-  );
+  const confirmedInvite = !isGroup
+    ? state.invitations.find(
+        (inv) =>
+          inv.meetupConfirmed &&
+          ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
+            (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
+      )
+    : null;
 
-  const confirmedInvite = state.invitations.find(
-    (inv) =>
-      inv.meetupConfirmed &&
-      ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
-        (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
-  );
+  const expiresAt = isGroup ? groupChatExpiresAt : activeInvite?.chatExpiresAt;
+  const { remaining, expired } = useCountdown(expiresAt);
+  const isChatLocked = isGroup ? (allConfirmed || expired) : (!activeInvite || expired);
 
-  const { remaining, expired } = useCountdown(activeInvite?.chatExpiresAt);
-  const isChatLocked = !activeInvite || expired;
-
-  // Only show messages from the current invite session onward
-  const sessionStart = activeInvite?.respondedAt ?? confirmedInvite?.respondedAt;
+  const sessionStart = isGroup
+    ? groupInvites[0]?.respondedAt
+    : (activeInvite?.respondedAt ?? confirmedInvite?.respondedAt);
   const filterMessages = (msgs: ChatMessage[]) =>
     sessionStart ? msgs.filter((m) => m.createdAt >= sessionStart) : msgs;
 
@@ -95,10 +122,9 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [hasSentMessage, setHasSentMessage] = useState(false);
   const [xiaomeiInput, setXiaomeiInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  // Demo perspective switcher
   const [viewAs, setViewAs] = useState<'user' | 'xiaomei'>('user');
   const [xiaomeiConfirmSuccess, setXiaomeiConfirmSuccess] = useState(false);
+  const [groupConfirmSuccess, setGroupConfirmSuccess] = useState(false);
 
   useEffect(() => {
     setLocalMessages(filterMessages(state.chatMessages.filter((m) => m.threadId === threadId)));
@@ -143,28 +169,213 @@ export default function ChatPage({ params }: ChatPageProps) {
     }, 1800);
   }
 
+  function handleGroupConfirm() {
+    if (!requestId) return;
+    confirmGroupAttendance(requestId);
+    setGroupConfirmSuccess(true);
+    setTimeout(() => setGroupConfirmSuccess(false), 2000);
+  }
+
   function formatTime(iso: string) {
     return new Date(iso).toLocaleTimeString('zh-Hant-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
-  const hoursLeft = activeInvite?.chatExpiresAt
-    ? (new Date(activeInvite.chatExpiresAt).getTime() - Date.now()) / 3_600_000
-    : 0;
+  const hoursLeft = expiresAt ? (new Date(expiresAt).getTime() - Date.now()) / 3_600_000 : 0;
   const timerUrgent = hoursLeft < 1;
 
   const inviteParts = activeInvite?.message ? parseInviteMessage(activeInvite.message) : [];
 
-  // ── Xiao Mei's view ──────────────────────────────────────────────────────────
+  // ── Group chat view ───────────────────────────────────────────────────────
+  if (isGroup && groupRequest) {
+    const allParticipants = [groupCreator, ...groupJoiners].filter(Boolean);
+    const confirmedCount = groupInvites.filter((i) => i.meetupConfirmed).length;
+
+    return (
+      <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
+          <button
+            onClick={() => router.back()}
+            aria-label="返回"
+            className="p-1.5 rounded-full hover:bg-brand-snow active:bg-brand-lavender transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-brand-ink" />
+          </button>
+          {/* Stacked avatars */}
+          <div className="relative w-10 h-9 shrink-0">
+            {allParticipants.slice(0, 3).map((u, idx) => (
+              <img
+                key={u!.id}
+                src={u!.avatarUrl}
+                alt={u!.nickname}
+                className="absolute w-7 h-7 rounded-full object-cover border-2 border-white"
+                style={{ left: idx * 10, zIndex: 3 - idx }}
+              />
+            ))}
+          </div>
+          <div className="flex flex-col min-w-0 flex-1">
+            <span className="font-semibold text-sm text-brand-ink truncate leading-tight">
+              {groupRequest.area} · {groupRequest.requestType === 'after_party' ? 'After Party' : groupRequest.requestType} 群組
+            </span>
+            <span className="text-xs text-zinc-400 leading-tight">
+              {allParticipants.length} 人 · {confirmedCount}/{groupInvites.length} 已確認見面
+            </span>
+          </div>
+          <button
+            onClick={() => router.push(`/requests/${groupRequest.id}`)}
+            className="shrink-0 p-1.5 rounded-full hover:bg-brand-snow"
+            aria-label="查看邀請詳情"
+          >
+            <Users className="w-4 h-4 text-zinc-500" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        {/* Escort confirm attendance banner */}
+        {isEscort && !isGroupCreator && !iAlreadyConfirmed && !expired && (
+          <button
+            onClick={handleGroupConfirm}
+            className="shrink-0 w-full flex items-center justify-center gap-2 py-3 bg-line-green text-white font-semibold text-sm active:brightness-90 transition-all"
+          >
+            <CheckCircle className="w-4 h-4" />
+            確認見面・標記出席
+          </button>
+        )}
+        {isEscort && iAlreadyConfirmed && (
+          <div className="shrink-0 flex items-center justify-center gap-2 py-2.5 bg-green-50 text-green-600 text-xs font-semibold">
+            <CheckCircle className="w-3.5 h-3.5" strokeWidth={2} />
+            你已確認見面
+          </div>
+        )}
+
+        {/* Attendance progress bar */}
+        {groupInvites.length > 0 && (
+          <div className="shrink-0 px-4 py-2 bg-white/60 border-b border-brand-lavender">
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-brand-lavender overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-line-green transition-all"
+                  style={{ width: `${(confirmedCount / groupInvites.length) * 100}%` }}
+                />
+              </div>
+              <span className="text-[11px] text-zinc-500 shrink-0">
+                {confirmedCount}/{groupInvites.length} 確認出席
+                {allConfirmed ? ' · 結案 ✅' : ''}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Timer */}
+        {!allConfirmed && expiresAt && !expired && (
+          <div className={`flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium shrink-0 ${timerUrgent ? 'bg-red-50 text-red-500' : 'bg-brand-ice text-zinc-500'}`}>
+            <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+            <span>
+              聊天視窗將在{' '}
+              <span className={`font-bold tabular-nums ${timerUrgent ? 'text-red-500' : 'text-brand-ink'}`}>{remaining}</span>
+              {' '}後關閉
+            </span>
+          </div>
+        )}
+        {expired && !allConfirmed && (
+          <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-100 text-zinc-500 text-xs font-medium shrink-0">
+            <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
+            <span>聊天視窗已關閉</span>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+          {localMessages.length === 0 && (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-zinc-400">群組聊天已開啟，說聲 hi 吧！</p>
+            </div>
+          )}
+          {localMessages.map((msg) => {
+            const isMine = msg.senderId === currentUser?.id;
+            const sender = state.users.find((u) => u.id === msg.senderId);
+            return (
+              <div key={msg.id} className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+                {!isMine && (
+                  <img
+                    src={sender?.avatarUrl ?? ''}
+                    alt={sender?.nickname ?? ''}
+                    className="w-7 h-7 rounded-full object-cover shrink-0 self-end border border-brand-lavender"
+                  />
+                )}
+                <div className={`flex flex-col gap-0.5 max-w-[72%] ${isMine ? 'items-end' : 'items-start'}`}>
+                  {!isMine && sender && (
+                    <span className="text-[10px] text-zinc-400 px-1">{sender.nickname}</span>
+                  )}
+                  <div
+                    className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
+                      isMine
+                        ? 'bg-brand-sky text-brand-ink rounded-br-md'
+                        : 'bg-white border border-brand-lavender text-brand-ink rounded-bl-md'
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                  <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-4 bg-white/90 backdrop-blur-md border-t border-brand-lavender">
+          {isChatLocked ? (
+            <div className="flex-1 flex items-center justify-center py-2">
+              <p className="text-sm text-zinc-400">{allConfirmed ? '所有人已確認見面，聊天已結案' : '聊天視窗已關閉'}</p>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="輸入訊息…"
+                aria-label="輸入訊息"
+                className="flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!inputText.trim()}
+                aria-label="發送"
+                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-brand-sky text-brand-ink disabled:opacity-40 active:scale-95 transition-all shadow-sm"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Group confirm success overlay */}
+        {groupConfirmSuccess && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm">
+            <div className="w-20 h-20 rounded-full bg-line-green flex items-center justify-center mb-4">
+              <CheckCircle className="w-10 h-10 text-white" strokeWidth={2.5} />
+            </div>
+            <p className="text-xl font-bold text-brand-ink mb-1">出席已確認！</p>
+            <p className="text-sm text-zinc-400">等待其他人確認…</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Xiao Mei's view (1:1 only) ────────────────────────────────────────────
   if (viewAs === 'xiaomei') {
-    const xiaomeiUser = otherUser; // u-002
-    const requesterUser = currentUser; // u-001
+    const xiaomeiUser = otherUser;
+    const requesterUser = currentUser;
 
     return (
       <div
         className="flex flex-col h-screen overflow-hidden"
         style={{ background: 'linear-gradient(160deg, #fdf2f8 0%, #fce7f3 55%, #faf5ff 100%)' }}
       >
-        {/* Header — shows the requester (u-001), just like any chat header shows who you're talking to */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/85 backdrop-blur-md border-b border-pink-100 shadow-sm shrink-0">
           <button
             onClick={() => setViewAs('user')}
@@ -190,7 +401,6 @@ export default function ChatPage({ params }: ChatPageProps) {
           </span>
         </div>
 
-        {/* Confirm meetup — sticky at top */}
         <button
           onClick={handleXiaomeiConfirm}
           className="shrink-0 w-full flex items-center justify-center gap-2 py-3 bg-line-green text-white font-semibold text-sm active:brightness-90 transition-all"
@@ -199,7 +409,6 @@ export default function ChatPage({ params }: ChatPageProps) {
           確認見面・結案
         </button>
 
-        {/* Invite summary card */}
         {inviteParts.length > 0 && (
           <div
             className="shrink-0 mx-4 mt-3 mb-1 p-3.5 rounded-2xl border border-pink-200"
@@ -220,7 +429,6 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         )}
 
-        {/* Messages — Xiao Mei's perspective (her messages on right) */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
@@ -228,7 +436,7 @@ export default function ChatPage({ params }: ChatPageProps) {
             </div>
           )}
           {localMessages.map((msg) => {
-            const isMine = msg.senderId === otherUserId; // Xiao Mei is u-002
+            const isMine = msg.senderId === otherUserId;
             const senderUser = isMine ? xiaomeiUser : requesterUser;
             return (
               <div key={msg.id} className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -257,7 +465,6 @@ export default function ChatPage({ params }: ChatPageProps) {
           <div ref={bottomRef} />
         </div>
 
-        {/* Xiao Mei's input bar */}
         <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-6 bg-white/85 backdrop-blur-md border-t border-pink-100">
           <input
             type="text"
@@ -278,7 +485,6 @@ export default function ChatPage({ params }: ChatPageProps) {
           </button>
         </div>
 
-        {/* Success overlay */}
         {xiaomeiConfirmSuccess && (
           <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm">
             <div className="w-20 h-20 rounded-full bg-line-green flex items-center justify-center mb-4">
@@ -292,7 +498,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     );
   }
 
-  // ── Already-met closed state ──────────────────────────────────────────────────
+  // ── Already-met closed state (1:1) ────────────────────────────────────────
   if (confirmedInvite && !activeInvite) {
     return (
       <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
@@ -364,10 +570,9 @@ export default function ChatPage({ params }: ChatPageProps) {
     );
   }
 
-  // ── User's normal chat view ───────────────────────────────────────────────────
+  // ── Normal 1:1 chat view ──────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
-      {/* Top bar */}
       <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
         <button
           onClick={() => router.back()}
@@ -396,7 +601,6 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       </div>
 
-      {/* Escort-only: confirm meetup sticky banner */}
       {isEscort && activeInvite && !expired && (
         <button
           onClick={() => handleXiaomeiConfirm()}
@@ -407,7 +611,6 @@ export default function ChatPage({ params }: ChatPageProps) {
         </button>
       )}
 
-      {/* Timer banner */}
       {activeInvite && !expired && (
         <div
           className={`flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium shrink-0 ${
@@ -425,7 +628,6 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      {/* Expired banner */}
       {expired && (
         <div className="flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-100 text-zinc-500 text-xs font-medium shrink-0">
           <Clock className="w-3.5 h-3.5 shrink-0" strokeWidth={2} />
@@ -433,7 +635,6 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {localMessages.length === 0 && (
           <div className="flex items-center justify-center h-full">
@@ -469,7 +670,6 @@ export default function ChatPage({ params }: ChatPageProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Demo switcher pill — appears after first message sent (hidden for real escort accounts) */}
       {hasSentMessage && !isEscort && (
         <div className="shrink-0 px-4 pb-2">
           <button
@@ -483,7 +683,6 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      {/* Input bar */}
       <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-4 bg-white/90 backdrop-blur-md border-t border-brand-lavender">
         {isChatLocked ? (
           <div className="flex-1 flex items-center justify-center py-2">

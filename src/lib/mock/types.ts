@@ -96,6 +96,7 @@ export interface Invitation {
   respondedAt?: string;
   chatExpiresAt?: string;    // ISO — 8h after acceptance; chat locks after this
   meetupConfirmed?: boolean; // true once user confirms the meetup happened
+  groupThreadId?: string;    // set for group requests (g-{requestId}); null for 1:1
 }
 
 export interface MeetRecord {

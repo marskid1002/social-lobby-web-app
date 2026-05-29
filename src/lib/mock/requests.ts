@@ -97,7 +97,7 @@ export const requests: Request[] = [
     status: 'open',
     createdAt: minsAgo(8),
     expiresAt: hoursFromNow(2),
-    metrics: { impressions: 156, views: 68, joins: 9 },
+    metrics: { impressions: 156, views: 68, joins: 2 },
     requestViewers: ['u-004', 'u-006', 'u-008', 'u-013'],
   },
   {
@@ -107,10 +107,10 @@ export const requests: Request[] = [
     requestType: 'drinking',
     peopleCount: 2,
     note: '今晚信義區包廂，朋友圈不夠熱鬧，找幾個今晚有空的人',
-    status: 'open',
+    status: 'closed',
     createdAt: minsAgo(3),
     expiresAt: hoursFromNow(2),
-    metrics: { impressions: 94, views: 40, joins: 6 },
+    metrics: { impressions: 94, views: 40, joins: 2 },
     requestViewers: ['u-007', 'u-009'],
   },
   {
@@ -273,6 +273,7 @@ export const responses: Response[] = [
     responseStatus: 'joining',
     createdAt: minsAgo(4),
   },
+  // rr-u017-3 is interested (not yet accepted) — 1 slot still open on r-u017-1
   {
     id: 'rr-u017-3',
     requestId: 'r-u017-1',
@@ -280,13 +281,6 @@ export const responses: Response[] = [
     responseStatus: 'interested',
     note: '幾點開始？',
     createdAt: minsAgo(3),
-  },
-  {
-    id: 'rr-u017-4',
-    requestId: 'r-u017-1',
-    userId: 'u-014',
-    responseStatus: 'interested',
-    createdAt: minsAgo(2),
   },
   {
     id: 'rr-u017-5',
@@ -300,7 +294,7 @@ export const responses: Response[] = [
     id: 'rr-u017-6',
     requestId: 'r-u017-2',
     userId: 'u-011',
-    responseStatus: 'interested',
+    responseStatus: 'joining',
     createdAt: minsAgo(1),
   },
   // --- Original responses ---

@@ -352,6 +352,18 @@ export function useAppState() {
     });
   }, []);
 
+  // Escort withdraws their 'interested' request before the creator accepts.
+  const cancelJoinRequest = useCallback((requestId: string) => {
+    setState((prev) => ({
+      ...prev,
+      responses: prev.responses.map((r) =>
+        r.requestId === requestId && r.userId === prev.currentUserId && r.responseStatus === 'interested'
+          ? { ...r, responseStatus: 'withdrawn' as const }
+          : r
+      ),
+    }));
+  }, []);
+
   // Escort asks to join: creates an 'interested' response + notifies creator. No invitation yet.
   const joinRequest = useCallback((requestId: string) => {
     const s = getState();
@@ -359,11 +371,31 @@ export function useAppState() {
     if (!request) return;
     const escortId = s.currentUserId;
 
-    // Guard: don't double-respond
-    if (s.responses.some(
-      (r) => r.requestId === requestId && r.userId === escortId &&
-             (r.responseStatus === 'interested' || r.responseStatus === 'joining')
-    )) return;
+    // Guard: don't double-respond (allow re-join after withdrawal by reactivating)
+    const existing = s.responses.find(
+      (r) => r.requestId === requestId && r.userId === escortId
+    );
+    if (existing?.responseStatus === 'interested' || existing?.responseStatus === 'joining') return;
+    // Reactivate a withdrawn response instead of creating a duplicate
+    if (existing?.responseStatus === 'withdrawn') {
+      const notif: UpdateEvent = {
+        id: `ue-ask-${Date.now()}`,
+        userId: request.creatorId,
+        actorId: escortId,
+        eventType: 'response_received',
+        refRequestId: requestId,
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      setState((prev) => ({
+        ...prev,
+        responses: prev.responses.map((r) =>
+          r.id === existing.id ? { ...r, responseStatus: 'interested' as const, createdAt: new Date().toISOString() } : r
+        ),
+        updates: [notif, ...prev.updates],
+      }));
+      return;
+    }
 
     const now = new Date().toISOString();
     const newResp: import('@/lib/mock').Response = {
@@ -390,13 +422,25 @@ export function useAppState() {
   }, []);
 
   // Creator accepts an 'interested' joiner: flips to 'joining', creates invitation + chat.
+  // For requests with peopleCount > 1, uses a shared group thread (g-{requestId}).
   const acceptResponder = useCallback((responseId: string) => {
     setState((prev) => {
       const target = prev.responses.find((r) => r.id === responseId);
       if (!target || target.responseStatus !== 'interested') return prev;
 
+      const req = prev.requests.find((r) => r.id === target.requestId);
+      if (!req) return prev;
+
+      // Hard cap guard — never accept past peopleCount
+      const currentJoiners = prev.responses.filter(
+        (r) => r.requestId === target.requestId && r.responseStatus === 'joining'
+      ).length;
+      if (currentJoiners >= req.peopleCount) return prev;
+
       const now = new Date().toISOString();
       const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
+      const isGroup = req.peopleCount > 1;
+      const groupThreadId = isGroup ? `g-${target.requestId}` : null;
 
       const newInvite: Invitation = {
         id: `i-accept-${Date.now()}`,
@@ -407,6 +451,7 @@ export function useAppState() {
         createdAt: now,
         respondedAt: now,
         chatExpiresAt,
+        groupThreadId: isGroup ? groupThreadId! : undefined,
       };
 
       const escortNotif: UpdateEvent = {
@@ -427,8 +472,7 @@ export function useAppState() {
       const joinersCount = updatedResponses.filter(
         (r) => r.requestId === target.requestId && r.responseStatus === 'joining'
       ).length;
-      const req = prev.requests.find((r) => r.id === target.requestId);
-      const autoClose = req && joinersCount >= req.peopleCount;
+      const autoClose = joinersCount >= req.peopleCount;
 
       return {
         ...prev,
@@ -620,6 +664,45 @@ export function useAppState() {
     }));
   }, []);
 
+  // Group attendance: escort marks themselves as attended on a group request.
+  // Case closes when all joiners have confirmed.
+  const confirmGroupAttendance = useCallback((requestId: string) => {
+    setState((prev) => {
+      const escortId = prev.currentUserId;
+      // Mark the escort's invitation as meetupConfirmed
+      const updatedInvitations = prev.invitations.map((inv) =>
+        inv.requestId === requestId && inv.fromUserId === escortId && inv.status === 'accepted'
+          ? { ...inv, meetupConfirmed: true }
+          : inv
+      );
+      // Record the meet with the creator
+      const req = prev.requests.find((r) => r.id === requestId);
+      const creatorId = req?.creatorId ?? '';
+      const newMeetRecord = creatorId
+        ? {
+            userId: creatorId,
+            metAt: new Date().toISOString(),
+            expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+          }
+        : null;
+      // Check if all joiners have confirmed → auto-close the request
+      const allJoinerInvites = updatedInvitations.filter(
+        (inv) => inv.requestId === requestId && inv.status === 'accepted'
+      );
+      const allConfirmed = allJoinerInvites.length > 0 && allJoinerInvites.every((inv) => inv.meetupConfirmed);
+      return {
+        ...prev,
+        invitations: updatedInvitations,
+        requests: allConfirmed
+          ? prev.requests.map((r) => r.id === requestId ? { ...r, status: 'closed' as const } : r)
+          : prev.requests,
+        meetRecords: newMeetRecord
+          ? [...prev.meetRecords.filter((r) => r.userId !== creatorId), newMeetRecord]
+          : prev.meetRecords,
+      };
+    });
+  }, []);
+
   const clearInboxUnread = useCallback(() => {
     setState((prev) => ({ ...prev, inboxUnread: false }));
   }, []);
@@ -661,6 +744,7 @@ export function useAppState() {
     buyExtraSlot,
     joinRequest,
     acceptResponder,
+    cancelJoinRequest,
     recordRequestViewer,
     toggleFollow,
     blockUser,
@@ -670,6 +754,7 @@ export function useAppState() {
     sendChatMessage,
     sendDirectMessage,
     confirmMeetup,
+    confirmGroupAttendance,
     clearInboxUnread,
     likePost,
   };

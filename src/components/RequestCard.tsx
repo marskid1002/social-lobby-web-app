@@ -27,9 +27,10 @@ interface Props {
   request: Request;
   variant: 'ledger' | 'inbox' | 'sent';
   creator?: User;
+  onCancelJoin?: () => void;
 }
 
-export function RequestCard({ request, variant, creator }: Props) {
+export function RequestCard({ request, variant, creator, onCancelJoin }: Props) {
   const router = useRouter();
   const { state, closeRequest } = useAppState();
   const [toast, setToast] = useState('');
@@ -107,6 +108,15 @@ export function RequestCard({ request, variant, creator }: Props) {
         {variant === 'sent' && (
           <button disabled className="flex-1 py-2.5 rounded-xl bg-brand-lavender text-sm font-semibold text-zinc-400">
             等待對方回應 ⏳
+          </button>
+        )}
+
+        {variant === 'sent' && onCancelJoin && (
+          <button
+            onClick={onCancelJoin}
+            className="flex-1 py-2.5 rounded-xl border border-red-200 text-sm font-semibold text-red-500 bg-red-50 active:bg-red-100 transition-colors"
+          >
+            取消請求
           </button>
         )}
 
