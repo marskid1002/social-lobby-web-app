@@ -186,12 +186,12 @@ export const requests: Request[] = [
 ];
 
 export const responses: Response[] = [
-  // --- Free (u-001): 蔡佳蓉 joined, request at cap (1/1) ---
+  // --- Free (u-001): 蔡佳蓉 wants to join (interested), user must accept first ---
   {
     id: 'rr-u001-1',
     requestId: 'r-u001-1',
     userId: 'u-009',
-    responseStatus: 'joining',
+    responseStatus: 'interested',
     note: '我在附近！',
     createdAt: minsAgo(15),
   },

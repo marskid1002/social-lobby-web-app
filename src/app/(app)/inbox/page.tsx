@@ -283,19 +283,20 @@ export default function InboxPage() {
         );
       })}
 
-      {/* ── Notification feed ── */}
+      {/* ── Notification feed — each notif is its own card ── */}
       {allNotifs.length > 0 && (
-        <div className="bg-white rounded-2xl border border-brand-lavender shadow-card overflow-hidden">
-          {allNotifs.map((notif, i) => {
+        <div className="flex flex-col gap-2">
+          {allNotifs.map((notif) => {
             const actor = state.users.find((u) => u.id === notif.actorId);
             const request = notif.refRequestId
               ? state.requests.find((r) => r.id === notif.refRequestId)
               : null;
-            const notifGradient = notif.refRequestId ? getRequestGradient(notif.refRequestId) : undefined;
+            const notifAccent = notif.refRequestId ? getRequestGradient(notif.refRequestId) : undefined;
 
             let icon: React.ReactNode;
             let text: React.ReactNode;
             let onTap: () => void;
+            let chipLabel: string | null = null;
 
             if (notif.type === 'interested') {
               icon = (
@@ -303,6 +304,7 @@ export default function InboxPage() {
                   <Users className="w-4 h-4 text-amber-500" strokeWidth={2} />
                 </div>
               );
+              chipLabel = request ? (TYPE_LABELS[request.requestType] ?? request.requestType) : null;
               text = (
                 <>
                   <span className="font-semibold">{actor?.nickname ?? '某人'}</span>
@@ -317,6 +319,7 @@ export default function InboxPage() {
                   <UserCheck className="w-4 h-4 text-brand-sky" strokeWidth={2} />
                 </div>
               );
+              chipLabel = request ? (TYPE_LABELS[request.requestType] ?? request.requestType) : null;
               text = (
                 <>
                   <span className="font-semibold">{actor?.nickname ?? '某人'}</span>
@@ -331,6 +334,7 @@ export default function InboxPage() {
                   <TrendingUp className="w-4 h-4 text-amber-500" strokeWidth={2} />
                 </div>
               );
+              chipLabel = request ? (TYPE_LABELS[request.requestType] ?? request.requestType) : null;
               text = (
                 <>
                   {'你的邀請達到 '}
@@ -358,36 +362,41 @@ export default function InboxPage() {
               <button
                 key={notif.id}
                 onClick={onTap}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-brand-ice transition-colors ${
-                  i > 0 ? 'border-t border-brand-lavender' : ''
-                }`}
+                className="w-full bg-white rounded-2xl border border-brand-lavender shadow-card overflow-hidden text-left active:bg-brand-ice transition-colors"
               >
-                {/* Color dot for request-linked notifs */}
-                {notifGradient && (
-                  <div
-                    className="w-1 self-stretch rounded-full shrink-0"
-                    style={{ background: notifGradient, minHeight: '32px' }}
-                  />
+                {/* Colored top strip tied to the specific request */}
+                {notifAccent && (
+                  <div className="h-1.5 w-full" style={{ background: notifAccent }} />
                 )}
-                {(notif.type === 'join' || notif.type === 'interested') && actor ? (
-                  <img src={actor.avatarUrl} alt={actor.nickname} className="w-9 h-9 rounded-full object-cover shrink-0" />
-                ) : (
-                  icon
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-brand-ink leading-snug">{text}</p>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    {formatDistanceToNow(new Date(notif.createdAt), { locale: zhTW, addSuffix: true })}
-                  </p>
+                <div className="flex items-center gap-3 px-4 py-3.5">
+                  {(notif.type === 'join' || notif.type === 'interested') && actor ? (
+                    <img src={actor.avatarUrl} alt={actor.nickname} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                  ) : (
+                    icon
+                  )}
+                  <div className="flex-1 min-w-0">
+                    {chipLabel && (
+                      <span
+                        className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full mb-1"
+                        style={{ background: notifAccent ? notifAccent.replace('linear-gradient', 'linear-gradient').replace('135deg', '135deg') : '#e5e7eb', color: '#020102' }}
+                      >
+                        {chipLabel}
+                      </span>
+                    )}
+                    <p className="text-sm text-brand-ink leading-snug">{text}</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {formatDistanceToNow(new Date(notif.createdAt), { locale: zhTW, addSuffix: true })}
+                    </p>
+                  </div>
+                  {notif.type === 'interested' && (
+                    <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-600">
+                      待回應
+                    </span>
+                  )}
+                  {notif.type !== 'join' && notif.type !== 'interested' && actor && (
+                    <img src={actor.avatarUrl} alt={actor.nickname ?? ''} className="w-7 h-7 rounded-full object-cover shrink-0 opacity-70" />
+                  )}
                 </div>
-                {notif.type === 'interested' && (
-                  <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-600">
-                    待回應
-                  </span>
-                )}
-                {notif.type !== 'join' && notif.type !== 'interested' && actor && (
-                  <img src={actor.avatarUrl} alt={actor.nickname ?? ''} className="w-7 h-7 rounded-full object-cover shrink-0 opacity-70" />
-                )}
               </button>
             );
           })}

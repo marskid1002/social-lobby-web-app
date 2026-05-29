@@ -66,80 +66,80 @@ function MyRequestCard({
   return (
     <div
       onClick={() => router.push(`/requests/${request.id}`)}
-      className={`rounded-2xl shadow-sm border p-4 cursor-pointer transition-colors overflow-hidden ${
-        atCap ? 'bg-zinc-50 border-zinc-200 opacity-80' : 'bg-white border-zinc-100 active:bg-brand-snow'
+      className={`rounded-2xl shadow-sm overflow-hidden cursor-pointer transition-colors ${
+        atCap ? 'opacity-75' : ''
       }`}
+      style={{ border: `1.5px solid ${accent}55` }}
     >
-      {/* Colored top accent bar */}
-      <div
-        className="h-1 rounded-full mb-3 -mx-4 -mt-4 px-4"
-        style={{ background: gradient, height: '4px', marginTop: '-16px', marginLeft: '-16px', marginRight: '-16px', marginBottom: '12px' }}
-      />
+      {/* Gradient header strip */}
+      <div className="h-1.5" style={{ background: gradient }} />
 
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span
-            className="text-xs font-semibold px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: accent + '55', color: '#020102' }}
-          >
-            {REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType}
-          </span>
-          <span className="text-xs text-zinc-400">{request.area}</span>
-          <span className="text-xs text-zinc-400">· {request.peopleCount} 人</span>
+      <div className={`p-4 ${atCap ? 'bg-zinc-50' : 'bg-white active:bg-brand-snow'}`}>
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-xs font-semibold px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: accent + '44', color: '#020102' }}
+            >
+              {REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType}
+            </span>
+            <span className="text-xs text-zinc-400">{request.area}</span>
+            <span className="text-xs text-zinc-400">· {request.peopleCount} 人</span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {atCap && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-500">
+                額滿
+              </span>
+            )}
+            <span className="text-[11px] text-zinc-400">
+              {formatDistanceToNow(new Date(request.createdAt), { locale: zhTW, addSuffix: true })}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {atCap && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-500">
-              額滿
+
+        <p className="text-sm text-brand-ink leading-snug line-clamp-2 mb-3">{request.note}</p>
+
+        {visibleResponders.length > 0 && (
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex -space-x-2">
+              {visibleResponders.map((u) => (
+                <img
+                  key={u.id}
+                  src={u.avatarUrl}
+                  alt={u.nickname}
+                  className="w-6 h-6 rounded-full border-2 border-white object-cover"
+                />
+              ))}
+            </div>
+            <span className="text-xs text-zinc-500">
+              {extraCount > 0
+                ? `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已加入`
+                : `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 已加入`}
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 text-xs text-zinc-400">
+          {!atCap && (
+            <span className="flex items-center gap-1">
+              <UserCheck size={13} />
+              <span className="font-semibold text-zinc-600">{interestedCount}</span> 人想加入
             </span>
           )}
-          <span className="text-[11px] text-zinc-400">
-            {formatDistanceToNow(new Date(request.createdAt), { locale: zhTW, addSuffix: true })}
-          </span>
+          {atCap && (
+            <span className="flex items-center gap-1 text-zinc-400">
+              <Users size={13} />
+              {responders.length}/{request.peopleCount} 人 · 點擊查看群組聊天
+            </span>
+          )}
+          {showNudge && (
+            <span className="ml-auto flex items-center gap-1 text-[11px] text-amber-600 font-semibold bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+              <Zap size={11} />
+              提升曝光
+            </span>
+          )}
         </div>
-      </div>
-
-      <p className="text-sm text-brand-ink leading-snug line-clamp-2 mb-3">{request.note}</p>
-
-      {visibleResponders.length > 0 && (
-        <div className="flex items-center gap-2 mb-3">
-          <div className="flex -space-x-2">
-            {visibleResponders.map((u) => (
-              <img
-                key={u.id}
-                src={u.avatarUrl}
-                alt={u.nickname}
-                className="w-6 h-6 rounded-full border-2 border-white object-cover"
-              />
-            ))}
-          </div>
-          <span className="text-xs text-zinc-500">
-            {extraCount > 0
-              ? `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已加入`
-              : `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 已加入`}
-          </span>
-        </div>
-      )}
-
-      <div className="flex items-center gap-3 text-xs text-zinc-400">
-        {!atCap && (
-          <span className="flex items-center gap-1">
-            <UserCheck size={13} />
-            <span className="font-semibold text-zinc-600">{interestedCount}</span> 人想加入
-          </span>
-        )}
-        {atCap && (
-          <span className="flex items-center gap-1 text-zinc-400">
-            <Users size={13} />
-            {responders.length}/{request.peopleCount} 人 · 點擊查看群組聊天
-          </span>
-        )}
-        {showNudge && (
-          <span className="ml-auto flex items-center gap-1 text-[11px] text-amber-600 font-semibold bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-            <Zap size={11} />
-            提升曝光
-          </span>
-        )}
       </div>
     </div>
   );
