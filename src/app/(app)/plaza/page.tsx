@@ -63,25 +63,6 @@ export default function PlazaPage() {
     );
   }
 
-  // Free users see a full lock screen
-  if (tier === 'free') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] px-8 text-center">
-        <div className="w-20 h-20 rounded-3xl bg-gradient-card-a flex items-center justify-center mb-4 shadow-card">
-          <Lock className="w-8 h-8 text-zinc-400" strokeWidth={1.75} />
-        </div>
-        <p className="text-base font-semibold text-brand-ink mb-2">探索更多，認識更多</p>
-        <p className="text-sm text-zinc-400 mb-6">升級會員，進入社群廣場，認識更多今晚在線的用戶</p>
-        <button
-          disabled
-          className="px-6 py-3 rounded-2xl bg-brand-pink text-brand-ink font-semibold text-sm opacity-70 cursor-not-allowed"
-        >
-          了解會員方案
-        </button>
-      </div>
-    );
-  }
-
   const isVip = tier === 'vip';
   const canPost = tier === 'premium' || tier === 'vip';
 
@@ -99,7 +80,25 @@ export default function PlazaPage() {
   }
 
   return (
-    <div className="px-4 pt-4 pb-24">
+    <div className="relative">
+      {/* Free users: blur the entire feed and show a lock overlay on top */}
+      {tier === 'free' && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-3 px-6 text-center">
+            <span className="text-3xl">🔒</span>
+            <p className="text-base font-bold text-brand-ink">探索更多，認識更多</p>
+            <p className="text-sm text-zinc-500">升級會員，進入社群廣場</p>
+            <button
+              disabled
+              className="mt-1 px-6 py-2.5 rounded-xl bg-amber-400 text-white text-sm font-bold opacity-70 cursor-not-allowed"
+            >
+              了解會員方案
+            </button>
+          </div>
+        </div>
+      )}
+
+    <div className={`px-4 pt-4 pb-24 ${tier === 'free' ? 'filter blur-[4px] pointer-events-none select-none' : ''}`}>
       {/* Post composer (premium + vip only) */}
       {canPost && (
         <div className="bg-white rounded-2xl border border-brand-lavender p-4 mb-4 shadow-card">
@@ -156,6 +155,7 @@ export default function PlazaPage() {
           );
         })}
       </div>
+    </div>
     </div>
   );
 }

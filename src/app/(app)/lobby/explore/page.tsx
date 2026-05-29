@@ -84,7 +84,9 @@ function MyRequestCard({ request, responders }: { request: Request; responders: 
             ))}
           </div>
           <span className="text-xs text-zinc-500">
-            {extraCount > 0 ? `${metrics.joins} 人想加入` : `${visibleResponders.map(u => u.nickname.split('')[0]).join('、')} 等人有興趣`}
+            {extraCount > 0
+              ? `${visibleResponders.map(u => u.nickname.slice(0,2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已加入`
+              : `${visibleResponders.map(u => u.nickname.slice(0,2)).join('、')} 已加入`}
           </span>
         </div>
       )}
@@ -200,7 +202,7 @@ function ExploreContent() {
           <div className="px-4 pb-4 flex flex-col gap-3">
             {myRequests.map((req) => {
               const responders = state.responses
-                .filter((r) => r.requestId === req.id)
+                .filter((r) => r.requestId === req.id && r.responseStatus === 'joining')
                 .map((r) => state.users.find((u) => u.id === r.userId))
                 .filter((u): u is User => !!u);
               return <MyRequestCard key={req.id} request={req} responders={responders} />;
