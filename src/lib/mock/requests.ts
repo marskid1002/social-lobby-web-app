@@ -150,7 +150,7 @@ export const requests: Request[] = [
   // --- Operator-facing requests (shown in 幹部 dashboard as incoming 活動邀請) ---
   {
     id: 'r-009',
-    creatorId: 'u-017',
+    creatorId: 'u-021',
     area: '信義區',
     requestType: 'drinking',
     peopleCount: 2,

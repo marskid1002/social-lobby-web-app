@@ -8,6 +8,14 @@ import { zhTW } from 'date-fns/locale';
 import { MessageCircle, TrendingUp, MessageSquare, UserCheck, CheckCircle, Users } from 'lucide-react';
 import { getRequestGradient } from '@/lib/utils';
 
+const TYPE_LABELS: Record<string, string> = {
+  after_party: 'After Party',
+  drinking: '喝一杯',
+  fill_spot: '補位',
+  last_minute: '臨時局',
+  other: '其他',
+};
+
 function getThreadId(a: string, b: string) {
   return [a, b].sort().join('-');
 }
@@ -233,11 +241,11 @@ export default function InboxPage() {
 
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-brand-ink">
-                    {isEscort
-                      ? `你加入了 ${creatorUser?.nickname ?? '某人'} 的活動`
-                      : card.isGroup
-                        ? `${card.joinerUsers.length} 位女伴加入了你的邀請！`
-                        : `${otherUser?.nickname} 加入了你的邀請！`}
+                    {request
+                      ? `${TYPE_LABELS[request.requestType] ?? request.requestType} · ${creatorUser?.nickname ?? '某人'}`
+                      : isEscort
+                        ? `你加入了 ${creatorUser?.nickname ?? '某人'} 的活動`
+                        : `${otherUser?.nickname} 的私人邀請`}
                   </p>
                   {request && (
                     <p className="text-xs text-brand-ink/60 mt-0.5 truncate">
@@ -245,7 +253,9 @@ export default function InboxPage() {
                     </p>
                   )}
                   <p className="text-xs text-brand-ink/50 mt-0.5">
-                    {card.isGroup ? '群組聊天已開啟 · 8 小時後關閉' : '聊天視窗已開啟 · 8 小時後關閉'}
+                    {card.isGroup
+                      ? `${card.joinerUsers.length} 位女伴加入 · 群組聊天已開啟`
+                      : '聊天視窗已開啟 · 8 小時後關閉'}
                   </p>
                 </div>
               </div>

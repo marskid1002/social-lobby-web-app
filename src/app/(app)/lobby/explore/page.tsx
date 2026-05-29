@@ -49,14 +49,15 @@ function MyRequestCard({
   request,
   responders,
   atCap,
+  interestedCount,
 }: {
   request: Request;
   responders: User[];
   atCap: boolean;
+  interestedCount: number;
 }) {
   const router = useRouter();
   const showNudge = !atCap && shouldShowBoostNudge(request);
-  const metrics = request.metrics ?? { impressions: 0, views: 0, joins: 0 };
   const visibleResponders = responders.slice(0, 3);
   const extraCount = responders.length - visibleResponders.length;
   const accent = getRequestAccentColor(request.id);
@@ -124,7 +125,7 @@ function MyRequestCard({
         {!atCap && (
           <span className="flex items-center gap-1">
             <UserCheck size={13} />
-            <span className="font-semibold text-zinc-600">{metrics.joins}</span> 人想加入
+            <span className="font-semibold text-zinc-600">{interestedCount}</span> 人想加入
           </span>
         )}
         {atCap && (
@@ -207,8 +208,11 @@ function ExploreContent() {
       .filter((r) => r.requestId === req.id && r.responseStatus === 'joining')
       .map((r) => state.users.find((u) => u.id === r.userId))
       .filter((u): u is User => !!u);
+    const interested = state.responses.filter(
+      (r) => r.requestId === req.id && r.responseStatus === 'interested'
+    ).length;
     const atCap = req.status === 'closed' || joiners.length >= req.peopleCount;
-    return { req, joiners, atCap };
+    return { req, joiners, interested, atCap };
   });
 
   const gathering = withJoinerCount.filter((x) => !x.atCap);
@@ -242,8 +246,8 @@ function ExploreContent() {
         {hasMyRequests ? (
           <div className="px-4 pb-4 flex flex-col gap-3">
             {/* Still gathering */}
-            {gathering.map(({ req, joiners }) => (
-              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={false} />
+            {gathering.map(({ req, joiners, interested }) => (
+              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={false} interestedCount={interested} />
             ))}
 
             {/* Divider — only shown when both groups have items */}
@@ -261,7 +265,7 @@ function ExploreContent() {
 
             {/* At-cap */}
             {atCapList.map(({ req, joiners }) => (
-              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={true} />
+              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={true} interestedCount={0} />
             ))}
           </div>
         ) : (

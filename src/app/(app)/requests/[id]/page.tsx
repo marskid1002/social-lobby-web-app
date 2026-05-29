@@ -353,27 +353,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
         )}
-
-        {/* Invitees */}
-        {invitations.length > 0 && (
-          <div className="bg-white rounded-2xl p-4 shadow-card">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">受邀者 ({invitations.length})</p>
-            <div className="flex flex-col gap-2">
-              {invitations.map((inv) => {
-                const invitee = state.users.find((u) => u.id === inv.toUserId);
-                return invitee ? (
-                  <div key={inv.id} className="flex items-center gap-3">
-                    <img src={invitee.avatarUrl} alt={invitee.nickname} className="w-8 h-8 rounded-full object-cover" />
-                    <span className="flex-1 text-sm text-brand-ink">{invitee.nickname}</span>
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-brand-lavender text-zinc-500 font-medium">
-                      {INVITE_LABELS[inv.status]}
-                    </span>
-                  </div>
-                ) : null;
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Sticky CTA */}
