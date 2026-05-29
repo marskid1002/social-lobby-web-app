@@ -2,12 +2,18 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Bell, Lock, Languages, FileText, Trash2, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useAppState, resetState } from '@/lib/state';
-import { TAIPEI_AREAS } from '@/lib/mock';
+import { formatDistanceToNow } from 'date-fns';
+import { zhTW } from 'date-fns/locale';
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default function SettingsPage() {
   const { state, currentUser, unblockUser } = useAppState();
+  const recentMeets = state.meetRecords.filter(
+    (r) => Date.now() - new Date(r.metAt).getTime() < SEVEN_DAYS_MS
+  );
   const router = useRouter();
   const [notifs, setNotifs] = useState(state.notificationsEnabled ?? true);
   const [showNearby, setShowNearby] = useState(state.showOnNearby ?? true);
@@ -125,6 +131,40 @@ export default function SettingsPage() {
                 <option value="en">English</option>
               </select>
             </div>
+          </div>
+        </section>
+
+        {/* 見面記錄 */}
+        <section>
+          <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">見面記錄（近 7 天）</p>
+          <div className="bg-white rounded-2xl shadow-card overflow-hidden">
+            {recentMeets.length === 0 ? (
+              <div className="px-4 py-5 text-center">
+                <p className="text-sm text-zinc-400">尚無近期見面記錄</p>
+                <p className="text-xs text-zinc-300 mt-1">完成見面確認後，記錄會出現在這裡</p>
+              </div>
+            ) : (
+              recentMeets.map((r, i) => {
+                const metUser = state.users.find((u) => u.id === r.userId);
+                if (!metUser) return null;
+                return (
+                  <button
+                    key={r.userId}
+                    onClick={() => router.push(`/u/${metUser.id}`)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left active:bg-brand-ice transition-colors ${i > 0 ? 'border-t border-brand-lavender' : ''}`}
+                  >
+                    <img src={metUser.avatarUrl} alt={metUser.nickname} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-brand-ink">{metUser.nickname}</p>
+                      <p className="text-xs text-zinc-400">
+                        {formatDistanceToNow(new Date(r.metAt), { locale: zhTW, addSuffix: true })}
+                      </p>
+                    </div>
+                    <span className="text-xs text-green-500 font-semibold shrink-0">✓ 已確認</span>
+                  </button>
+                );
+              })
+            )}
           </div>
         </section>
 

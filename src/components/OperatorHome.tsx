@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Bell, X, Check } from 'lucide-react';
+import { Bell, X, Check, UserCog } from 'lucide-react';
 
 const ROSTER_IDS = ['u-002', 'u-005', 'u-009', 'u-015'];
 
@@ -40,7 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function OperatorHome() {
-  const { state, closeRequest } = useAppState();
+  const { state, closeRequest, switchUser } = useAppState();
   const router = useRouter();
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
@@ -159,18 +159,17 @@ export function OperatorHome() {
           if (!user) return null;
           const onlineStatus = state.onlineStatuses.find((s) => s.userId === user.id);
           return (
-            <button
+            <div
               key={user.id}
-              onClick={() => router.push(`/u/${user.id}`)}
-              className="flex items-center gap-3 px-4 py-3 bg-white border-b border-zinc-100 w-full text-left active:bg-brand-snow transition-colors"
+              className="flex items-center gap-3 px-4 py-3 bg-white border-b border-zinc-100"
             >
-              <div className="relative shrink-0">
+              <button onClick={() => router.push(`/u/${user.id}`)} className="relative shrink-0">
                 <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover" />
                 {onlineStatus && (
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-white" />
                 )}
-              </div>
-              <div className="flex-1 min-w-0">
+              </button>
+              <button onClick={() => router.push(`/u/${user.id}`)} className="flex-1 min-w-0 text-left">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</span>
                   {onlineStatus && (
@@ -180,8 +179,16 @@ export function OperatorHome() {
                   )}
                 </div>
                 <p className="text-xs text-zinc-400 mt-0.5">{user.defaultArea}</p>
-              </div>
-            </button>
+              </button>
+              <button
+                onClick={() => { switchUser(user.id); router.push('/requests'); }}
+                className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1.5 rounded-full active:bg-purple-100 transition-colors"
+                aria-label={`以 ${user.nickname} 身份操作`}
+              >
+                <UserCog size={12} />
+                操作
+              </button>
+            </div>
           );
         })}
       </div>

@@ -275,7 +275,7 @@ export const responses: Response[] = [
   {
     id: 'rr-u020-1',
     requestId: 'r-u020-1',
-    userId: 'u-002',
+    userId: 'u-012',
     responseStatus: 'joining',
     note: '我去！幾點到？',
     createdAt: minsAgo(20),
@@ -313,7 +313,7 @@ export const responses: Response[] = [
   {
     id: 'rr-u017-1',
     requestId: 'r-u017-1',
-    userId: 'u-002',
+    userId: 'u-014',
     responseStatus: 'joining',
     note: '我去！',
     createdAt: minsAgo(5),
