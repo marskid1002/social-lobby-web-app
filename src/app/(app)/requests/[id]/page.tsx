@@ -177,35 +177,22 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </div>
         )}
 
-        {/* FOMO: viewers row */}
-        {viewerUsers.length > 0 && (
-          <div className="bg-white rounded-2xl p-4 shadow-card">
-            <div className="flex items-center gap-2 mb-3">
-              <Eye className="w-4 h-4 text-zinc-400" strokeWidth={1.75} />
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">查看過</p>
+        {/* FOMO: viewers — subtle teaser strip inside header card area */}
+        {viewerUsers.length > 0 && isCreator && (
+          <div className="bg-white rounded-2xl px-4 py-3 shadow-card flex items-center gap-2">
+            <div className="flex -space-x-1.5 shrink-0">
+              {viewerUsers.slice(0, 3).map((u) => (
+                <img key={u.id} src={u.avatarUrl} alt={u.nickname} className="w-5 h-5 rounded-full border border-white object-cover" />
+              ))}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                {viewerUsers.slice(0, 3).map((u) => (
-                  <img
-                    key={u.id}
-                    src={u.avatarUrl}
-                    alt={u.nickname}
-                    className="w-9 h-9 rounded-full border-2 border-white object-cover"
-                  />
-                ))}
-              </div>
-              <p className="text-sm text-zinc-500">
-                {viewerUsers.length > 3
-                  ? `${viewerUsers.slice(0, 3).map((u) => u.nickname.slice(0, 1)).join('、')} 等 ${viewerUsers.length} 人查看過`
-                  : `${viewerUsers.map((u) => u.nickname.slice(0, 1) + u.nickname.slice(1, 2)).join('、')} 查看過你的邀請`}
-              </p>
-            </div>
-            {isCreator && (
-              <p className="text-xs text-zinc-400 mt-2 leading-snug">
-                她們看到了你的邀請，說不定下一個就是她 👀
-              </p>
-            )}
+            <p className="text-xs text-zinc-400 leading-snug">
+              <span className="font-medium text-zinc-500">
+                {viewerUsers.slice(0, 3).map((u) => u.nickname.slice(0, 2)).join('、')}
+                {viewerUsers.length > 3 ? ` 等 ${viewerUsers.length} 人` : ''}
+              </span>
+              {' 查看過你的邀請'}
+            </p>
+            <span className="text-xs shrink-0">👀</span>
           </div>
         )}
 

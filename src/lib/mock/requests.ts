@@ -115,14 +115,14 @@ export const requests: Request[] = [
   },
   {
     id: 'r-001',
-    creatorId: 'u-017',
+    creatorId: 'u-021',
     area: '信義區',
     requestType: 'after_party',
     peopleCount: 3,
-    note: 'Club Wave 剛散場，想繼續 bar hopping，找幾個今晚有空的朋友一起喝到天亮 🍻',
+    note: 'ATT 散場繼續 after，找幾個今晚有空的朋友，包車接送 🚗',
     status: 'open',
     createdAt: minsAgo(8),
-    expiresAt: hoursFromNow(4),
+    expiresAt: hoursFromNow(2),
   },
   {
     id: 'r-002',

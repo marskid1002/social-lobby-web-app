@@ -173,7 +173,7 @@ function ExploreContent() {
   const femaleUserIds = state.onlineStatuses
     .filter((s) => {
       const u = state.users.find((u) => u.id === s.userId);
-      return u && u.role === 'user' && u.id !== currentUser?.id;
+      return u && (u.role === 'user' || u.role === 'escort') && u.id !== currentUser?.id;
     })
     .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime())
     .map((s) => s.userId);
@@ -181,6 +181,8 @@ function ExploreContent() {
   const limit = SECTION_B_LIMIT[currentUser?.tier ?? 'free'] ?? 0;
   const visibleFemaleIds = limit === Infinity ? femaleUserIds : femaleUserIds.slice(0, limit);
   const hasMoreFemales = femaleUserIds.length > visibleFemaleIds.length;
+  // For free users: show all girls blurred in background so the lock feels real
+  const sectionBRenderIds = currentUser?.tier === 'free' ? femaleUserIds : visibleFemaleIds;
   const hasMyRequests = myRequests.length > 0;
 
   return (
@@ -228,14 +230,15 @@ function ExploreContent() {
 
       {/* === SECTION B: Online Women === */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
-        <div className={currentUser?.tier === 'free' ? 'filter blur-[6px] pointer-events-none select-none' : ''}>
-          {visibleFemaleIds.map((uid) => (
+        {/* Render real content; blurred for free users so lock overlay has substance behind it */}
+        <div className={currentUser?.tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}>
+          {sectionBRenderIds.map((uid) => (
             <FemaleListRow key={uid} userId={uid} />
           ))}
         </div>
 
         {currentUser?.tier === 'free' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm">
+          <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">
             <div className="flex flex-col items-center gap-3 px-6 text-center">
               <span className="text-3xl">🔒</span>
               <p className="text-base font-bold text-brand-ink">探索更多，認識更多</p>
