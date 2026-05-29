@@ -213,6 +213,35 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
+        {/* Escort inline join CTA — right below the request info */}
+        {isEscort && !isCreator && (
+          <div>
+            {myResponse?.responseStatus === 'joining' ? (
+              <div className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-green-50 border border-green-200">
+                <span className="text-sm font-bold text-green-600">✓ 已加入 · 前往收件匣查看聊天</span>
+              </div>
+            ) : myResponse?.responseStatus === 'interested' ? (
+              <div className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-brand-lavender/40">
+                <span className="text-sm font-semibold text-zinc-500">已送出請求，等待對方回應 ⏳</span>
+              </div>
+            ) : isAtCap ? (
+              <div className="flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-zinc-100">
+                <span className="text-sm font-semibold text-zinc-400">此局已額滿</span>
+              </div>
+            ) : (
+              /* Gradient border pill */
+              <div style={{ background: 'linear-gradient(135deg, #8BD8F1, #DED9E5, #F7BEF1)', padding: '2px', borderRadius: '16px' }}>
+                <button
+                  onClick={handleJoin}
+                  className="w-full py-4 rounded-[14px] bg-white font-bold text-base text-brand-ink active:bg-brand-snow transition-colors"
+                >
+                  請求加入這個局 ✨
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Creator */}
         {creator && (
           <div className="bg-white rounded-2xl p-4 shadow-card">
@@ -344,38 +373,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               {request.status === 'closed' ? '邀請已關閉' : '關閉邀請'}
             </button>
           )
-        ) : isEscort ? (
-          myResponse?.responseStatus === 'joining' ? (
-            <button disabled className="w-full py-3.5 rounded-2xl bg-brand-lavender text-zinc-400 font-semibold text-sm">
-              已加入 · 前往收件匣查看聊天
-            </button>
-          ) : myResponse?.responseStatus === 'interested' ? (
-            <button disabled className="w-full py-3.5 rounded-2xl bg-brand-lavender text-zinc-400 font-semibold text-sm">
-              已送出請求，等待對方回應 ⏳
-            </button>
-          ) : isAtCap ? (
-            <button disabled className="w-full py-3.5 rounded-2xl bg-zinc-100 text-zinc-400 font-semibold text-sm">
-              此局已額滿
-            </button>
-          ) : (
-            <button
-              onClick={handleJoin}
-              className="w-full py-3.5 rounded-2xl font-semibold text-base active:scale-[0.98] transition-all shadow-card text-brand-ink"
-              style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #F7BEF1 100%)' }}
-            >
-              請求加入這個局 ✨
-            </button>
-          )
         ) : myInvite ? (
           <div className="flex gap-2">
             <button onClick={handleInviteAccept} className="flex-1 py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all">接受</button>
             <button onClick={handleInviteDecline} className="flex-1 py-3.5 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm active:scale-[0.98] transition-all">婉拒</button>
           </div>
-        ) : (
+        ) : !isEscort ? (
           <button disabled className="w-full py-3.5 rounded-2xl bg-zinc-100 text-zinc-400 font-semibold text-sm">
             {isAtCap ? '已額滿' : '僅限女性用戶加入'}
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* ── Confirm reject sheet (joining → penalty) ── */}

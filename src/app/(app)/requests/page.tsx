@@ -28,10 +28,11 @@ const TYPE_COLORS: Record<string, string> = {
 type EscortTab = 'area' | 'all' | 'sent';
 
 export default function RequestsPage() {
-  const { state, currentUser } = useAppState();
+  const { state, currentUser, joinRequest } = useAppState();
   const router = useRouter();
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [escortTab, setEscortTab] = useState<EscortTab>('area');
+  const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set());
 
   const role = currentUser?.role;
   const isEscort = role === 'escort';
@@ -181,32 +182,49 @@ export default function RequestsPage() {
             const slotsLeft = req.peopleCount - (joinerCounts[req.id] ?? 0);
 
             return (
-              <button
+              <div
                 key={req.id}
-                onClick={() => router.push(`/requests/${req.id}`)}
-                className="w-full bg-white rounded-2xl border border-brand-lavender shadow-card p-4 text-left active:scale-[0.99] transition-all"
+                className="w-full bg-white rounded-2xl border border-brand-lavender shadow-card p-4 text-left"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-brand-ink" style={{ backgroundColor: typeColor }}>
-                    {TYPE_FILTERS.find(f => f.value === req.requestType)?.label ?? req.requestType}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-zinc-400">
-                    <MapPin className="w-3 h-3" strokeWidth={1.75} /> {req.area}
-                  </span>
-                  <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-brand-sky">
-                    <Users className="w-3 h-3" strokeWidth={2} /> 還剩 {slotsLeft} 位
-                  </span>
-                </div>
-                <p className="text-sm text-brand-ink line-clamp-2 mb-3 leading-snug">{req.note}</p>
-                <div className="flex items-center gap-3">
-                  {creator && <img src={creator.avatarUrl} alt={creator.nickname} className="w-6 h-6 rounded-full object-cover" />}
-                  <span className="text-xs text-zinc-500 flex-1">{creator?.nickname}</span>
-                  <span className="flex items-center gap-1 text-xs text-zinc-400">
-                    <Clock className="w-3 h-3" strokeWidth={1.75} />
-                    {formatDistanceToNow(new Date(req.createdAt), { locale: zhTW, addSuffix: true })}
-                  </span>
-                </div>
-              </button>
+                <button onClick={() => router.push(`/requests/${req.id}`)} className="w-full text-left">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-brand-ink" style={{ backgroundColor: typeColor }}>
+                      {TYPE_FILTERS.find(f => f.value === req.requestType)?.label ?? req.requestType}
+                    </span>
+                    <span className="flex items-center gap-1 text-xs text-zinc-400">
+                      <MapPin className="w-3 h-3" strokeWidth={1.75} /> {req.area}
+                    </span>
+                    <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-brand-sky">
+                      <Users className="w-3 h-3" strokeWidth={2} /> 還剩 {slotsLeft} 位
+                    </span>
+                  </div>
+                  <p className="text-sm text-brand-ink line-clamp-2 mb-3 leading-snug">{req.note}</p>
+                  <div className="flex items-center gap-3 mb-3">
+                    {creator && <img src={creator.avatarUrl} alt={creator.nickname} className="w-6 h-6 rounded-full object-cover" />}
+                    <span className="text-xs text-zinc-500 flex-1">{creator?.nickname}</span>
+                    <span className="flex items-center gap-1 text-xs text-zinc-400">
+                      <Clock className="w-3 h-3" strokeWidth={1.75} />
+                      {formatDistanceToNow(new Date(req.createdAt), { locale: zhTW, addSuffix: true })}
+                    </span>
+                  </div>
+                </button>
+
+                {/* Quick-join CTA */}
+                {joinedIds.has(req.id) ? (
+                  <div className="flex items-center justify-center py-2.5 rounded-2xl bg-brand-lavender/40">
+                    <span className="text-xs font-semibold text-zinc-500">已送出請求 ⏳</span>
+                  </div>
+                ) : (
+                  <div style={{ background: 'linear-gradient(135deg, #8BD8F1, #DED9E5, #F7BEF1)', padding: '1.5px', borderRadius: '14px' }}>
+                    <button
+                      onClick={() => { joinRequest(req.id); setJoinedIds((prev) => new Set([...prev, req.id])); }}
+                      className="w-full py-2.5 rounded-[12px] bg-white text-sm font-bold text-brand-ink active:bg-brand-snow transition-colors"
+                    >
+                      請求加入 ✨
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
