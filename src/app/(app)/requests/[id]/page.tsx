@@ -326,7 +326,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Sticky CTA */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-brand-lavender px-4 py-3 pb-safe">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-brand-lavender px-4 py-3 pb-safe z-40">
         {isCreator ? (
           joiners.length > 0 ? (
             <div className="text-center">
