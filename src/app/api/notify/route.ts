@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
-import { getAllSubscriptions } from '@/lib/push-store';
+import { getSubscriptionsForUsers } from '@/lib/push-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,8 +28,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ sent: 0, skipped: 'vapid not configured' });
     }
 
-    const { title, body, url } = await req.json();
-    const subscriptions = await getAllSubscriptions();
+    const { title, body, url, userIds } = await req.json();
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return NextResponse.json({ sent: 0, skipped: 'no target users' });
+    }
+    const subscriptions = await getSubscriptionsForUsers(userIds);
 
     if (subscriptions.length === 0) {
       return NextResponse.json({ sent: 0 });

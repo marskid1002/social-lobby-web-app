@@ -1,43 +1,71 @@
 /**
- * PushSubscription 儲存層。
- * - 本地開發（無 Upstash env）：存在 Node.js 記憶體（重啟會清空）
- * - 生產環境（有 Upstash env）：存在 Upstash Redis
+ * Web Push 訂閱儲存層（依使用者分組）。
+ * - 本地開發（無 Upstash env）：存記憶體
+ * - 生產環境：存 Upstash Redis
+ *
+ * 結構：{ [userId]: PushSubscription[] }
+ * 同一個 endpoint 只屬於一個 userId（切換身份時會把它移到新的 userId）。
  */
 
 import type { PushSubscription } from 'web-push';
 
-const REDIS_KEY = 'push_subscriptions';
+const REDIS_KEY = 'push_subs_by_user:v1';
+
+type SubsByUser = Record<string, PushSubscription[]>;
 
 function getRedis() {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-  // 動態 import 避免 build 時報錯
   const { Redis } = require('@upstash/redis');
   return new Redis({ url, token });
 }
 
-// 本地記憶體 fallback
-const memStore: PushSubscription[] = [];
+const memStore: SubsByUser = {};
 
-export async function saveSubscription(sub: PushSubscription) {
+async function readAll(): Promise<SubsByUser> {
   const redis = getRedis();
   if (redis) {
-    // 用 endpoint 當 key 做 dedup
-    const existing: PushSubscription[] = (await redis.get(REDIS_KEY)) ?? [];
-    const deduped = existing.filter((s) => s.endpoint !== sub.endpoint);
-    await redis.set(REDIS_KEY, [...deduped, sub]);
+    return ((await redis.get(REDIS_KEY)) as SubsByUser | null) ?? {};
+  }
+  return memStore;
+}
+
+async function writeAll(data: SubsByUser) {
+  const redis = getRedis();
+  if (redis) {
+    await redis.set(REDIS_KEY, data);
   } else {
-    const idx = memStore.findIndex((s) => s.endpoint === sub.endpoint);
-    if (idx >= 0) memStore[idx] = sub;
-    else memStore.push(sub);
+    // 記憶體模式：同步覆蓋 memStore 內容
+    for (const k of Object.keys(memStore)) delete memStore[k];
+    Object.assign(memStore, data);
   }
 }
 
-export async function getAllSubscriptions(): Promise<PushSubscription[]> {
-  const redis = getRedis();
-  if (redis) {
-    return (await redis.get(REDIS_KEY)) ?? [];
+/** 將訂閱綁定到 userId；同一 endpoint 會從其他 userId 移除（支援切換身份）。 */
+export async function saveSubscription(userId: string, sub: PushSubscription) {
+  const all = await readAll();
+  // 先把此 endpoint 從所有 userId 移除
+  for (const uid of Object.keys(all)) {
+    all[uid] = (all[uid] ?? []).filter((s) => s.endpoint !== sub.endpoint);
   }
-  return [...memStore];
+  // 再加到目標 userId
+  all[userId] = [...(all[userId] ?? []), sub];
+  await writeAll(all);
+}
+
+/** 取得指定 userId 們的所有訂閱（去重）。 */
+export async function getSubscriptionsForUsers(userIds: string[]): Promise<PushSubscription[]> {
+  const all = await readAll();
+  const result: PushSubscription[] = [];
+  const seen = new Set<string>();
+  for (const uid of userIds) {
+    for (const sub of all[uid] ?? []) {
+      if (!seen.has(sub.endpoint)) {
+        seen.add(sub.endpoint);
+        result.push(sub);
+      }
+    }
+  }
+  return result;
 }

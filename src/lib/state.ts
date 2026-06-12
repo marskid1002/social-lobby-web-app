@@ -357,6 +357,7 @@ export function useAppState() {
     // 推播給幹部（背景通知）
     const poster = getState().users.find((u) => u.id === posterId);
     sendPushNotification(
+      managerIds,
       '有新的局邀請',
       `${poster?.nickname ?? '某位用戶'} 發布了新的局，快安排出席`,
       '/lobby/explore'
@@ -429,6 +430,7 @@ export function useAppState() {
     // 推播通知給收件方
     const senderUser = getState().users.find((u) => u.id === getState().currentUserId);
     sendPushNotification(
+      toUserId,
       '你收到一則邀請',
       `${senderUser?.nickname ?? '某人'} 傳送了${isPrivate ? '私人邀請' : '邀請'}`,
       '/inbox'
@@ -565,6 +567,7 @@ export function useAppState() {
 
     const joiner = getState().users.find((u) => u.id === escortId);
     sendPushNotification(
+      request.creatorId,
       '有人想加入你的局',
       `${joiner?.nickname ?? '某人'} 對你的需求感興趣`,
       `/requests/${requestId}`
@@ -618,6 +621,7 @@ export function useAppState() {
 
     const girl = getState().users.find((u) => u.id === girlId);
     sendPushNotification(
+      request.creatorId,
       '有人想加入你的局',
       `${girl?.nickname ?? '某位女伴'} 願意出席你的邀約`,
       `/requests/${requestId}`
@@ -679,6 +683,7 @@ export function useAppState() {
 
       const creatorUser = prev.users.find((u) => u.id === prev.currentUserId);
       sendPushNotification(
+        target.userId,
         '你的申請已被接受！',
         `${creatorUser?.nickname ?? '某人'} 接受了你的加入，聊天室已開啟`,
         '/inbox'
