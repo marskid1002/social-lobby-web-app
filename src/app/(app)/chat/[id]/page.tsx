@@ -133,11 +133,21 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [groupConfirmSuccess, setGroupConfirmSuccess] = useState(false);
 
   useEffect(() => {
-    setLocalMessages(filterMessages(state.chatMessages.filter((m) => m.threadId === threadId)));
+    const next = filterMessages(state.chatMessages.filter((m) => m.threadId === threadId));
+    // 只有在內容真的改變時才更新，避免每次輪詢都重建陣列造成畫面跳動
+    setLocalMessages((prev) => {
+      if (prev.length === next.length && prev.every((m, i) => m.id === next[i]?.id)) return prev;
+      return next;
+    });
   }, [state.chatMessages, threadId, sessionStart]);
 
+  // 只在「訊息數量增加」（有新訊息）時才捲到底，避免輪詢時把使用者拉回底部
+  const prevMsgCountRef = useRef(0);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (localMessages.length > prevMsgCountRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMsgCountRef.current = localMessages.length;
   }, [localMessages]);
 
   function handleSend() {

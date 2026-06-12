@@ -831,10 +831,11 @@ export function useAppState() {
   }, []);
 
   const sendChatMessage = useCallback((threadId: string, text: string, overrideSenderId?: string) => {
+    const senderId = overrideSenderId ?? getState().currentUserId;
     const newMsg: ChatMessage = {
       id: `cm-${Date.now()}`,
       threadId,
-      senderId: overrideSenderId ?? getState().currentUserId,
+      senderId,
       text,
       createdAt: new Date().toISOString(),
     };
@@ -842,6 +843,32 @@ export function useAppState() {
       ...prev,
       chatMessages: [...prev.chatMessages, newMsg],
     }));
+
+    // 推播給聊天室的「其他參與者」（排除送出者）
+    const s = getState();
+    let recipients: string[] = [];
+    if (threadId.startsWith('g-')) {
+      // 群組：發起人 + 所有 joining 的女伴
+      const reqId = threadId.slice(2);
+      const req = s.requests.find((r) => r.id === reqId);
+      const joinerIds = s.responses
+        .filter((r) => r.requestId === reqId && r.responseStatus === 'joining')
+        .map((r) => r.userId);
+      recipients = [...(req ? [req.creatorId] : []), ...joinerIds];
+    } else {
+      // 1:1：threadId 是兩個 user id 排序組成
+      recipients = (threadId.match(/u-\d+/g) ?? []);
+    }
+    recipients = [...new Set(recipients)].filter((id) => id !== senderId);
+    if (recipients.length) {
+      const sender = s.users.find((u) => u.id === senderId);
+      sendPushNotification(
+        recipients,
+        `${sender?.nickname ?? '對方'} 傳來訊息`,
+        text.length > 40 ? text.slice(0, 40) + '…' : text,
+        `/chat/${threadId}`
+      );
+    }
     return newMsg;
   }, []);
 
