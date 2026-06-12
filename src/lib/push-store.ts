@@ -14,8 +14,9 @@ const REDIS_KEY = 'push_subs_by_user:v1';
 type SubsByUser = Record<string, PushSubscription[]>;
 
 function getRedis() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // 支援 Upstash 原生整合與 Vercel KV(Redis) 整合的不同環境變數命名
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
   if (!url || !token) return null;
   const { Redis } = require('@upstash/redis');
   return new Redis({ url, token });
@@ -36,9 +37,10 @@ async function writeAll(data: SubsByUser) {
   if (redis) {
     await redis.set(REDIS_KEY, data);
   } else {
-    // 記憶體模式：同步覆蓋 memStore 內容
+    // 記憶體模式：data 可能就是 memStore 本身的參考，先深拷貝再覆蓋，避免清空時把來源也清掉
+    const snapshot: SubsByUser = JSON.parse(JSON.stringify(data));
     for (const k of Object.keys(memStore)) delete memStore[k];
-    Object.assign(memStore, data);
+    Object.assign(memStore, snapshot);
   }
 }
 

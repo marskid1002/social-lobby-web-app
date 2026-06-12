@@ -19,8 +19,9 @@ function emptyShared(): SharedState {
 }
 
 function getRedis() {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // 支援 Upstash 原生整合與 Vercel KV(Redis) 整合的不同環境變數命名
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
   if (!url || !token) return null;
   const { Redis } = require('@upstash/redis');
   return new Redis({ url, token });
