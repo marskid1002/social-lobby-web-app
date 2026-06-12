@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { TopBar } from '@/components/TopBar';
 import { BottomNav } from '@/components/BottomNav';
 import { ProfileDrawer } from '@/components/ProfileDrawer';
+import { DualIdentityBadge } from '@/components/DualIdentityBadge';
+import { NotificationWatcher } from '@/components/NotificationWatcher';
+import { PushManager } from '@/components/PushManager';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { Suspense } from 'react';
@@ -104,6 +107,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {!isPlazaThread && !isStore && <BottomNav />}
       <ProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <DualIdentityBadge />
+      <NotificationWatcher />
+      <PushManager />
     </div>
   );
 }

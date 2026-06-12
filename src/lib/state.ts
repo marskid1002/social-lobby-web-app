@@ -15,6 +15,7 @@ import {
 } from '@/lib/mock';
 import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage, MeetRecord, MomentPost } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
+import { sendPushNotification } from '@/lib/notify';
 
 const STORAGE_KEY = 'sl_state_v3';
 const PRIVATE_INVITE_CREDIT_COST = 3;
@@ -56,31 +57,38 @@ export interface AppState {
   inboxUnread: boolean;      // true when a new accepted invite is waiting in inbox
   momentPosts: MomentPost[];
   likedPostIds: string[];
+  secondaryUserId: string | null; // 第二登入身份（雙身份 demo 用）
 }
+
+// CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
+//   保留用戶清單、在線狀態、廣場貼文，供「從零驗證流程」使用。
+// 改回 false 即還原原本豐富的 demo seed 資料。
+const CLEAN_START = true;
 
 function getSeedState(): AppState {
   return {
-    currentUserId: 'u-001',
+    currentUserId: 'u-017', // 預設以 VIP 用戶身份登入（demo 展示用）
     onlineUserIds: seedOnlineStatuses.map((s) => s.userId),
     users: seedUsers,
     onlineStatuses: seedOnlineStatuses,
-    requests: seedRequests,
-    responses: seedResponses,
-    invitations: seedInvitations,
-    updates: seedUpdates,
+    requests: CLEAN_START ? [] : seedRequests,
+    responses: CLEAN_START ? [] : seedResponses,
+    invitations: CLEAN_START ? [] : seedInvitations,
+    updates: CLEAN_START ? [] : seedUpdates,
     follows: seedFollows,
-    readUpdateIds: seedUpdates.filter((u) => u.read).map((u) => u.id),
+    readUpdateIds: CLEAN_START ? [] : seedUpdates.filter((u) => u.read).map((u) => u.id),
     userBlocks: [],
     notificationsEnabled: true,
     showOnNearby: true,
     autoOfflineHours: 4,
-    chatMessages: seedChatMessages,
+    chatMessages: CLEAN_START ? [] : seedChatMessages,
     directMessages: [],
     meetRecords: [],
-    teaserMessages: seedTeaserMessages,
+    teaserMessages: CLEAN_START ? [] : seedTeaserMessages,
     inboxUnread: false,
     momentPosts: seedMomentPosts,
     likedPostIds: [],
+    secondaryUserId: null,
   };
 }
 
@@ -112,6 +120,99 @@ export function resetState() {
 let globalState: AppState | null = null;
 const listeners = new Set<() => void>();
 
+// ── 跨裝置同步 ──────────────────────────────────────────────────────────────
+// 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
+// secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages'] as const;
+type SharedKey = typeof SHARED_KEYS[number];
+const SYNC_POLL_MS = 4000;
+let syncStarted = false;
+let isPushing = false;
+
+// 將變動的共享集合 POST 到 server（fire-and-forget）
+function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>) {
+  if (typeof window === 'undefined') return;
+  if (Object.keys(patch).length === 0) return;
+  isPushing = true;
+  fetch('/api/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ patch }),
+  })
+    .catch(() => {})
+    .finally(() => { isPushing = false; });
+}
+
+// 以 id union 合併 server 與本機集合（server 版本優先，保留尚未同步的本機項目）
+function unionById<T extends { id: string }>(local: T[], server: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const item of local) map.set(item.id, item);
+  for (const item of server) if (item && item.id) map.set(item.id, item);
+  return [...map.values()];
+}
+
+function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>) {
+  if (!globalState) globalState = loadState();
+  let changed = false;
+  const next = { ...globalState } as AppState;
+  for (const key of SHARED_KEYS) {
+    const serverArr = shared[key];
+    if (!serverArr) continue;
+    const merged = unionById(
+      (globalState[key] as unknown as { id: string }[]) ?? [],
+      serverArr
+    );
+    // 排序：通知/局新到舊，聊天訊息舊到新
+    const ts = (x: { id: string }) => new Date((x as unknown as { createdAt: string }).createdAt).getTime();
+    if (key === 'updates' || key === 'requests') {
+      merged.sort((a, b) => ts(b) - ts(a));
+    } else if (key === 'chatMessages') {
+      merged.sort((a, b) => ts(a) - ts(b));
+    }
+    (next[key] as unknown) = merged;
+    changed = true;
+  }
+  if (changed) {
+    globalState = next;
+    saveState(next);
+    listeners.forEach((l) => l());
+  }
+}
+
+async function pollShared() {
+  try {
+    const res = await fetch('/api/sync', { cache: 'no-store' });
+    if (!res.ok) return;
+    const shared = await res.json();
+    applyServerShared(shared);
+  } catch {}
+}
+
+function startSync() {
+  if (syncStarted || typeof window === 'undefined') return;
+  syncStarted = true;
+  // 啟動時：先把本機既有的共享資料推上 server（種子或既有 demo 資料），再拉回合併
+  const s = getState();
+  const initPatch: Partial<Record<SharedKey, unknown[]>> = {};
+  for (const key of SHARED_KEYS) {
+    const arr = s[key] as unknown[];
+    if (arr && arr.length) initPatch[key] = arr;
+  }
+  if (Object.keys(initPatch).length) pushSharedPatch(initPatch);
+  pollShared();
+  setInterval(pollShared, SYNC_POLL_MS);
+}
+
+// 重設共享資料（同時清 server）
+export function resetSharedState() {
+  if (typeof window === 'undefined') return;
+  fetch('/api/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset: true }),
+  }).catch(() => {});
+}
+
 function getState(): AppState {
   if (!globalState) {
     globalState = loadState();
@@ -120,9 +221,18 @@ function getState(): AppState {
 }
 
 function setState(updater: (prev: AppState) => AppState) {
-  const next = updater(getState());
+  const prev = getState();
+  const next = updater(prev);
   globalState = next;
   saveState(next);
+  // 偵測變動的共享集合並推送到 server
+  if (typeof window !== 'undefined') {
+    const patch: Partial<Record<SharedKey, unknown[]>> = {};
+    for (const key of SHARED_KEYS) {
+      if (next[key] !== prev[key]) patch[key] = next[key] as unknown[];
+    }
+    pushSharedPatch(patch);
+  }
   listeners.forEach((l) => l());
 }
 
@@ -132,6 +242,7 @@ export function useAppState() {
   useEffect(() => {
     const listener = () => forceRender((n) => n + 1);
     listeners.add(listener);
+    startSync(); // 啟動跨裝置同步（單例，內部自我防重）
     return () => { listeners.delete(listener); };
   }, []);
 
@@ -218,15 +329,39 @@ export function useAppState() {
       expiresAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
       metrics: { impressions: 0, views: 0, joins: 0 },
     };
+    // 通知所有幹部：有新的局可安排出席
+    const posterId = getState().currentUserId;
+    const managerIds = getState().users.filter((u) => u.role === 'manager').map((u) => u.id);
+    const now = new Date().toISOString();
+    const managerNotifs: UpdateEvent[] = managerIds.map((mid, idx) => ({
+      id: `ue-newreq-${Date.now()}-${idx}`,
+      userId: mid,
+      actorId: posterId,
+      eventType: 'request_posted',
+      refRequestId: newReq.id,
+      createdAt: now,
+      read: false,
+    }));
+
     setState((prev) => ({
       ...prev,
       requests: [newReq, ...prev.requests],
+      updates: [...managerNotifs, ...prev.updates],
       users: prev.users.map((u) =>
         u.id === prev.currentUserId
           ? { ...u, monthlyRequestsLeft: Math.max(0, u.monthlyRequestsLeft - 1) }
           : u
       ),
     }));
+
+    // 推播給幹部（背景通知）
+    const poster = getState().users.find((u) => u.id === posterId);
+    sendPushNotification(
+      '有新的局邀請',
+      `${poster?.nickname ?? '某位用戶'} 發布了新的局，快安排出席`,
+      '/lobby/explore'
+    );
+
     return newReq;
   }, []);
 
@@ -290,6 +425,14 @@ export function useAppState() {
           )
         : prev.users,
     }));
+
+    // 推播通知給收件方
+    const senderUser = getState().users.find((u) => u.id === getState().currentUserId);
+    sendPushNotification(
+      '你收到一則邀請',
+      `${senderUser?.nickname ?? '某人'} 傳送了${isPrivate ? '私人邀請' : '邀請'}`,
+      '/inbox'
+    );
 
     // Auto-accept private invites after 1.5s
     if (isPrivate) {
@@ -419,6 +562,66 @@ export function useAppState() {
       responses: [...prev.responses, newResp],
       updates: [notif, ...prev.updates],
     }));
+
+    const joiner = getState().users.find((u) => u.id === escortId);
+    sendPushNotification(
+      '有人想加入你的局',
+      `${joiner?.nickname ?? '某人'} 對你的需求感興趣`,
+      `/requests/${requestId}`
+    );
+  }, []);
+
+  // 幹部派工：以指定女伴身分對某個局建立 'interested' 回應，並通知發起人。
+  // 與 joinRequest 相同效果，但對象是 girlId 而非當前使用者（供幹部代為安排出席）。
+  const dispatchGirl = useCallback((requestId: string, girlId: string) => {
+    const s = getState();
+    const request = s.requests.find((r) => r.id === requestId);
+    if (!request) return;
+
+    // 防止重複派工：若該女伴已 interested / joining 則略過
+    const existing = s.responses.find(
+      (r) => r.requestId === requestId && r.userId === girlId
+    );
+    if (existing?.responseStatus === 'interested' || existing?.responseStatus === 'joining') return;
+
+    const now = new Date().toISOString();
+    const notif: UpdateEvent = {
+      id: `ue-dispatch-${Date.now()}`,
+      userId: request.creatorId,
+      actorId: girlId,
+      eventType: 'response_received',
+      refRequestId: requestId,
+      createdAt: now,
+      read: false,
+    };
+
+    setState((prev) => {
+      // 若是先前 withdrawn 的回應則重新啟用，否則新增一筆
+      const responses = existing
+        ? prev.responses.map((r) =>
+            r.id === existing.id
+              ? { ...r, responseStatus: 'interested' as const, createdAt: now }
+              : r
+          )
+        : [
+            ...prev.responses,
+            {
+              id: `rr-dispatch-${Date.now()}`,
+              requestId,
+              userId: girlId,
+              responseStatus: 'interested' as const,
+              createdAt: now,
+            },
+          ];
+      return { ...prev, responses, updates: [notif, ...prev.updates] };
+    });
+
+    const girl = getState().users.find((u) => u.id === girlId);
+    sendPushNotification(
+      '有人想加入你的局',
+      `${girl?.nickname ?? '某位女伴'} 願意出席你的邀約`,
+      `/requests/${requestId}`
+    );
   }, []);
 
   // Creator accepts an 'interested' joiner: flips to 'joining', creates invitation + chat.
@@ -473,6 +676,13 @@ export function useAppState() {
         (r) => r.requestId === target.requestId && r.responseStatus === 'joining'
       ).length;
       const autoClose = joinersCount >= req.peopleCount;
+
+      const creatorUser = prev.users.find((u) => u.id === prev.currentUserId);
+      sendPushNotification(
+        '你的申請已被接受！',
+        `${creatorUser?.nickname ?? '某人'} 接受了你的加入，聊天室已開啟`,
+        '/inbox'
+      );
 
       return {
         ...prev,
@@ -611,6 +821,7 @@ export function useAppState() {
     saveState(globalState);
     localStorage.removeItem('sl_onboarded');
     localStorage.removeItem('sl_state_v2');
+    resetSharedState(); // 同時清空 server 共享資料（跨裝置一起重設）
     listeners.forEach((l) => l());
   }, []);
 
@@ -707,6 +918,25 @@ export function useAppState() {
     setState((prev) => ({ ...prev, inboxUnread: false }));
   }, []);
 
+  const setSecondaryUser = useCallback((userId: string | null) => {
+    setState((prev) => ({ ...prev, secondaryUserId: userId }));
+  }, []);
+
+  // 取得第二身份的未讀通知數
+  const secondaryUnreadCount = state.secondaryUserId
+    ? state.updates.filter(
+        (u) => u.userId === state.secondaryUserId && !state.readUpdateIds.includes(u.id)
+      ).length
+    : 0;
+
+  // 互換主副身份
+  const swapIdentities = useCallback(() => {
+    setState((prev) => {
+      if (!prev.secondaryUserId) return prev;
+      return { ...prev, currentUserId: prev.secondaryUserId, secondaryUserId: prev.currentUserId };
+    });
+  }, []);
+
   const likePost = useCallback((postId: string) => {
     setState((prev) => {
       const alreadyLiked = prev.likedPostIds.includes(postId);
@@ -743,6 +973,7 @@ export function useAppState() {
     declineResponder,
     buyExtraSlot,
     joinRequest,
+    dispatchGirl,
     acceptResponder,
     cancelJoinRequest,
     recordRequestViewer,
@@ -757,5 +988,8 @@ export function useAppState() {
     confirmGroupAttendance,
     clearInboxUnread,
     likePost,
+    setSecondaryUser,
+    swapIdentities,
+    secondaryUnreadCount,
   };
 }

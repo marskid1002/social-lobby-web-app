@@ -40,28 +40,66 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function OperatorHome() {
-  const { state, closeRequest, switchUser } = useAppState();
+  const { state, dispatchGirl, switchUser } = useAppState();
   const router = useRouter();
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
-  const [selectedGirl, setSelectedGirl] = useState<string | null>(null);
-  const [dispatched, setDispatched] = useState<Record<string, string>>({}); // requestId -> girlId
+  const [selectedGirls, setSelectedGirls] = useState<string[]>([]); // 多選
   const [toast, setToast] = useState('');
 
-  const incomingRequests = state.requests.filter(
-    (r) => r.status === 'open' && ['r-009', 'r-010', 'r-011'].includes(r.id)
-  );
+  // 新進活動邀請：所有 open 狀態、由一般/VIP 用戶（非女伴/幹部）發起的局。
+  // 包含 VIP 剛發布的新局，依建立時間新到舊排序。
+  const incomingRequests = state.requests
+    .filter((r) => {
+      if (r.status !== 'open') return false;
+      const creator = state.users.find((u) => u.id === r.creatorId);
+      return creator?.role === 'user'; // user / VIP 用戶
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const rosterGirls = ROSTER_IDS.map((id) => state.users.find((u) => u.id === id)).filter(Boolean);
 
+  // 該局已派工的旗下女伴 id（interested 或 joining）
+  function dispatchedGirlIds(requestId: string) {
+    return state.responses
+      .filter(
+        (r) =>
+          r.requestId === requestId &&
+          ROSTER_IDS.includes(r.userId) &&
+          (r.responseStatus === 'interested' || r.responseStatus === 'joining')
+      )
+      .map((r) => r.userId);
+  }
+
+  // 已派人數是否已達該局需求人數上限
+  function isRequestFull(req: { id: string; peopleCount: number }) {
+    return dispatchedGirlIds(req.id).length >= req.peopleCount;
+  }
+
+  // 開啟派工彈窗的局物件
+  const activeReq = dispatchSheet ? state.requests.find((r) => r.id === dispatchSheet) : null;
+  const alreadyDispatched = dispatchSheet ? dispatchedGirlIds(dispatchSheet) : [];
+  const remainingSlots = activeReq ? activeReq.peopleCount - alreadyDispatched.length : 0;
+
+  function toggleGirl(girlId: string) {
+    setSelectedGirls((prev) => {
+      if (prev.includes(girlId)) return prev.filter((id) => id !== girlId);
+      // 不可超過剩餘名額
+      if (prev.length >= remainingSlots) return prev;
+      return [...prev, girlId];
+    });
+  }
+
   function handleDispatch() {
-    if (!dispatchSheet || !selectedGirl) return;
-    const girl = state.users.find((u) => u.id === selectedGirl);
-    closeRequest(dispatchSheet);
-    setDispatched((prev) => ({ ...prev, [dispatchSheet]: selectedGirl }));
+    if (!dispatchSheet || selectedGirls.length === 0) return;
+    const names = selectedGirls
+      .map((id) => state.users.find((u) => u.id === id)?.nickname)
+      .filter(Boolean)
+      .join('、');
+    selectedGirls.forEach((girlId) => dispatchGirl(dispatchSheet, girlId));
     setDispatchSheet(null);
-    setSelectedGirl(null);
-    setToast(`✅ 已安排 ${girl?.nickname} 出席，通知已發送`);
+    setSelectedGirls([]);
+    setToast(`✅ 已安排 ${names} 出席，通知已發送`);
     setTimeout(() => setToast(''), 3000);
   }
 
@@ -92,12 +130,13 @@ export function OperatorHome() {
         <div className="flex flex-col gap-3">
           {incomingRequests.map((req) => {
             const creator = state.users.find((u) => u.id === req.creatorId);
-            const isDispatched = req.id in dispatched || req.status === 'closed';
+            const dispatchedCount = dispatchedGirlIds(req.id).length;
+            const isFull = isRequestFull(req) || req.status === 'closed';
             const typeColor = TYPE_COLORS[req.requestType] ?? '#DED9E5';
             const typeLabel = TYPE_LABELS[req.requestType] ?? req.requestType;
 
             return (
-              <div key={req.id} className={`bg-white rounded-2xl border border-brand-lavender p-4 shadow-sm transition-opacity ${isDispatched ? 'opacity-60' : ''}`}>
+              <div key={req.id} className={`bg-white rounded-2xl border border-brand-lavender p-4 shadow-sm transition-opacity ${isFull ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-2 mb-2">
                   {creator && (
                     <img src={creator.avatarUrl} alt={creator.nickname} className="w-8 h-8 rounded-full object-cover" />
@@ -129,17 +168,17 @@ export function OperatorHome() {
                   >
                     查看
                   </button>
-                  {isDispatched ? (
+                  {isFull ? (
                     <div className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-zinc-100 text-sm font-semibold text-zinc-400">
                       <Check size={14} />
-                      <span>已安排</span>
+                      <span>已安排 {dispatchedCount}/{req.peopleCount}</span>
                     </div>
                   ) : (
                     <button
-                      onClick={() => { setDispatchSheet(req.id); setSelectedGirl(null); }}
+                      onClick={() => { setDispatchSheet(req.id); setSelectedGirls([]); }}
                       className="flex-1 py-2.5 rounded-xl bg-purple-100 text-sm font-semibold text-purple-700 border border-purple-200 active:bg-purple-200 transition-colors"
                     >
-                      安排出席
+                      {dispatchedCount > 0 ? `安排出席（${dispatchedCount}/${req.peopleCount}）` : '安排出席'}
                     </button>
                   )}
                 </div>
@@ -209,29 +248,39 @@ export function OperatorHome() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
-            <p className="text-base font-bold text-brand-ink mb-4 text-center">安排出席人選</p>
+            <p className="text-base font-bold text-brand-ink text-center">安排出席人選</p>
+            <p className="text-xs text-zinc-400 mb-4 text-center">
+              此局需求 {activeReq?.peopleCount ?? 0} 人 · 還可安排 {remainingSlots} 位
+              {selectedGirls.length > 0 && `（已選 ${selectedGirls.length}）`}
+            </p>
 
             <div className="flex flex-col gap-2 mb-5">
               {rosterGirls.map((user) => {
                 if (!user) return null;
                 const onlineStatus = state.onlineStatuses.find((s) => s.userId === user.id);
-                const isSelected = selectedGirl === user.id;
+                const isAlready = alreadyDispatched.includes(user.id);
+                const isSelected = selectedGirls.includes(user.id);
+                const atLimit = !isSelected && selectedGirls.length >= remainingSlots;
+                const disabled = isAlready || atLimit;
                 return (
                   <button
                     key={user.id}
-                    onClick={() => setSelectedGirl(user.id)}
+                    onClick={() => !isAlready && toggleGirl(user.id)}
+                    disabled={disabled}
                     className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
                       isSelected
                         ? 'border-purple-400 bg-purple-50'
                         : 'border-transparent bg-brand-snow'
-                    }`}
+                    } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-brand-ink">{user.nickname}</p>
-                      {onlineStatus && (
+                      {isAlready ? (
+                        <p className="text-xs text-purple-500 font-semibold">已安排</p>
+                      ) : onlineStatus ? (
                         <p className="text-xs text-zinc-400">{STATUS_LABELS[onlineStatus.status] ?? '在線'}</p>
-                      )}
+                      ) : null}
                     </div>
                     {isSelected && (
                       <div className="w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center shrink-0">
@@ -245,10 +294,10 @@ export function OperatorHome() {
 
             <button
               onClick={handleDispatch}
-              disabled={!selectedGirl}
+              disabled={selectedGirls.length === 0}
               className="w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
             >
-              確認出席
+              確認出席{selectedGirls.length > 0 ? `（${selectedGirls.length} 位）` : ''}
             </button>
           </div>
         </div>

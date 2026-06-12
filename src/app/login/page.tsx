@@ -12,13 +12,37 @@ function LineIcon() {
   );
 }
 
+// 支援的登入角色（僅展示 VIP 與幹部）
+const LOGIN_ROLES = [
+  {
+    userId: 'u-017',
+    label: 'VIP 用戶',
+    desc: '發局・邀請女伴・完整功能',
+    badgeColor: 'bg-amber-100 text-amber-600',
+    emoji: '👑',
+  },
+  {
+    userId: 'u-018',
+    label: '幹部 / 經紀人',
+    desc: '管理女伴・接單・安排出席',
+    badgeColor: 'bg-purple-100 text-purple-700',
+    emoji: '🎯',
+  },
+];
+
 export default function LoginPage() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<string | null>(null);
 
-  function handleLogin() {
-    setLoading(true);
+  function handleLogin(userId: string) {
+    setLoading(userId);
     resetState();
+    // 寫入選擇的身份
+    try {
+      const raw = localStorage.getItem('sl_state_v3');
+      const parsed = raw ? JSON.parse(raw) : {};
+      localStorage.setItem('sl_state_v3', JSON.stringify({ ...parsed, currentUserId: userId }));
+    } catch {}
     setTimeout(() => {
       const onboarded = localStorage.getItem('sl_onboarded');
       if (onboarded === 'true') {
@@ -79,18 +103,37 @@ export default function LoginPage() {
             台北最即時的社交配對平台
           </p>
 
-          {/* LINE CTA */}
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 bg-line-green text-white font-semibold text-base rounded-2xl py-4 px-6 shadow-lg active:scale-[0.98] transition-all disabled:opacity-70"
-            aria-label="使用 LINE 登入"
-          >
-            <LineIcon />
-            使用 LINE 登入
-          </button>
+          {/* 角色選擇登入 */}
+          <div className="w-full flex flex-col gap-3 mb-2">
+            {LOGIN_ROLES.map((role) => (
+              <button
+                key={role.userId}
+                onClick={() => handleLogin(role.userId)}
+                disabled={loading !== null}
+                className="w-full flex items-center gap-4 bg-white border-2 border-brand-lavender rounded-2xl px-4 py-3.5 shadow-sm active:scale-[0.98] transition-all disabled:opacity-60 text-left"
+                aria-label={`以 ${role.label} 身份使用 LINE 登入`}
+              >
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0 ${role.badgeColor}`}>
+                  {loading === role.userId ? (
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                  ) : role.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-brand-ink">{role.label}</p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{role.desc}</p>
+                </div>
+                <div className="shrink-0 flex items-center gap-1.5 bg-line-green text-white text-xs font-semibold px-3 py-1.5 rounded-xl">
+                  <LineIcon />
+                  登入
+                </div>
+              </button>
+            ))}
+          </div>
 
-          <p className="text-xs text-zinc-400 text-center mt-4">
+          <p className="text-xs text-zinc-400 text-center mt-2">
             一鍵登入，馬上找人一起出去
           </p>
 

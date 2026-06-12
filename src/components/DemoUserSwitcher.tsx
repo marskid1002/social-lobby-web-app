@@ -8,7 +8,27 @@ interface Props {
   onClose: () => void;
 }
 
+// ── 目前 demo 展示的身份（僅 VIP 用戶 + 幹部）──────────────────────────────
 const PERSONAS = [
+  {
+    userId: 'u-017',
+    label: 'VIP 用戶',
+    sublabel: '完整功能・可直接開啟對話',
+    badgeColor: 'bg-amber-100 text-amber-600 border border-amber-200',
+    badgeLabel: 'VIP',
+  },
+  {
+    userId: 'u-018',
+    label: '經紀人 / 幹部',
+    sublabel: '管理旗下女伴・接單・安排出席',
+    badgeColor: 'bg-purple-100 text-purple-600 border border-purple-200',
+    badgeLabel: '幹部',
+  },
+];
+
+// ── 保留但暫時隱藏的身份（未來可放回 PERSONAS）────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _HIDDEN_PERSONAS = [
   {
     userId: 'u-001',
     label: '基本用戶',
@@ -31,30 +51,16 @@ const PERSONAS = [
     badgeLabel: '進階',
   },
   {
-    userId: 'u-017',
-    label: 'VIP 用戶',
-    sublabel: '完整功能・可直接開啟對話',
-    badgeColor: 'bg-amber-100 text-amber-600 border border-amber-200',
-    badgeLabel: 'VIP',
-  },
-  {
     userId: 'u-002',
     label: '獨立女伴',
     sublabel: '瀏覽可加入的局・直接加入・確認見面',
     badgeColor: 'bg-pink-100 text-pink-600 border border-pink-200',
     badgeLabel: '女伴',
   },
-  {
-    userId: 'u-018',
-    label: '經紀人 / 幹部',
-    sublabel: '管理旗下女伴・接單・安排出席',
-    badgeColor: 'bg-purple-100 text-purple-600 border border-purple-200',
-    badgeLabel: '幹部',
-  },
 ];
 
 export function DemoUserSwitcher({ open, onClose }: Props) {
-  const { state, switchUser } = useAppState();
+  const { state, switchUser, setSecondaryUser } = useAppState();
   const router = useRouter();
 
   if (!open) return null;
@@ -63,6 +69,12 @@ export function DemoUserSwitcher({ open, onClose }: Props) {
     switchUser(userId);
     onClose();
     router.refresh();
+  }
+
+  function handleSetSecondary(userId: string) {
+    if (userId === state.currentUserId) return;
+    setSecondaryUser(state.secondaryUserId === userId ? null : userId);
+    onClose();
   }
 
   return (
@@ -80,36 +92,58 @@ export function DemoUserSwitcher({ open, onClose }: Props) {
           {PERSONAS.map((persona) => {
             const user = state.users.find((u) => u.id === persona.userId);
             const isActive = state.currentUserId === persona.userId;
+            const isSecondary = state.secondaryUserId === persona.userId;
             return (
-              <button
+              <div
                 key={persona.userId}
-                onClick={() => handleSwitch(persona.userId)}
-                className={`flex items-center gap-3 p-4 rounded-2xl text-left transition-colors ${
+                className={`flex items-center gap-3 p-4 rounded-2xl transition-colors ${
                   isActive
                     ? 'bg-brand-sky/10 border-2 border-brand-sky'
-                    : 'bg-brand-snow border-2 border-transparent active:bg-brand-lavender/20'
+                    : isSecondary
+                    ? 'bg-brand-pink/10 border-2 border-brand-pink'
+                    : 'bg-brand-snow border-2 border-transparent'
                 }`}
               >
-                {user && (
-                  <img
-                    src={user.avatarUrl}
-                    alt={user.nickname}
-                    className="w-11 h-11 rounded-full object-cover shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <p className="text-sm font-bold text-brand-ink">{persona.label}</p>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${persona.badgeColor}`}>
-                      {persona.badgeLabel}
-                    </span>
+                <button
+                  onClick={() => handleSwitch(persona.userId)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left active:opacity-70 transition-opacity"
+                >
+                  {user && (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.nickname}
+                      className="w-11 h-11 rounded-full object-cover shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-bold text-brand-ink">{persona.label}</p>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${persona.badgeColor}`}>
+                        {persona.badgeLabel}
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-400">{persona.sublabel}</p>
                   </div>
-                  <p className="text-xs text-zinc-400">{persona.sublabel}</p>
-                </div>
-                {isActive && (
-                  <span className="text-xs font-bold text-brand-sky shrink-0">使用中</span>
+                  {isActive && (
+                    <span className="text-xs font-bold text-brand-sky shrink-0">使用中</span>
+                  )}
+                </button>
+
+                {/* 設為第二身份 */}
+                {!isActive && (
+                  <button
+                    onClick={() => handleSetSecondary(persona.userId)}
+                    className={`shrink-0 text-[10px] font-bold px-2 py-1 rounded-full border transition-colors ${
+                      isSecondary
+                        ? 'bg-brand-pink/20 border-brand-pink text-brand-pink'
+                        : 'bg-zinc-100 border-zinc-200 text-zinc-500 active:bg-zinc-200'
+                    }`}
+                    aria-label={isSecondary ? '移除第二身份' : '設為第二身份'}
+                  >
+                    {isSecondary ? '移除' : '第二'}
+                  </button>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

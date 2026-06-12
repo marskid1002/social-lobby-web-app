@@ -27,7 +27,8 @@ export type UpdateEventType =
   | 'status_change'
   | 'request_closed'
   | 'milestone_views'   // request reached a view count milestone
-  | 'plaza_reply';      // someone replied to your plaza comment
+  | 'plaza_reply'       // someone replied to your plaza comment
+  | 'request_posted';   // a new request was posted (notifies managers)
 
 export interface User {
   id: string;
