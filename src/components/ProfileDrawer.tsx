@@ -174,7 +174,12 @@ export function ProfileDrawer({ open, onClose }: Props) {
                   </p>
                 </div>
                 {permission === 'granted' ? (
-                  <span className="shrink-0 text-xs font-bold text-status-available">已開啟</span>
+                  <button
+                    onClick={handleEnableNotif}
+                    className="shrink-0 text-xs font-bold text-status-available border border-status-available/40 px-3 py-2 rounded-full active:scale-95 transition-transform"
+                  >
+                    已開啟·重新綁定
+                  </button>
                 ) : permission === 'default' ? (
                   <button
                     onClick={handleEnableNotif}
