@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '';
 
@@ -11,52 +11,86 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
+export function pushSupported() {
+  return (
+    typeof window !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window &&
+    'Notification' in window
+  );
+}
+
+/** 註冊 SW 並建立/送出訂閱。需在已取得（或剛取得）通知權限後呼叫。 */
+async function registerAndSubscribe(): Promise<boolean> {
+  if (!pushSupported()) return false;
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+
+    await fetch('/api/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sub),
+    });
+    return true;
+  } catch (e) {
+    console.warn('[push] 訂閱失敗:', e);
+    return false;
+  }
+}
+
 /**
- * 初始化 Service Worker 並訂閱 Web Push。
- * 掛載在 app layout，靜默執行，不顯示任何 UI。
+ * 由使用者點擊觸發：請求通知權限並訂閱推播。
+ * 必須在點擊事件中呼叫（iOS / 現代瀏覽器要求使用者手勢）。
+ */
+export async function enablePushNotifications(): Promise<NotificationPermission> {
+  if (!pushSupported()) return 'denied';
+  let permission = Notification.permission;
+  if (permission === 'default') {
+    permission = await Notification.requestPermission();
+  }
+  if (permission === 'granted') {
+    await registerAndSubscribe();
+  }
+  return permission;
+}
+
+/** 讀取目前通知權限狀態（granted / denied / default / unsupported）。 */
+export function useNotificationPermission() {
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('default');
+
+  useEffect(() => {
+    if (!pushSupported()) { setPermission('unsupported'); return; }
+    setPermission(Notification.permission);
+  }, []);
+
+  const request = useCallback(async () => {
+    const p = await enablePushNotifications();
+    setPermission(p);
+    return p;
+  }, []);
+
+  return { permission, request };
+}
+
+/**
+ * 掛載在 app layout：若使用者「已經」授權過通知，靜默重新註冊訂閱
+ * （確保換裝置/清資料後訂閱仍在 server）。不主動跳授權框（交給按鈕）。
  */
 export function PushManager() {
   useEffect(() => {
-    if (
-      typeof window === 'undefined' ||
-      !('serviceWorker' in navigator) ||
-      !('PushManager' in window)
-    ) return;
-
-    async function init() {
-      try {
-        // 1. 註冊 Service Worker
-        const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-
-        // 2. 等待 SW 啟動
-        await navigator.serviceWorker.ready;
-
-        // 3. 檢查現有訂閱
-        let sub = await reg.pushManager.getSubscription();
-
-        // 4. 沒有訂閱時請求權限並建立訂閱
-        if (!sub) {
-          const permission = await Notification.requestPermission();
-          if (permission !== 'granted') return;
-
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-        }
-
-        // 5. 將訂閱傳送到 server
-        await fetch('/api/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sub),
-        });
-      } catch (e) {
-        console.warn('[PushManager] 初始化失敗:', e);
-      }
+    if (!pushSupported()) return;
+    if (Notification.permission === 'granted') {
+      registerAndSubscribe();
     }
-
-    init();
   }, []);
 
   return null;

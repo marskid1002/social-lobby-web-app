@@ -3,11 +3,13 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { X, User, ClipboardList, ShieldOff, Settings, RotateCcw, LogOut, MapPin, ChevronRight } from 'lucide-react';
+import { X, User, ClipboardList, ShieldOff, Settings, RotateCcw, LogOut, MapPin, ChevronRight, Bell } from 'lucide-react';
 import { useAppState, resetState } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import type { OnlineStatus } from '@/lib/mock';
 import { DemoUserSwitcher } from './DemoUserSwitcher';
+import { useNotificationPermission } from './PushManager';
+import { toast } from 'sonner';
 
 const STATUS_OPTIONS: { value: OnlineStatus['status']; label: string; color: string }[] = [
   { value: 'available', label: '可接局', color: '#10B981' },
@@ -26,7 +28,14 @@ export function ProfileDrawer({ open, onClose }: Props) {
   const router = useRouter();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [resetToast, setResetToast] = useState(false);
+  const { permission, request: requestNotif } = useNotificationPermission();
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  async function handleEnableNotif() {
+    const p = await requestNotif();
+    if (p === 'granted') toast.success('已開啟通知 🔔');
+    else if (p === 'denied') toast('通知被拒絕，請到瀏覽器設定開啟');
+  }
 
   function handleAvatarPress() {
     pressTimer.current = setTimeout(() => setSwitcherOpen(true), 600);
@@ -147,6 +156,34 @@ export function ProfileDrawer({ open, onClose }: Props) {
                   <div className={`w-5 h-5 bg-white rounded-full shadow-sm mt-0.5 transition-transform ${isOnline ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
                 </div>
               </button>
+            </div>
+
+            {/* 通知開關 */}
+            <div className="bg-white rounded-2xl p-4 shadow-card">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-brand-sky/15 flex items-center justify-center shrink-0">
+                  <Bell className="w-4.5 h-4.5 text-brand-sky" strokeWidth={2} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-brand-ink">推播通知</p>
+                  <p className="text-xs text-zinc-400">
+                    {permission === 'granted' ? '已開啟，新邀請會提醒你'
+                      : permission === 'denied' ? '已被拒絕，請到瀏覽器設定開啟'
+                      : permission === 'unsupported' ? '此瀏覽器不支援（iPhone 請用 Safari 加入主畫面）'
+                      : '開啟後，關掉網頁也能收到新邀請'}
+                  </p>
+                </div>
+                {permission === 'granted' ? (
+                  <span className="shrink-0 text-xs font-bold text-status-available">已開啟</span>
+                ) : permission === 'default' ? (
+                  <button
+                    onClick={handleEnableNotif}
+                    className="shrink-0 text-xs font-bold text-white bg-brand-sky px-3.5 py-2 rounded-full active:scale-95 transition-transform"
+                  >
+                    開啟
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             {/* Nav links */}
