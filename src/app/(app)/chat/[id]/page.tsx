@@ -57,6 +57,12 @@ export default function ChatPage({ params }: ChatPageProps) {
   const router = useRouter();
   const { state, currentUser, sendChatMessage, confirmMeetup, confirmGroupAttendance } = useAppState();
 
+  // 安全返回：PWA 從推播進來沒有上一頁記錄時，router.back() 會卡住 → 改導到收件匣
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else router.push('/inbox');
+  };
+
   const threadId = id;
   const isGroup = id.startsWith('g-');
   const requestId = isGroup ? id.slice(2) : null;
@@ -195,7 +201,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         {/* Header */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
           <button
-            onClick={() => router.back()}
+            onClick={goBack}
             aria-label="返回"
             className="p-1.5 rounded-full hover:bg-brand-snow active:bg-brand-lavender transition-colors"
           >
@@ -504,7 +510,7 @@ export default function ChatPage({ params }: ChatPageProps) {
       <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
           <button
-            onClick={() => router.back()}
+            onClick={goBack}
             aria-label="返回"
             className="p-1.5 rounded-full hover:bg-brand-snow active:bg-brand-lavender transition-colors"
           >
@@ -575,7 +581,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
       <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
         <button
-          onClick={() => router.back()}
+          onClick={goBack}
           aria-label="返回"
           className="p-1.5 rounded-full hover:bg-brand-snow active:bg-brand-lavender transition-colors"
         >

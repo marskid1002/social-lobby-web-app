@@ -47,6 +47,12 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
   const [showNoSlotSheet, setShowNoSlotSheet]   = useState(false);
 
+  // 安全返回：PWA 從推播進來沒有上一頁記錄時，router.back() 會卡住 → 改導到收件匣
+  const goBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
+    else router.push('/inbox');
+  };
+
   const request = state.requests.find((r) => r.id === id);
   if (!request) return <div className="p-8 text-center text-zinc-400">找不到此邀請</div>;
 
@@ -107,7 +113,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   function handleClose() {
     closeRequest(id);
     showToast('邀請已關閉');
-    setTimeout(() => router.back(), 1200);
+    setTimeout(goBack, 1200);
   }
 
   function handleCancelJoin() {
@@ -170,7 +176,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     <div className="min-h-screen bg-brand-snow pb-32">
       {/* Top bar */}
       <div className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-brand-lavender px-4 py-3 flex items-center gap-3">
-        <button onClick={() => router.back()} className="p-1.5 rounded-full hover:bg-brand-ice" aria-label="返回">
+        <button onClick={goBack} className="p-1.5 rounded-full hover:bg-brand-ice" aria-label="返回">
           <ArrowLeft className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
         </button>
         <h1 className="flex-1 text-base font-semibold text-brand-ink">邀請詳情</h1>
