@@ -58,6 +58,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isUserProfile = pathname.startsWith('/u/');
   const isPlazaThread = /^\/plaza\/.+/.test(pathname);
   const isStore = pathname === '/store';
+  const isChat = pathname.startsWith('/chat/'); // 聊天頁全螢幕，使用自己的 header
 
   const isActingAsRosterGirl =
     currentUser?.role === 'escort' && MANAGER_ROSTER_IDS.includes(currentUser.id);
@@ -73,7 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <AsParamHandler />
       </Suspense>
 
-      {!isUserProfile && !isStore && (
+      {!isUserProfile && !isStore && !isChat && (
         <TopBar
           title={getTitle(pathname)}
           showSearch={pathname.startsWith('/lobby')}
@@ -102,13 +103,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {!isUserProfile && !isStore && !isPlazaThread && <NotificationBanner />}
+      {!isUserProfile && !isStore && !isPlazaThread && !isChat && <NotificationBanner />}
 
-      <main className={`flex-1 ${isPlazaThread || isStore ? '' : 'pb-24'}`}>
+      <main className={`flex-1 ${isPlazaThread || isStore || isChat ? '' : 'pb-24'}`}>
         {children}
       </main>
 
-      {!isPlazaThread && !isStore && <BottomNav />}
+      {!isPlazaThread && !isStore && !isChat && <BottomNav />}
       <ProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <DualIdentityBadge />
       <NotificationWatcher />

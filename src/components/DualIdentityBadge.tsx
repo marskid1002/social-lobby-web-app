@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 
 /**
@@ -8,7 +9,9 @@ import { useAppState } from '@/lib/state';
  */
 export function DualIdentityBadge() {
   const { state, swapIdentities, secondaryUnreadCount } = useAppState();
+  const pathname = usePathname();
 
+  if (pathname.startsWith('/chat/')) return null; // 聊天全螢幕時不顯示，避免擋到輸入框
   if (!state.secondaryUserId) return null;
 
   const secondaryUser = state.users.find((u) => u.id === state.secondaryUserId);
