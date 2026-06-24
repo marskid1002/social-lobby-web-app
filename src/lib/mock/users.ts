@@ -29,6 +29,7 @@ const CARD_PHOTOS: Record<string, string> = {
   'u-020': 'https://randomuser.me/api/portraits/men/33.jpg',
   'u-021': 'https://randomuser.me/api/portraits/men/48.jpg',
   'u-022': 'https://randomuser.me/api/portraits/men/62.jpg',
+  'u-023': 'https://randomuser.me/api/portraits/men/75.jpg',
 };
 
 export const users: User[] = [
@@ -73,6 +74,22 @@ export const users: User[] = [
     bio: '帶隊出來玩，人脈廣，反應快。',
     defaultArea: '信義區',
     interests: ['夜生活', '酒吧', 'KTV'],
+    tier: 'vip',
+    role: 'manager',
+    credits: 500,
+    monthlyRequestsLeft: 999,
+    lineOAFollowed: true,
+    createdAt: baseDate,
+  },
+  {
+    id: 'u-023',
+    lineUserId: 'U023ganbu02',
+    nickname: '林經理',
+    avatarUrl: CARD_PHOTOS['u-023'],
+    cardImageUrl: CARD_PHOTOS['u-023'],
+    bio: '另一線幹部，配合接單與安排出席。',
+    defaultArea: '大安區',
+    interests: ['夜生活', '酒吧', '商務'],
     tier: 'vip',
     role: 'manager',
     credits: 500,

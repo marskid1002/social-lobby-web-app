@@ -47,13 +47,17 @@ export function OperatorHome() {
   const [selectedGirls, setSelectedGirls] = useState<string[]>([]); // 多選
   const [toast, setToast] = useState('');
 
-  // 新進活動邀請：所有 open 狀態、由一般/VIP 用戶（非女伴/幹部）發起的局。
-  // 包含 VIP 剛發布的新局，依建立時間新到舊排序。
+  // 新進活動邀請：所有 open 狀態的局，包含
+  //   1) VIP/一般用戶發的局
+  //   2) 其他幹部發的局（讓兩個幹部互相看得到；不顯示自己發的）
   const incomingRequests = state.requests
     .filter((r) => {
       if (r.status !== 'open') return false;
       const creator = state.users.find((u) => u.id === r.creatorId);
-      return creator?.role === 'user'; // user / VIP 用戶
+      if (!creator) return false;
+      if (creator.role === 'user') return true; // VIP / 一般用戶
+      if (creator.role === 'manager' && r.creatorId !== state.currentUserId) return true; // 其他幹部
+      return false;
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 

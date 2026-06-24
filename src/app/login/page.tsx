@@ -23,10 +23,17 @@ const LOGIN_ROLES = [
   },
   {
     userId: 'u-018',
-    label: '幹部 / 經紀人',
+    label: '幹部 A（陳幹部）',
     desc: '管理女伴・接單・安排出席',
     badgeColor: 'bg-purple-100 text-purple-700',
     emoji: '🎯',
+  },
+  {
+    userId: 'u-023',
+    label: '幹部 B（林經理）',
+    desc: '另一線幹部・可看見彼此的局',
+    badgeColor: 'bg-indigo-100 text-indigo-700',
+    emoji: '🧭',
   },
 ];
 

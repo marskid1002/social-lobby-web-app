@@ -329,9 +329,11 @@ export function useAppState() {
       expiresAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
       metrics: { impressions: 0, views: 0, joins: 0 },
     };
-    // 通知所有幹部：有新的局可安排出席
+    // 通知幹部：有新的局可安排出席（排除發局者本人，避免自己發自己收）
     const posterId = getState().currentUserId;
-    const managerIds = getState().users.filter((u) => u.role === 'manager').map((u) => u.id);
+    const managerIds = getState().users
+      .filter((u) => u.role === 'manager' && u.id !== posterId)
+      .map((u) => u.id);
     const now = new Date().toISOString();
     const managerNotifs: UpdateEvent[] = managerIds.map((mid, idx) => ({
       id: `ue-newreq-${Date.now()}-${idx}`,
