@@ -16,10 +16,17 @@ function LineIcon() {
 const LOGIN_ROLES = [
   {
     userId: 'u-017',
-    label: 'VIP 用戶',
+    label: 'VIP A（VIP 示範）',
     desc: '發局・邀請女伴・完整功能',
     badgeColor: 'bg-amber-100 text-amber-600',
     emoji: '👑',
+  },
+  {
+    userId: 'u-021',
+    label: 'VIP B（張偉宏）',
+    desc: '發局・邀請女伴・完整功能',
+    badgeColor: 'bg-yellow-100 text-yellow-700',
+    emoji: '⭐',
   },
   {
     userId: 'u-018',
