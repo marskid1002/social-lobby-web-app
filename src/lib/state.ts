@@ -58,6 +58,7 @@ export interface AppState {
   momentPosts: MomentPost[];
   likedPostIds: string[];
   secondaryUserId: string | null; // 第二登入身份（雙身份 demo 用）
+  rosters: { id: string; girlIds: string[] }[]; // 各幹部的女伴名單（id = 幹部 userId）
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
@@ -89,6 +90,11 @@ function getSeedState(): AppState {
     momentPosts: seedMomentPosts,
     likedPostIds: [],
     secondaryUserId: null,
+    // 各幹部預設女伴名單（屬設定，不受 CLEAN_START 清除影響）
+    rosters: [
+      { id: 'u-018', girlIds: ['u-002', 'u-005', 'u-009', 'u-015'] },
+      { id: 'u-023', girlIds: ['u-003', 'u-006', 'u-011'] },
+    ],
   };
 }
 
@@ -956,6 +962,17 @@ export function useAppState() {
     setState((prev) => ({ ...prev, secondaryUserId: userId }));
   }, []);
 
+  // 設定某幹部的女伴名單（本機設定，不跨裝置同步）
+  const setRoster = useCallback((managerId: string, girlIds: string[]) => {
+    setState((prev) => {
+      const exists = prev.rosters.some((r) => r.id === managerId);
+      const rosters = exists
+        ? prev.rosters.map((r) => (r.id === managerId ? { ...r, girlIds } : r))
+        : [...prev.rosters, { id: managerId, girlIds }];
+      return { ...prev, rosters };
+    });
+  }, []);
+
   // 取得第二身份的未讀通知數
   const secondaryUnreadCount = state.secondaryUserId
     ? state.updates.filter(
@@ -1023,6 +1040,7 @@ export function useAppState() {
     clearInboxUnread,
     likePost,
     setSecondaryUser,
+    setRoster,
     swapIdentities,
     secondaryUnreadCount,
   };

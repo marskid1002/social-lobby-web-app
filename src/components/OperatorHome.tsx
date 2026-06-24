@@ -7,7 +7,6 @@ import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Bell, X, Check, UserCog } from 'lucide-react';
 
-const ROSTER_IDS = ['u-002', 'u-005', 'u-009', 'u-015'];
 
 const TYPE_LABELS: Record<string, string> = {
   after_party: 'After Party',
@@ -40,28 +39,48 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchUser } = useAppState();
+  const { state, dispatchGirl, switchUser, setRoster } = useAppState();
   const router = useRouter();
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
   const [selectedGirls, setSelectedGirls] = useState<string[]>([]); // 多選
   const [toast, setToast] = useState('');
+  const [rosterEditOpen, setRosterEditOpen] = useState(false);
+  const [rosterDraft, setRosterDraft] = useState<string[]>([]);
 
-  // 新進活動邀請：所有 open 狀態的局，包含
-  //   1) VIP/一般用戶發的局
-  //   2) 其他幹部發的局（讓兩個幹部互相看得到；不顯示自己發的）
+  // 目前幹部的女伴名單（可自行設定，存本機）
+  const currentRosterIds = state.rosters.find((r) => r.id === state.currentUserId)?.girlIds ?? [];
+
+  // 所有可加入名單的女伴（escort 角色）
+  const allEscorts = state.users.filter((u) => u.role === 'escort');
+
+  function openRosterEdit() {
+    setRosterDraft(currentRosterIds);
+    setRosterEditOpen(true);
+  }
+  function toggleRosterDraft(girlId: string) {
+    setRosterDraft((prev) =>
+      prev.includes(girlId) ? prev.filter((id) => id !== girlId) : [...prev, girlId]
+    );
+  }
+  function saveRoster() {
+    setRoster(state.currentUserId, rosterDraft);
+    setRosterEditOpen(false);
+    setToast('✅ 已更新女伴名單');
+    setTimeout(() => setToast(''), 2500);
+  }
+
+  // 新進活動邀請：所有 open 狀態、由 VIP/一般用戶或任一幹部（含自己）發的局
   const incomingRequests = state.requests
     .filter((r) => {
       if (r.status !== 'open') return false;
       const creator = state.users.find((u) => u.id === r.creatorId);
       if (!creator) return false;
-      if (creator.role === 'user') return true; // VIP / 一般用戶
-      if (creator.role === 'manager' && r.creatorId !== state.currentUserId) return true; // 其他幹部
-      return false;
+      return creator.role === 'user' || creator.role === 'manager';
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const rosterGirls = ROSTER_IDS.map((id) => state.users.find((u) => u.id === id)).filter(Boolean);
+  const rosterGirls = currentRosterIds.map((id) => state.users.find((u) => u.id === id)).filter(Boolean);
 
   // 該局已派工的旗下女伴 id（interested 或 joining）
   function dispatchedGirlIds(requestId: string) {
@@ -69,7 +88,7 @@ export function OperatorHome() {
       .filter(
         (r) =>
           r.requestId === requestId &&
-          ROSTER_IDS.includes(r.userId) &&
+          currentRosterIds.includes(r.userId) &&
           (r.responseStatus === 'interested' || r.responseStatus === 'joining')
       )
       .map((r) => r.userId);
@@ -194,8 +213,25 @@ export function OperatorHome() {
 
       {/* Roster section */}
       <div className="flex items-center gap-3 px-4 py-3 mt-2 bg-brand-snow border-y border-zinc-100">
-        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">我的社群</p>
+        <p className="text-sm font-bold text-brand-ink uppercase tracking-wider flex-1">
+          我的社群（{currentRosterIds.length}）
+        </p>
+        <button
+          onClick={openRosterEdit}
+          className="shrink-0 text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1.5 rounded-full active:bg-purple-100 transition-colors"
+        >
+          編輯名單
+        </button>
       </div>
+
+      {rosterGirls.length === 0 && (
+        <div className="px-4 py-6 text-center">
+          <p className="text-sm text-zinc-400">尚未設定女伴名單</p>
+          <button onClick={openRosterEdit} className="mt-2 text-xs font-bold text-purple-600 underline">
+            點此設定
+          </button>
+        </div>
+      )}
 
       <div>
         {rosterGirls.map((user) => {
@@ -302,6 +338,56 @@ export function OperatorHome() {
               className="w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
             >
               確認出席{selectedGirls.length > 0 ? `（${selectedGirls.length} 位）` : ''}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 編輯女伴名單 sheet */}
+      {rosterEditOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setRosterEditOpen(false)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4 shrink-0" />
+            <p className="text-base font-bold text-brand-ink text-center shrink-0">設定我的女伴名單</p>
+            <p className="text-xs text-zinc-400 mb-4 text-center shrink-0">
+              勾選要納入你旗下的女伴（已選 {rosterDraft.length}）
+            </p>
+
+            <div className="flex flex-col gap-2 mb-4 overflow-y-auto">
+              {allEscorts.map((user) => {
+                const checked = rosterDraft.includes(user.id);
+                return (
+                  <button
+                    key={user.id}
+                    onClick={() => toggleRosterDraft(user.id)}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
+                      checked ? 'border-purple-400 bg-purple-50' : 'border-transparent bg-brand-snow'
+                    }`}
+                  >
+                    <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-brand-ink">{user.nickname}</p>
+                      <p className="text-xs text-zinc-400">{user.defaultArea}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 ${
+                      checked ? 'bg-purple-500 border-purple-500' : 'border-zinc-300'
+                    }`}>
+                      {checked && <Check size={12} className="text-white" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={saveRoster}
+              className="shrink-0 w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold active:bg-purple-600 transition-colors"
+            >
+              儲存名單（{rosterDraft.length} 位）
             </button>
           </div>
         </div>
