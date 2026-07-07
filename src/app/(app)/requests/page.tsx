@@ -102,9 +102,9 @@ export default function RequestsPage() {
     ])
   );
 
-  // Browseable = not yet responded to + not at cap
+  // Browseable = not yet responded to（#5 派工無上限：不再以 peopleCount 篩掉額滿的局）
   const browseable = baseRequests.filter(
-    (r) => !myRespondedRequestIds.has(r.id) && joinerCounts[r.id] < r.peopleCount
+    (r) => !myRespondedRequestIds.has(r.id)
   );
 
   const areaRequests = browseable.filter((r) => r.area === myArea);

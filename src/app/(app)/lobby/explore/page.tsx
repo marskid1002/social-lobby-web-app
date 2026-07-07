@@ -10,21 +10,8 @@ import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
 import { getRequestGradient, getRequestAccentColor, REQUEST_TYPE_LABELS } from '@/lib/utils';
 
-const STATUS_LABELS: Record<string, string> = {
-  available: '有空',
-  bring_people: '可同行',
-  fill_spot: '臨時有空',
-  busy: '忙碌中',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  available: 'bg-green-100 text-green-700',
-  bring_people: 'bg-blue-100 text-blue-700',
-  fill_spot: 'bg-yellow-100 text-yellow-700',
-  busy: 'bg-zinc-100 text-zinc-500',
-};
-
 const SECTION_B_LIMIT: Record<string, number> = {
+  guest: 3,   // 訪客只看 3 位，其餘馬賽克
   free: 0,
   standard: 3,
   premium: 10,
@@ -137,13 +124,34 @@ function MyRequestCard({
   );
 }
 
-function FemaleListRow({ userId }: { userId: string }) {
+function FemaleListRow({ userId, blurred }: { userId: string; blurred?: boolean }) {
   const { state } = useAppState();
   const router = useRouter();
   const user = state.users.find((u) => u.id === userId);
   const onlineStatus = state.onlineStatuses.find((s) => s.userId === userId);
 
   if (!user || !onlineStatus) return null;
+
+  // 訪客超過可見數的卡片：頭貼與名字馬賽克、不可點擊
+  if (blurred) {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-zinc-100 w-full select-none pointer-events-none">
+        <div className="relative shrink-0">
+          <img
+            src={user.avatarUrl}
+            alt=""
+            aria-hidden
+            className="w-10 h-10 rounded-full object-cover blur-[6px]"
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="h-3.5 w-24 rounded bg-zinc-200 blur-[2px]" />
+          <div className="h-2.5 w-16 rounded bg-zinc-100 mt-2 blur-[2px]" />
+        </div>
+        <span className="text-[10px] font-semibold text-zinc-400">🔒</span>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -161,8 +169,8 @@ function FemaleListRow({ userId }: { userId: string }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</span>
-          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[onlineStatus.status] ?? 'bg-zinc-100 text-zinc-500'}`}>
-            {STATUS_LABELS[onlineStatus.status] ?? onlineStatus.status}
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700">
+            上線
           </span>
         </div>
         <p className="text-xs text-zinc-400 mt-0.5">
@@ -203,7 +211,7 @@ function ExploreContent() {
     const interested = state.responses.filter(
       (r) => r.requestId === req.id && r.responseStatus === 'interested'
     ).length;
-    const atCap = req.status === 'closed' || joiners.length >= req.peopleCount;
+    const atCap = req.status === 'closed'; // #5 派工無上限：僅已關閉才算結束
     return { req, joiners, interested, atCap };
   });
 
@@ -219,10 +227,13 @@ function ExploreContent() {
     .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime())
     .map((s) => s.userId);
 
-  const limit = SECTION_B_LIMIT[currentUser?.tier ?? 'free'] ?? 0;
+  const tier = currentUser?.tier ?? 'free';
+  const isGuest = tier === 'guest';
+  const limit = SECTION_B_LIMIT[tier] ?? 0;
   const visibleFemaleIds = limit === Infinity ? femaleUserIds : femaleUserIds.slice(0, limit);
   const hasMoreFemales = femaleUserIds.length > visibleFemaleIds.length;
-  const sectionBRenderIds = currentUser?.tier === 'free' ? femaleUserIds : visibleFemaleIds;
+  // free：整段模糊；guest：全部顯示但超過 limit 的單張馬賽克；其餘：只顯示可見數
+  const sectionBRenderIds = (tier === 'free' || isGuest) ? femaleUserIds : visibleFemaleIds;
 
   return (
     <div
@@ -284,9 +295,9 @@ function ExploreContent() {
 
       {/* === SECTION B: Online Women === */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
-        <div className={currentUser?.tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}>
-          {sectionBRenderIds.map((uid) => (
-            <FemaleListRow key={uid} userId={uid} />
+        <div className={tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}>
+          {sectionBRenderIds.map((uid, idx) => (
+            <FemaleListRow key={uid} userId={uid} blurred={isGuest && idx >= limit} />
           ))}
         </div>
 

@@ -22,6 +22,7 @@ const PRIVATE_INVITE_CREDIT_COST = 3;
 const EXTRA_SLOT_CREDIT_COST = 35;
 
 export const TIER_MONTHLY_LIMITS: Record<string, number> = {
+  guest: 0,
   free: 3,
   standard: 5,
   premium: 10,
@@ -29,6 +30,7 @@ export const TIER_MONTHLY_LIMITS: Record<string, number> = {
 };
 
 export const TIER_SLOT_CAPS: Record<string, number> = {
+  guest: 0,
   free: 1,
   standard: 3,
   premium: 5,
@@ -606,12 +608,14 @@ export function useAppState() {
       read: false,
     };
 
+    const dispatcherId = s.currentUserId; // 派工的幹部（客戶接受後由此幹部代談）
+
     setState((prev) => {
       // 若是先前 withdrawn 的回應則重新啟用，否則新增一筆
       const responses = existing
         ? prev.responses.map((r) =>
             r.id === existing.id
-              ? { ...r, responseStatus: 'interested' as const, createdAt: now }
+              ? { ...r, responseStatus: 'interested' as const, createdAt: now, dispatcherId }
               : r
           )
         : [
@@ -622,6 +626,7 @@ export function useAppState() {
               userId: girlId,
               responseStatus: 'interested' as const,
               createdAt: now,
+              dispatcherId,
             },
           ];
       return { ...prev, responses, updates: [notif, ...prev.updates] };
@@ -646,32 +651,30 @@ export function useAppState() {
       const req = prev.requests.find((r) => r.id === target.requestId);
       if (!req) return prev;
 
-      // Hard cap guard — never accept past peopleCount
-      const currentJoiners = prev.responses.filter(
-        (r) => r.requestId === target.requestId && r.responseStatus === 'joining'
-      ).length;
-      if (currentJoiners >= req.peopleCount) return prev;
+      // #5 派工無上限：不再以 peopleCount 擋接受、也不自動關閉需求
 
       const now = new Date().toISOString();
       const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
-      const isGroup = req.peopleCount > 1;
-      const groupThreadId = isGroup ? `g-${target.requestId}` : null;
+
+      // #7 幹部代談：若此加入是幹部派工，聊天對象為該幹部（1:1），否則為女伴本人
+      const chatPartnerId = target.dispatcherId ?? target.userId;
 
       const newInvite: Invitation = {
         id: `i-accept-${Date.now()}`,
         requestId: target.requestId,
-        fromUserId: target.userId,     // escort
-        toUserId: prev.currentUserId,  // creator
+        fromUserId: chatPartnerId,     // 代談幹部（或女伴）
+        toUserId: prev.currentUserId,  // creator（客戶）
         status: 'accepted',
         createdAt: now,
         respondedAt: now,
         chatExpiresAt,
-        groupThreadId: isGroup ? groupThreadId! : undefined,
+        dispatcherId: target.dispatcherId,
       };
 
-      const escortNotif: UpdateEvent = {
+      // 通知聊天對象（幹部或女伴）聊天室已開啟
+      const partnerNotif: UpdateEvent = {
         id: `ue-accept-${Date.now()}`,
-        userId: target.userId,
+        userId: chatPartnerId,
         actorId: prev.currentUserId,
         eventType: 'invite_accepted',
         refRequestId: target.requestId,
@@ -683,28 +686,19 @@ export function useAppState() {
         r.id === responseId ? { ...r, responseStatus: 'joining' as const } : r
       );
 
-      // Auto-close request if now at cap
-      const joinersCount = updatedResponses.filter(
-        (r) => r.requestId === target.requestId && r.responseStatus === 'joining'
-      ).length;
-      const autoClose = joinersCount >= req.peopleCount;
-
       const creatorUser = prev.users.find((u) => u.id === prev.currentUserId);
       sendPushNotification(
-        target.userId,
-        '你的申請已被接受！',
-        `${creatorUser?.nickname ?? '某人'} 接受了你的加入，聊天室已開啟`,
+        chatPartnerId,
+        '客戶已同意入局！',
+        `${creatorUser?.nickname ?? '某位客戶'} 已同意，聊天室已開啟`,
         '/inbox'
       );
 
       return {
         ...prev,
         responses: updatedResponses,
-        requests: autoClose
-          ? prev.requests.map((r) => r.id === target.requestId ? { ...r, status: 'closed' as const } : r)
-          : prev.requests,
         invitations: [...prev.invitations, newInvite],
-        updates: [escortNotif, ...prev.updates],
+        updates: [partnerNotif, ...prev.updates],
         inboxUnread: true,
       };
     });

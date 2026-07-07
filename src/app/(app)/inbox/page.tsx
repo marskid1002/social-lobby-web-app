@@ -29,15 +29,11 @@ export default function InboxPage() {
 
   // ── Match cards — one per request ───────────────────────────────────────────
 
-  // Collect all accepted, unconfirmed invitations relevant to current user
+  // Collect all accepted, unconfirmed invitations where current user is a chat participant
+  // （涵蓋：客戶=toUserId、代談幹部/女伴=fromUserId、私人邀請雙方）
   const relevantInvites = state.invitations.filter((i) => {
-    if (i.status !== 'accepted') return false;
-    if (isEscort) return i.fromUserId === state.currentUserId && !i.meetupConfirmed;
-    // User (creator): escort joined MY request, or private invite I sent
-    return (
-      (i.requestId !== null && i.toUserId === state.currentUserId && !i.meetupConfirmed) ||
-      (i.requestId === null && i.fromUserId === state.currentUserId && !i.meetupConfirmed)
-    );
+    if (i.status !== 'accepted' || i.meetupConfirmed) return false;
+    return i.fromUserId === state.currentUserId || i.toUserId === state.currentUserId;
   });
 
   // Deduplicate by requestId — one card per request (private invites keep their own card)
@@ -59,9 +55,11 @@ export default function InboxPage() {
       if (seenRequestIds.has(inv.requestId)) continue;
       seenRequestIds.add(inv.requestId);
 
-      const req = state.requests.find((r) => r.id === inv.requestId);
-      const isGroup = (req?.peopleCount ?? 1) > 1;
-      const threadId = isGroup ? `g-${inv.requestId}` : getThreadId(state.currentUserId, isEscort ? inv.toUserId : inv.fromUserId);
+      // isGroup 僅以 invitation.groupThreadId 判定（幹部代談一律 1:1）
+      const isGroup = !!inv.groupThreadId;
+      // 對話另一方 = invitation 中不是自己的那位
+      const otherUserId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
+      const threadId = isGroup ? inv.groupThreadId! : getThreadId(state.currentUserId, otherUserId);
 
       // All joiners for this request
       const joinerIds = state.responses
@@ -70,8 +68,6 @@ export default function InboxPage() {
       const joinerUsers = joinerIds
         .map((id) => state.users.find((u) => u.id === id))
         .filter(Boolean) as typeof state.users;
-
-      const otherUserId = isEscort ? inv.toUserId : inv.fromUserId;
 
       matchCards.push({
         key: inv.requestId,

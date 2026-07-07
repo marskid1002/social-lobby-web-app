@@ -15,7 +15,7 @@ export type ResponseStatus = 'interested' | 'joining' | 'declined' | 'withdrawn'
 
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'expired';
 
-export type Tier = 'free' | 'standard' | 'premium' | 'vip';
+export type Tier = 'guest' | 'free' | 'standard' | 'premium' | 'vip';
 
 export type Role = 'user' | 'escort' | 'manager' | 'operator' | 'admin';
 
@@ -84,6 +84,7 @@ export interface Response {
   responseStatus: ResponseStatus;
   note?: string;
   createdAt: string;         // ISO
+  dispatcherId?: string;     // 若為幹部派工，記錄派工幹部 id（客戶接受後由幹部代談）
 }
 
 export interface Invitation {
@@ -98,6 +99,7 @@ export interface Invitation {
   chatExpiresAt?: string;    // ISO — 8h after acceptance; chat locks after this
   meetupConfirmed?: boolean; // true once user confirms the meetup happened
   groupThreadId?: string;    // set for group requests (g-{requestId}); null for 1:1
+  dispatcherId?: string;     // 若聊天對象是代談幹部，記錄該幹部 id
 }
 
 export interface MeetRecord {

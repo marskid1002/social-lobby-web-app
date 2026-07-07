@@ -42,6 +42,13 @@ const LOGIN_ROLES = [
     badgeColor: 'bg-indigo-100 text-indigo-700',
     emoji: '🧭',
   },
+  {
+    userId: 'u-099',
+    label: '訪客',
+    desc: '只看 3 位在線・其餘需登入',
+    badgeColor: 'bg-zinc-100 text-zinc-500',
+    emoji: '👀',
+  },
 ];
 
 export default function LoginPage() {

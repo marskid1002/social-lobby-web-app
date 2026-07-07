@@ -9,19 +9,6 @@ import { zhTW } from 'date-fns/locale';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import type { RequestType } from '@/lib/mock';
 
-const STATUS_LABELS: Record<string, string> = {
-  available: '有空',
-  fill_spot: '臨時有空',
-  bring_people: '可同行',
-  busy: '忙碌中',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  available: '#10B981',
-  fill_spot: '#F59E0B',
-  bring_people: '#3B82F6',
-  busy: '#6B7280',
-};
 
 const CARD_GRADIENTS = ['bg-gradient-card-a', 'bg-gradient-card-b', 'bg-gradient-card-c'];
 
@@ -160,9 +147,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         {onlineStatus && (
           <div className="flex justify-center mb-4">
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-brand-snow border border-brand-lavender">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[onlineStatus.status] }} />
+              <span className="w-2 h-2 rounded-full bg-green-400" />
               <span className="text-xs font-medium text-brand-ink">
-                {STATUS_LABELS[onlineStatus.status]} · {onlineStatus.area} ·{' '}
+                上線 · {onlineStatus.area} ·{' '}
                 {formatDistanceToNow(new Date(onlineStatus.lastSeen), { locale: zhTW, addSuffix: true })}
               </span>
             </div>

@@ -5,20 +5,6 @@ import type { User, OnlineStatus } from '@/lib/mock';
 
 const CARD_GRADIENTS = ['bg-gradient-card-a', 'bg-gradient-card-b', 'bg-gradient-card-c'];
 
-const STATUS_LABELS: Record<string, string> = {
-  available: '可接局',
-  fill_spot: '可補位',
-  bring_people: '可帶人',
-  busy: '忙碌',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  available: '#10B981',
-  fill_spot: '#F59E0B',
-  bring_people: '#3B82F6',
-  busy: '#6B7280',
-};
-
 interface Props {
   user: User;
   status?: OnlineStatus;
@@ -68,9 +54,9 @@ export function UserCard({ user, status, index, hasMet }: Props) {
         </div>
         {status && (
           <div className="flex items-center gap-1.5 mt-1">
-            <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[status.status] }} />
+            <span className="inline-block w-2 h-2 rounded-full shrink-0 bg-green-400" />
             <span className="text-xs font-medium text-white/80">
-              {STATUS_LABELS[status.status]} · {status.area}
+              上線 · {status.area}
             </span>
           </div>
         )}

@@ -71,7 +71,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   // Split responses by status
   const interestedList = responses.filter((r) => r.responseStatus === 'interested');
   const joiners        = responses.filter((r) => r.responseStatus === 'joining');
-  const isAtCap        = joiners.length >= request.peopleCount;
+  const isAtCap        = request.status === 'closed'; // #5 派工無上限：僅已關閉才視為不可加入
 
   // FOMO viewers (exclude anyone who has already responded)
   const respondedIds = new Set(responses.map((r) => r.userId));

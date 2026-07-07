@@ -30,6 +30,7 @@ const CARD_PHOTOS: Record<string, string> = {
   'u-021': 'https://randomuser.me/api/portraits/men/48.jpg',
   'u-022': 'https://randomuser.me/api/portraits/men/62.jpg',
   'u-023': 'https://randomuser.me/api/portraits/men/75.jpg',
+  'u-099': 'https://randomuser.me/api/portraits/lego/1.jpg',
 };
 
 export const users: User[] = [
@@ -383,6 +384,22 @@ export const users: User[] = [
     credits: 220,
     monthlyRequestsLeft: 999,
     lineOAFollowed: true,
+    createdAt: baseDate,
+  },
+  {
+    id: 'u-099',
+    lineUserId: 'U099guest',
+    nickname: '訪客',
+    avatarUrl: CARD_PHOTOS['u-099'],
+    cardImageUrl: CARD_PHOTOS['u-099'],
+    bio: '隨意逛逛看看。',
+    defaultArea: '信義區',
+    interests: [],
+    tier: 'guest',
+    role: 'user',
+    credits: 0,
+    monthlyRequestsLeft: 0,
+    lineOAFollowed: false,
     createdAt: baseDate,
   },
   {

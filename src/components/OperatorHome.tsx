@@ -24,20 +24,6 @@ const TYPE_COLORS: Record<string, string> = {
   other: '#DED9E5',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  available: '有空',
-  bring_people: '可同行',
-  fill_spot: '臨時有空',
-  busy: '忙碌中',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  available: 'bg-green-100 text-green-700',
-  bring_people: 'bg-blue-100 text-blue-700',
-  fill_spot: 'bg-yellow-100 text-yellow-700',
-  busy: 'bg-zinc-100 text-zinc-500',
-};
-
 export function OperatorHome() {
   const { state, dispatchGirl, switchUser, setRoster } = useAppState();
   const router = useRouter();
@@ -94,23 +80,19 @@ export function OperatorHome() {
       .map((r) => r.userId);
   }
 
-  // 已派人數是否已達該局需求人數上限
-  function isRequestFull(req: { id: string; peopleCount: number }) {
-    return dispatchedGirlIds(req.id).length >= req.peopleCount;
+  // #5 派工無上限：不再以 peopleCount 鎖定卡片（只有 closed 才視為結束）
+  function isRequestClosed(req: { id: string; status: string }) {
+    return req.status === 'closed';
   }
 
   // 開啟派工彈窗的局物件
   const activeReq = dispatchSheet ? state.requests.find((r) => r.id === dispatchSheet) : null;
   const alreadyDispatched = dispatchSheet ? dispatchedGirlIds(dispatchSheet) : [];
-  const remainingSlots = activeReq ? activeReq.peopleCount - alreadyDispatched.length : 0;
 
   function toggleGirl(girlId: string) {
-    setSelectedGirls((prev) => {
-      if (prev.includes(girlId)) return prev.filter((id) => id !== girlId);
-      // 不可超過剩餘名額
-      if (prev.length >= remainingSlots) return prev;
-      return [...prev, girlId];
-    });
+    setSelectedGirls((prev) =>
+      prev.includes(girlId) ? prev.filter((id) => id !== girlId) : [...prev, girlId]
+    );
   }
 
   function handleDispatch() {
@@ -154,7 +136,7 @@ export function OperatorHome() {
           {incomingRequests.map((req) => {
             const creator = state.users.find((u) => u.id === req.creatorId);
             const dispatchedCount = dispatchedGirlIds(req.id).length;
-            const isFull = isRequestFull(req) || req.status === 'closed';
+            const isFull = isRequestClosed(req); // #5 只有已關閉才鎖定
             const typeColor = TYPE_COLORS[req.requestType] ?? '#DED9E5';
             const typeLabel = TYPE_LABELS[req.requestType] ?? req.requestType;
 
@@ -194,14 +176,14 @@ export function OperatorHome() {
                   {isFull ? (
                     <div className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-zinc-100 text-sm font-semibold text-zinc-400">
                       <Check size={14} />
-                      <span>已安排 {dispatchedCount}/{req.peopleCount}</span>
+                      <span>已結束（已安排 {dispatchedCount} 位）</span>
                     </div>
                   ) : (
                     <button
                       onClick={() => { setDispatchSheet(req.id); setSelectedGirls([]); }}
                       className="flex-1 py-2.5 rounded-xl bg-purple-100 text-sm font-semibold text-purple-700 border border-purple-200 active:bg-purple-200 transition-colors"
                     >
-                      {dispatchedCount > 0 ? `安排出席（${dispatchedCount}/${req.peopleCount}）` : '安排出席'}
+                      {dispatchedCount > 0 ? `再安排（已 ${dispatchedCount} 位）` : '安排出席'}
                     </button>
                   )}
                 </div>
@@ -236,7 +218,7 @@ export function OperatorHome() {
       <div>
         {rosterGirls.map((user) => {
           if (!user) return null;
-          const onlineStatus = state.onlineStatuses.find((s) => s.userId === user.id);
+          const isOnline = state.onlineUserIds.includes(user.id);
           return (
             <div
               key={user.id}
@@ -244,18 +226,14 @@ export function OperatorHome() {
             >
               <button onClick={() => router.push(`/u/${user.id}`)} className="relative shrink-0">
                 <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover" />
-                {onlineStatus && (
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-white" />
-                )}
+                <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
               </button>
               <button onClick={() => router.push(`/u/${user.id}`)} className="flex-1 min-w-0 text-left">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</span>
-                  {onlineStatus && (
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[onlineStatus.status] ?? 'bg-zinc-100 text-zinc-500'}`}>
-                      {STATUS_LABELS[onlineStatus.status] ?? onlineStatus.status}
-                    </span>
-                  )}
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isOnline ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-400'}`}>
+                    {isOnline ? '上線' : '離線'}
+                  </span>
                 </div>
                 <p className="text-xs text-zinc-400 mt-0.5">{user.defaultArea}</p>
               </button>
@@ -290,37 +268,35 @@ export function OperatorHome() {
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
             <p className="text-base font-bold text-brand-ink text-center">安排出席人選</p>
             <p className="text-xs text-zinc-400 mb-4 text-center">
-              此局需求 {activeReq?.peopleCount ?? 0} 人 · 還可安排 {remainingSlots} 位
-              {selectedGirls.length > 0 && `（已選 ${selectedGirls.length}）`}
+              此局目標 {activeReq?.peopleCount ?? 0} 人（可超額安排）
+              {selectedGirls.length > 0 && `· 已選 ${selectedGirls.length}`}
             </p>
 
             <div className="flex flex-col gap-2 mb-5">
               {rosterGirls.map((user) => {
                 if (!user) return null;
-                const onlineStatus = state.onlineStatuses.find((s) => s.userId === user.id);
+                const isOnline = state.onlineUserIds.includes(user.id);
                 const isAlready = alreadyDispatched.includes(user.id);
                 const isSelected = selectedGirls.includes(user.id);
-                const atLimit = !isSelected && selectedGirls.length >= remainingSlots;
-                const disabled = isAlready || atLimit;
                 return (
                   <button
                     key={user.id}
                     onClick={() => !isAlready && toggleGirl(user.id)}
-                    disabled={disabled}
+                    disabled={isAlready}
                     className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
                       isSelected
                         ? 'border-purple-400 bg-purple-50'
                         : 'border-transparent bg-brand-snow'
-                    } ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    } ${isAlready ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-brand-ink">{user.nickname}</p>
                       {isAlready ? (
                         <p className="text-xs text-purple-500 font-semibold">已安排</p>
-                      ) : onlineStatus ? (
-                        <p className="text-xs text-zinc-400">{STATUS_LABELS[onlineStatus.status] ?? '在線'}</p>
-                      ) : null}
+                      ) : (
+                        <p className="text-xs text-zinc-400">{isOnline ? '🟢 上線' : '⚪ 離線'}</p>
+                      )}
                     </div>
                     {isSelected && (
                       <div className="w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center shrink-0">
