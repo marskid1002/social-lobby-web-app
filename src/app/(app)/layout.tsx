@@ -12,10 +12,6 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { Suspense } from 'react';
 
-// IDs managed by the demo talent manager (u-018)
-const MANAGER_ROSTER_IDS = ['u-002', 'u-005', 'u-009', 'u-015'];
-const MANAGER_ID = 'u-018';
-
 const PAGE_TITLES: Record<string, string> = {
   '/requests': '需求',
   '/inbox': '收件匣',
@@ -54,17 +50,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState('');
   const pathname = usePathname();
   const router = useRouter();
-  const { currentUser, switchUser } = useAppState();
+  const { currentUser, state, returnToManager } = useAppState();
   const isUserProfile = pathname.startsWith('/u/');
   const isPlazaThread = /^\/plaza\/.+/.test(pathname);
   const isStore = pathname === '/store';
   const isChat = pathname.startsWith('/chat/'); // 聊天頁全螢幕，使用自己的 header
 
-  const isActingAsRosterGirl =
-    currentUser?.role === 'escort' && MANAGER_ROSTER_IDS.includes(currentUser.id);
+  // 幹部以旗下小姐身份操作中（有記錄原幹部）
+  const isActingAsRosterGirl = !!state.actingFromManagerId && currentUser?.role === 'escort';
 
   function handleReturnToManager() {
-    switchUser(MANAGER_ID);
+    returnToManager();
     router.push('/lobby/explore');
   }
 

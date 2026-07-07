@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { resetState } from '@/lib/state';
+import { users } from '@/lib/mock';
 
 function LineIcon() {
   return (
@@ -12,8 +13,8 @@ function LineIcon() {
   );
 }
 
-// 支援的登入角色（僅展示 VIP 與幹部）
-const LOGIN_ROLES = [
+// 客戶（VIP）與訪客快速登入
+const PRIMARY_ROLES = [
   {
     userId: 'u-017',
     label: 'VIP A（VIP 示範）',
@@ -29,20 +30,6 @@ const LOGIN_ROLES = [
     emoji: '⭐',
   },
   {
-    userId: 'u-018',
-    label: '幹部 A（陳幹部）',
-    desc: '管理女伴・接單・安排出席',
-    badgeColor: 'bg-purple-100 text-purple-700',
-    emoji: '🎯',
-  },
-  {
-    userId: 'u-023',
-    label: '幹部 B（林經理）',
-    desc: '另一線幹部・可看見彼此的局',
-    badgeColor: 'bg-indigo-100 text-indigo-700',
-    emoji: '🧭',
-  },
-  {
     userId: 'u-099',
     label: '訪客',
     desc: '只看 3 位在線・其餘需登入',
@@ -50,6 +37,11 @@ const LOGIN_ROLES = [
     emoji: '👀',
   },
 ];
+
+// 幹部帳號（動態取自 mock users，role === 'manager'）
+const MANAGER_ROLES = users
+  .filter((u) => u.role === 'manager')
+  .map((u) => ({ userId: u.id, label: u.nickname, avatarUrl: u.avatarUrl, area: u.defaultArea }));
 
 export default function LoginPage() {
   const router = useRouter();
@@ -124,9 +116,9 @@ export default function LoginPage() {
             台北最即時的社交配對平台
           </p>
 
-          {/* 角色選擇登入 */}
-          <div className="w-full flex flex-col gap-3 mb-2">
-            {LOGIN_ROLES.map((role) => (
+          {/* 客戶 / 訪客登入 */}
+          <div className="w-full flex flex-col gap-3 mb-4">
+            {PRIMARY_ROLES.map((role) => (
               <button
                 key={role.userId}
                 onClick={() => handleLogin(role.userId)}
@@ -154,7 +146,39 @@ export default function LoginPage() {
             ))}
           </div>
 
-          <p className="text-xs text-zinc-400 text-center mt-2">
+          {/* 幹部登入（10 個帳號，緊湊清單）*/}
+          <div className="w-full">
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 px-1">
+              幹部登入（{MANAGER_ROLES.length}）
+            </p>
+            <div className="max-h-56 overflow-y-auto rounded-2xl border border-brand-lavender bg-white divide-y divide-brand-lavender/60">
+              {MANAGER_ROLES.map((m) => (
+                <button
+                  key={m.userId}
+                  onClick={() => handleLogin(m.userId)}
+                  disabled={loading !== null}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 active:bg-brand-snow transition-colors disabled:opacity-60 text-left"
+                  aria-label={`以 ${m.label} 身份登入`}
+                >
+                  <img src={m.avatarUrl} alt="" aria-hidden className="w-8 h-8 rounded-full object-cover shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-brand-ink truncate">🎯 {m.label}</p>
+                    <p className="text-[11px] text-zinc-400">{m.area}</p>
+                  </div>
+                  {loading === m.userId ? (
+                    <svg className="w-4 h-4 animate-spin text-line-green" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                  ) : (
+                    <span className="shrink-0 text-[11px] font-semibold text-line-green">登入 ›</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-xs text-zinc-400 text-center mt-4">
             一鍵登入，馬上找人一起出去
           </p>
 

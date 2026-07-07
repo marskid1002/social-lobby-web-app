@@ -61,6 +61,8 @@ export interface AppState {
   likedPostIds: string[];
   secondaryUserId: string | null; // 第二登入身份（雙身份 demo 用）
   rosters: { id: string; girlIds: string[] }[]; // 各幹部的女伴名單（id = 幹部 userId）
+  presence: { id: string; online: boolean; updatedAt: string }[]; // 幹部設定的小姐上/下班（跨裝置同步）
+  actingFromManagerId: string | null; // 幹部以旗下小姐身份操作時，記錄原幹部 id
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
@@ -96,7 +98,17 @@ function getSeedState(): AppState {
     rosters: [
       { id: 'u-018', girlIds: ['u-002', 'u-005', 'u-009', 'u-015'] },
       { id: 'u-023', girlIds: ['u-003', 'u-006', 'u-011'] },
+      { id: 'u-024', girlIds: ['u-004', 'u-007'] },
+      { id: 'u-025', girlIds: ['u-008', 'u-012'] },
+      { id: 'u-026', girlIds: ['u-013', 'u-014'] },
+      { id: 'u-027', girlIds: ['u-002', 'u-003'] },
+      { id: 'u-028', girlIds: ['u-005', 'u-006'] },
+      { id: 'u-029', girlIds: ['u-009', 'u-011'] },
+      { id: 'u-030', girlIds: ['u-004', 'u-015'] },
+      { id: 'u-031', girlIds: ['u-007', 'u-008'] },
     ],
+    presence: [],
+    actingFromManagerId: null,
   };
 }
 
@@ -131,8 +143,36 @@ const listeners = new Set<() => void>();
 // ── 跨裝置同步 ──────────────────────────────────────────────────────────────
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages'] as const;
+// presence：幹部設定的小姐上/下班狀態（override），跨裝置同步；id = 使用者 id
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
+
+// 依 presence override 重算 onlineUserIds / onlineStatuses（有 override 者以 override 為準）
+function reconcilePresence(next: AppState): AppState {
+  const presence = next.presence ?? [];
+  if (!presence.length) return next;
+  let onlineUserIds = [...next.onlineUserIds];
+  let onlineStatuses = [...next.onlineStatuses];
+  for (const p of presence) {
+    if (p.online) {
+      if (!onlineUserIds.includes(p.id)) onlineUserIds.push(p.id);
+      if (!onlineStatuses.some((s) => s.userId === p.id)) {
+        const u = next.users.find((x) => x.id === p.id);
+        onlineStatuses.push({
+          userId: p.id,
+          status: 'available',
+          area: u?.defaultArea ?? '信義區',
+          lastSeen: p.updatedAt,
+          expiresAt: new Date(Date.now() + 8 * 3_600_000).toISOString(),
+        });
+      }
+    } else {
+      onlineUserIds = onlineUserIds.filter((id) => id !== p.id);
+      onlineStatuses = onlineStatuses.filter((s) => s.userId !== p.id); // 下班 → 從在線列表移除
+    }
+  }
+  return { ...next, onlineUserIds, onlineStatuses };
+}
 const SYNC_POLL_MS = 4000;
 let syncStarted = false;
 let isPushing = false;
@@ -181,8 +221,8 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
     changed = true;
   }
   if (changed) {
-    globalState = next;
-    saveState(next);
+    globalState = shared.presence ? reconcilePresence(next) : next;
+    saveState(globalState);
     listeners.forEach((l) => l());
   }
 }
@@ -967,6 +1007,36 @@ export function useAppState() {
     });
   }, []);
 
+  // 幹部設定某位小姐的上/下班狀態（跨裝置同步）
+  const setUserPresence = useCallback((userId: string, online: boolean) => {
+    setState((prev) => {
+      const updatedAt = new Date().toISOString();
+      const exists = prev.presence.some((p) => p.id === userId);
+      const presence = exists
+        ? prev.presence.map((p) => (p.id === userId ? { ...p, online, updatedAt } : p))
+        : [...prev.presence, { id: userId, online, updatedAt }];
+      return reconcilePresence({ ...prev, presence });
+    });
+  }, []);
+
+  // 幹部以旗下小姐身份操作（記錄原幹部，供返回）
+  const switchToRosterGirl = useCallback((girlId: string) => {
+    setState((prev) => ({
+      ...prev,
+      actingFromManagerId: prev.currentUserId,
+      currentUserId: girlId,
+    }));
+  }, []);
+
+  // 從小姐身份返回原幹部
+  const returnToManager = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      currentUserId: prev.actingFromManagerId ?? prev.currentUserId,
+      actingFromManagerId: null,
+    }));
+  }, []);
+
   // 取得第二身份的未讀通知數
   const secondaryUnreadCount = state.secondaryUserId
     ? state.updates.filter(
@@ -1035,6 +1105,9 @@ export function useAppState() {
     likePost,
     setSecondaryUser,
     setRoster,
+    setUserPresence,
+    switchToRosterGirl,
+    returnToManager,
     swapIdentities,
     secondaryUnreadCount,
   };

@@ -25,7 +25,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchUser, setRoster } = useAppState();
+  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence } = useAppState();
   const router = useRouter();
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
@@ -229,16 +229,26 @@ export function OperatorHome() {
                 <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
               </button>
               <button onClick={() => router.push(`/u/${user.id}`)} className="flex-1 min-w-0 text-left">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</span>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isOnline ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-400'}`}>
-                    {isOnline ? '上線' : '離線'}
-                  </span>
-                </div>
+                <span className="text-sm font-semibold text-brand-ink truncate block">{user.nickname}</span>
                 <p className="text-xs text-zinc-400 mt-0.5">{user.defaultArea}</p>
               </button>
+
+              {/* #6 幹部控制小姐上/下班（跨裝置同步）*/}
               <button
-                onClick={() => { switchUser(user.id); router.push('/requests'); }}
+                onClick={() => setUserPresence(user.id, !isOnline)}
+                className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border transition-colors ${
+                  isOnline
+                    ? 'bg-green-50 border-green-200 text-green-700 active:bg-green-100'
+                    : 'bg-zinc-100 border-zinc-200 text-zinc-400 active:bg-zinc-200'
+                }`}
+                aria-label={`${isOnline ? '設為下班' : '設為上班'}：${user.nickname}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-zinc-400'}`} />
+                <span className="text-[11px] font-bold">{isOnline ? '上班' : '下班'}</span>
+              </button>
+
+              <button
+                onClick={() => { switchToRosterGirl(user.id); router.push('/requests'); }}
                 className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1.5 rounded-full active:bg-purple-100 transition-colors"
                 aria-label={`以 ${user.nickname} 身份操作`}
               >
