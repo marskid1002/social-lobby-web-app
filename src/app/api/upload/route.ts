@@ -13,10 +13,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
+    // Blob 是否可用：OIDC 連結會注入 BLOB_STORE_ID；本地或明確 token 則有 BLOB_READ_WRITE_TOKEN
+    const blobAvailable = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+
     // 刪除既有 Blob（best-effort，只刪 vercel blob URL）
     if (body?.action === 'delete') {
       const url: string | undefined = body.url;
-      if (url && /blob\.vercel-storage\.com/.test(url) && process.env.BLOB_READ_WRITE_TOKEN) {
+      if (url && /blob\.vercel-storage\.com/.test(url) && blobAvailable) {
         const { del } = await import('@vercel/blob');
         await del(url).catch(() => {});
       }
@@ -29,8 +32,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
     }
 
-    // 無 Blob token（本地開發）→ 直接回傳 data URL（存進 override，本地可測）
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    // Blob 不可用（本地開發無設定）→ 直接回傳 data URL（存進 override，本地可測）
+    if (!blobAvailable) {
       return NextResponse.json({ url: dataUrl, fallback: true });
     }
 
@@ -40,13 +43,18 @@ export async function POST(req: NextRequest) {
     }
 
     const ext = parsed.contentType.split('/')[1] ?? 'jpg';
-    const { put } = await import('@vercel/blob');
-    const blob = await put(`avatars/${userId}-${Date.now()}.${ext}`, parsed.buffer, {
-      access: 'public',
-      contentType: parsed.contentType,
-    });
-
-    return NextResponse.json({ url: blob.url });
+    try {
+      const { put } = await import('@vercel/blob');
+      const blob = await put(`avatars/${userId}-${Date.now()}.${ext}`, parsed.buffer, {
+        access: 'public',
+        contentType: parsed.contentType,
+      });
+      return NextResponse.json({ url: blob.url });
+    } catch (e) {
+      // Blob 上傳失敗（例如 OIDC 權限）→ 退回 data URL，不阻斷功能
+      console.error('[upload] blob put failed, fallback to dataUrl:', e);
+      return NextResponse.json({ url: dataUrl, fallback: true, blobError: String(e) });
+    }
   } catch (e) {
     console.error('[upload]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });
