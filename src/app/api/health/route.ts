@@ -17,6 +17,8 @@ export async function GET() {
       REDIS_URL: present('REDIS_URL'),
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: present('NEXT_PUBLIC_VAPID_PUBLIC_KEY'),
       VAPID_PRIVATE_KEY: present('VAPID_PRIVATE_KEY'),
+      BLOB_READ_WRITE_TOKEN: present('BLOB_READ_WRITE_TOKEN'),
     },
+    blobConfigured: present('BLOB_READ_WRITE_TOKEN'),
   });
 }
