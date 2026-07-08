@@ -25,53 +25,59 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence, setPhotoOverride, resetPhotoOverride } = useAppState();
+  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
-  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
+  const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
+  const [uploading, setUploading] = useState(false);
 
-  function pickPhoto(girlId: string) {
-    setPhotoTargetId(girlId);
-    photoInputRef.current?.click();
+  const galleryOf = (userId: string) => state.photoGalleries.find((g) => g.id === userId)?.urls ?? [];
+
+  function pickAvatar() { uploadModeRef.current = 'avatar'; photoInputRef.current?.click(); }
+  function pickGallery() { uploadModeRef.current = 'gallery'; photoInputRef.current?.click(); }
+
+  async function uploadImage(girlId: string, file: File): Promise<string | null> {
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: girlId, dataUrl }),
+    });
+    const data = await res.json();
+    return data.url ?? null;
   }
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    const girlId = photoTargetId;
+    const girlId = photoSheetGirlId;
+    const mode = uploadModeRef.current;
     e.target.value = ''; // 允許重選同一檔
     if (!file || !girlId) return;
-    setUploadingId(girlId);
+    setUploading(true);
     try {
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: girlId, dataUrl }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        setPhotoOverride(girlId, data.url);
-        setToast('✅ 已更新照片');
+      const url = await uploadImage(girlId, file);
+      if (url) {
+        if (mode === 'avatar') { setPhotoOverride(girlId, url); setToast('✅ 已更新大頭照'); }
+        else { addGalleryPhoto(girlId, url); setToast('✅ 已加入相簿'); }
       } else {
         setToast('⚠️ 上傳失敗');
       }
     } catch {
       setToast('⚠️ 上傳失敗');
     } finally {
-      setUploadingId(null);
-      setPhotoTargetId(null);
+      setUploading(false);
       setTimeout(() => setToast(''), 2500);
     }
   }
 
   function handleResetPhoto(girlId: string) {
     resetPhotoOverride(girlId);
-    setToast('已還原原始照片');
+    setToast('已還原原始大頭照');
     setTimeout(() => setToast(''), 2500);
   }
   const router = useRouter();
@@ -267,8 +273,7 @@ export function OperatorHome() {
         {rosterGirls.map((user) => {
           if (!user) return null;
           const isOnline = state.onlineUserIds.includes(user.id);
-          const hasPhotoOverride = state.photoOverrides.some((o) => o.id === user.id);
-          const isUploading = uploadingId === user.id;
+          const galleryCount = galleryOf(user.id).length;
           return (
             <div
               key={user.id}
@@ -279,34 +284,20 @@ export function OperatorHome() {
                   <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover" />
                 </button>
                 <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
-                {/* 編輯照片 */}
+                {/* 管理照片（大頭照 + 相簿）*/}
                 <button
-                  onClick={() => pickPhoto(user.id)}
-                  disabled={isUploading}
+                  onClick={() => setPhotoSheetGirlId(user.id)}
                   className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-brand-sky text-white flex items-center justify-center shadow ring-2 ring-white active:scale-90 transition-transform"
-                  aria-label={`編輯 ${user.nickname} 的照片`}
+                  aria-label={`管理 ${user.nickname} 的照片`}
                 >
-                  {isUploading ? (
-                    <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
-                  ) : (
-                    <Camera size={11} strokeWidth={2.5} />
-                  )}
+                  <Camera size={11} strokeWidth={2.5} />
                 </button>
               </div>
               <button onClick={() => router.push(`/u/${user.id}`)} className="flex-1 min-w-0 text-left">
                 <span className="text-sm font-semibold text-brand-ink truncate block">{user.nickname}</span>
                 <p className="text-xs text-zinc-400 mt-0.5">
                   {user.defaultArea}
-                  {hasPhotoOverride && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); handleResetPhoto(user.id); }}
-                      className="ml-2 text-brand-pink font-semibold"
-                    >
-                      還原照片
-                    </span>
-                  )}
+                  {galleryCount > 0 && <span className="ml-2 text-brand-sky">相簿 {galleryCount}</span>}
                 </p>
               </button>
 
@@ -464,6 +455,94 @@ export function OperatorHome() {
           </div>
         </div>
       )}
+
+      {/* 照片管理 sheet（大頭照 + 相簿）*/}
+      {photoSheetGirlId && (() => {
+        const girl = state.users.find((u) => u.id === photoSheetGirlId);
+        if (!girl) return null;
+        const hasOverride = state.photoOverrides.some((o) => o.id === girl.id);
+        const gallery = galleryOf(girl.id);
+        return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setPhotoSheetGirlId(null)}>
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <div
+              className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4 shrink-0" />
+              <p className="text-base font-bold text-brand-ink text-center shrink-0">
+                {girl.nickname} 的照片
+              </p>
+
+              <div className="overflow-y-auto mt-4 flex flex-col gap-5">
+                {/* 大頭照 */}
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">大頭照</p>
+                  <div className="flex items-center gap-3">
+                    <img src={girl.avatarUrl} alt={girl.nickname} className="w-16 h-16 rounded-2xl object-cover shrink-0" />
+                    <div className="flex flex-col gap-2 flex-1">
+                      <button
+                        onClick={pickAvatar}
+                        disabled={uploading}
+                        className="w-full py-2.5 rounded-xl bg-brand-sky text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60"
+                      >
+                        {uploading && uploadModeRef.current === 'avatar' ? '上傳中…' : '更換大頭照'}
+                      </button>
+                      {hasOverride && (
+                        <button
+                          onClick={() => handleResetPhoto(girl.id)}
+                          className="w-full py-2 rounded-xl border border-brand-lavender text-xs font-semibold text-zinc-500 active:bg-brand-snow"
+                        >
+                          還原原始大頭照
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 相簿 */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">相簿（{gallery.length}）</p>
+                    <button
+                      onClick={pickGallery}
+                      disabled={uploading}
+                      className="text-xs font-bold text-brand-sky active:opacity-70 disabled:opacity-60"
+                    >
+                      {uploading && uploadModeRef.current === 'gallery' ? '上傳中…' : '＋ 新增照片'}
+                    </button>
+                  </div>
+                  {gallery.length === 0 ? (
+                    <p className="text-xs text-zinc-400 py-4 text-center">尚無相簿照片，點「新增照片」上傳</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {gallery.map((url) => (
+                        <div key={url} className="relative aspect-square">
+                          <img src={url} alt="" className="w-full h-full rounded-xl object-cover" />
+                          <button
+                            onClick={() => removeGalleryPhoto(girl.id, url)}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center shadow ring-2 ring-white active:scale-90"
+                            aria-label="刪除這張照片"
+                          >
+                            <X size={11} strokeWidth={3} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setPhotoSheetGirlId(null)}
+                className="shrink-0 mt-5 w-full py-3 rounded-2xl border border-brand-lavender text-sm font-semibold text-zinc-500 active:bg-brand-snow"
+              >
+                完成
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

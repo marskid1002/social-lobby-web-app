@@ -30,6 +30,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const [toast, setToast] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  const gallery = state.photoGalleries.find((g) => g.id === id)?.urls ?? [];
 
   // Private invite form state
   const [inviteType, setInviteType] = useState<RequestType>('drinking');
@@ -198,12 +201,50 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="aspect-square rounded-2xl bg-brand-lavender/40" />
-          ))}
+        {/* 相簿 */}
+        <div className="mb-2">
+          <p className="text-sm font-semibold text-brand-ink mb-2">相簿</p>
+          {gallery.length === 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="aspect-square rounded-2xl bg-brand-lavender/40 flex items-center justify-center">
+                  <span className="text-xl opacity-40">📷</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {gallery.map((url) => (
+                <button
+                  key={url}
+                  onClick={() => setLightbox(url)}
+                  className="aspect-square rounded-2xl overflow-hidden active:scale-[0.97] transition-transform"
+                  aria-label="查看照片"
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* 相簿大圖 lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[80] bg-black/85 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox} alt="" className="max-w-full max-h-full rounded-2xl object-contain" />
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center"
+            aria-label="關閉"
+          >
+            <ArrowLeft className="w-5 h-5 rotate-45" />
+          </button>
+        </div>
+      )}
 
       {/* Private invite sheet */}
       {inviteOpen && (

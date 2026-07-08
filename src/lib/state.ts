@@ -64,6 +64,7 @@ export interface AppState {
   presence: { id: string; online: boolean; updatedAt: string }[]; // 幹部設定的小姐上/下班（跨裝置同步）
   actingFromManagerId: string | null; // 幹部以旗下小姐身份操作時，記錄原幹部 id
   photoOverrides: { id: string; avatarUrl: string }[]; // 幹部改的小姐照片（跨裝置同步）
+  photoGalleries: { id: string; urls: string[] }[]; // 各小姐的相簿（多張，跨裝置同步；id = 使用者 id）
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
@@ -111,6 +112,7 @@ function getSeedState(): AppState {
     presence: [],
     actingFromManagerId: null,
     photoOverrides: [],
+    photoGalleries: [],
   };
 }
 
@@ -150,7 +152,7 @@ const listeners = new Set<() => void>();
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
 // presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides'] as const;
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
 
 // 依 photoOverrides 重算 users 的頭貼（無 override 者還原成 seed 原圖）
@@ -1059,6 +1061,27 @@ export function useAppState() {
     setPhotoOverride(userId, seed?.avatarUrl ?? '');
   }, [setPhotoOverride]);
 
+  // 相簿：新增一張照片（跨裝置同步）
+  const addGalleryPhoto = useCallback((userId: string, url: string) => {
+    setState((prev) => {
+      const exists = prev.photoGalleries.some((g) => g.id === userId);
+      const photoGalleries = exists
+        ? prev.photoGalleries.map((g) => (g.id === userId ? { ...g, urls: [...g.urls, url] } : g))
+        : [...prev.photoGalleries, { id: userId, urls: [url] }];
+      return { ...prev, photoGalleries };
+    });
+  }, []);
+
+  // 相簿：刪除一張照片（跨裝置同步）
+  const removeGalleryPhoto = useCallback((userId: string, url: string) => {
+    setState((prev) => ({
+      ...prev,
+      photoGalleries: prev.photoGalleries.map((g) =>
+        g.id === userId ? { ...g, urls: g.urls.filter((u) => u !== url) } : g
+      ),
+    }));
+  }, []);
+
   // 幹部以旗下小姐身份操作（記錄原幹部，供返回）
   const switchToRosterGirl = useCallback((girlId: string) => {
     setState((prev) => ({
@@ -1148,6 +1171,8 @@ export function useAppState() {
     setUserPresence,
     setPhotoOverride,
     resetPhotoOverride,
+    addGalleryPhoto,
+    removeGalleryPhoto,
     switchToRosterGirl,
     returnToManager,
     swapIdentities,
