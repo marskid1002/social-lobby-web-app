@@ -1,25 +1,32 @@
 /**
- * 跨裝置共享狀態儲存層。
- * - 本地開發（無 Upstash env）：存在 Node.js 記憶體 → 同一個 dev server 的多個瀏覽器可同步
- * - 生產環境（有 Upstash env）：存在 Upstash Redis → 跨裝置 / 跨 serverless 實例同步
- *
- * 共享集合：requests / responses / invitations / updates / chatMessages
- * 合併策略：依 id upsert（新項目附加、既有項目以最新覆蓋），降低多端同時寫入的覆蓋風險。
+ * 跨裝置共享狀態儲存層（B 資料層：原子寫入版）。
+ * 每個集合存成一個 Redis Hash（field = 項目 id，value = 項目 JSON），
+ * 寫入用 HSET（逐項原子），避免「單一 key read-modify-write」的併發覆蓋（lost update）。
+ * 本地開發（無 Redis）用記憶體 fallback。
  */
 
-const REDIS_KEY = 'sl:shared:v1';
+const KEY_PREFIX = 'sl:h:v1:'; // 每個集合一個 hash：sl:h:v1:requests ...
 
-export type SharedKey = 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages' | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers';
-export const SHARED_KEYS: SharedKey[] = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers'];
+export type SharedKey =
+  | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
+  | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers';
 
-export type SharedState = Record<SharedKey, Array<{ id: string; [k: string]: unknown }>>;
+export const SHARED_KEYS: SharedKey[] = [
+  'requests', 'responses', 'invitations', 'updates', 'chatMessages',
+  'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers',
+];
+
+type Item = { id: string; [k: string]: unknown };
+export type SharedState = Record<SharedKey, Item[]>;
 
 function emptyShared(): SharedState {
-  return { requests: [], responses: [], invitations: [], updates: [], chatMessages: [], presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [] };
+  return {
+    requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
+    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [],
+  };
 }
 
 function getRedis() {
-  // 支援 Upstash 原生整合與 Vercel KV(Redis) 整合的不同環境變數命名
   const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
   if (!url || !token) return null;
@@ -27,68 +34,61 @@ function getRedis() {
   return new Redis({ url, token });
 }
 
-// 本地記憶體 fallback（dev server 單一程序內共享）
-const memStore: SharedState = emptyShared();
+// 記憶體 fallback：{ collection: { id: item } }
+const mem: Record<SharedKey, Record<string, Item>> = {
+  requests: {}, responses: {}, invitations: {}, updates: {}, chatMessages: {},
+  presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {},
+};
 
-async function readAll(): Promise<SharedState> {
-  const redis = getRedis();
-  if (redis) {
-    const raw = (await redis.get(REDIS_KEY)) as SharedState | null;
-    return raw ? { ...emptyShared(), ...raw } : emptyShared();
-  }
-  return memStore;
-}
-
-async function writeAll(state: SharedState) {
-  const redis = getRedis();
-  if (redis) {
-    await redis.set(REDIS_KEY, state);
-  }
-  // 記憶體模式直接改 memStore（已是同一參考）
-}
-
-/** 依 id 將 incoming 合併進 base（incoming 覆蓋同 id），回傳新陣列。 */
-function upsertById(
-  base: Array<{ id: string }>,
-  incoming: Array<{ id: string }>
-): Array<{ id: string }> {
-  const map = new Map(base.map((item) => [item.id, item]));
-  for (const item of incoming) {
-    if (item && item.id) map.set(item.id, item);
-  }
-  return [...map.values()];
+function parseItem(v: unknown): Item | null {
+  if (v == null) return null;
+  if (typeof v === 'object') return v as Item;
+  try { return JSON.parse(String(v)) as Item; } catch { return null; }
 }
 
 export async function getShared(): Promise<SharedState> {
-  return readAll();
-}
-
-/** 將 patch（部分共享集合）依 id upsert 進儲存，回傳合併後的完整共享狀態。 */
-export async function mergeShared(patch: Partial<SharedState>): Promise<SharedState> {
-  const current = await readAll();
-  const next = emptyShared();
-  for (const key of SHARED_KEYS) {
-    const incoming = patch[key];
-    next[key] = (incoming
-      ? upsertById(current[key] ?? [], incoming)
-      : current[key] ?? []) as SharedState[SharedKey];
-  }
-  // 記憶體模式：同步更新 memStore 內容
-  if (!getRedis()) {
-    for (const key of SHARED_KEYS) memStore[key] = next[key];
+  const redis = getRedis();
+  const out = emptyShared();
+  if (redis) {
+    for (const key of SHARED_KEYS) {
+      const h = (await redis.hgetall(KEY_PREFIX + key)) as Record<string, unknown> | null;
+      if (h) out[key] = Object.values(h).map(parseItem).filter(Boolean) as Item[];
+    }
   } else {
-    await writeAll(next);
+    for (const key of SHARED_KEYS) out[key] = Object.values(mem[key]);
   }
-  return next;
+  return out;
 }
 
-/** 清空所有共享資料（重設 demo 用）。 */
+/** 依 id 逐項 upsert（HSET 原子）；回傳合併後完整共享狀態。 */
+export async function mergeShared(patch: Partial<SharedState>): Promise<SharedState> {
+  const redis = getRedis();
+  for (const key of SHARED_KEYS) {
+    const items = patch[key];
+    if (!items || !items.length) continue;
+    if (redis) {
+      const obj: Record<string, Item> = {};
+      for (const it of items) if (it && it.id) obj[it.id] = it;
+      if (Object.keys(obj).length) await redis.hset(KEY_PREFIX + key, obj); // 逐 field 原子寫入
+    } else {
+      for (const it of items) if (it && it.id) mem[key][it.id] = it;
+    }
+  }
+  return getShared();
+}
+
+/** 從某集合刪除一筆（跨裝置刪除用）。 */
+export async function deleteSharedItem(key: SharedKey, id: string): Promise<void> {
+  const redis = getRedis();
+  if (redis) await redis.hdel(KEY_PREFIX + key, id);
+  else delete mem[key][id];
+}
+
 export async function clearShared(): Promise<void> {
-  const empty = emptyShared();
   const redis = getRedis();
   if (redis) {
-    await redis.set(REDIS_KEY, empty);
+    await redis.del(...SHARED_KEYS.map((k) => KEY_PREFIX + k));
   } else {
-    for (const key of SHARED_KEYS) memStore[key] = [];
+    for (const key of SHARED_KEYS) mem[key] = {};
   }
 }

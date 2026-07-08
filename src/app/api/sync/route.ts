@@ -70,6 +70,31 @@ function hasDataUrl(patch: Record<string, unknown>): boolean {
   }
 }
 
+// 依 session 檢查 patch 寫入權限，回傳違規原因或 null（通過）
+function checkWriteAuthz(patch: Record<string, unknown[]>, s: SessionPayload): string | null {
+  const me = s.userId;
+  const isManager = s.role === 'manager';
+  const arr = (k: string) => (Array.isArray(patch[k]) ? (patch[k] as Record<string, unknown>[]) : []);
+
+  // 只有本人能以自己身份建立
+  for (const r of arr('requests')) if (r.creatorId !== me) return 'requests.creatorId 必須為本人';
+  for (const m of arr('chatMessages')) if (m.senderId !== me) return 'chatMessages.senderId 必須為本人';
+  for (const u of arr('registeredUsers')) if (u.id !== me) return 'registeredUsers 只能寫入本人';
+
+  // 邀請：本人須為 from/to 一方（客戶接受派工時 toUserId=本人；私人邀請 fromUserId=本人）
+  for (const i of arr('invitations')) if (i.fromUserId !== me && i.toUserId !== me) return 'invitations 僅限本人參與者';
+  // 註：responses / updates 因涉及跨人流程（派工建立女伴回應、通知他人）本輪保持寬鬆，
+  //     完整寫入授權需改 per-action 端點（B 後續）。
+
+  // 小姐狀態/照片/相簿：僅限幹部
+  if (!isManager) {
+    for (const k of ['presence', 'photoOverrides', 'photoGalleries'] as const) {
+      if (arr(k).length) return `${k} 僅限幹部`;
+    }
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getSessionFromRequest(req);
@@ -106,6 +131,10 @@ export async function POST(req: NextRequest) {
     const patch = body?.patch ?? {};
     if (hasDataUrl(patch)) {
       return NextResponse.json({ error: 'inline image not allowed' }, { status: 400 });
+    }
+    const violation = checkWriteAuthz(patch, session);
+    if (violation) {
+      return NextResponse.json({ error: `forbidden write: ${violation}` }, { status: 403 });
     }
 
     const merged = await mergeShared(patch);
