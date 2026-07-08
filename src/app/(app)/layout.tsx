@@ -34,7 +34,7 @@ function SessionSync() {
   const { state, switchUser, loginCustomer } = useAppState();
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/auth/me')
+    fetch('/api/auth') // GET 回傳目前 session 身份
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data?.user) return;
