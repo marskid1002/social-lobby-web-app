@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { resetState } from '@/lib/state';
+import { resetState, useAppState } from '@/lib/state';
 import { users } from '@/lib/mock';
 
 // 客戶（VIP）與訪客快速登入
@@ -38,6 +38,47 @@ const MANAGER_ROLES = users
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState<string | null>(null);
+  const { registerCustomer, loginCustomer } = useAppState();
+
+  // 手機+密碼 註冊/登入 表單狀態
+  const [authMode, setAuthMode] = useState<'register' | 'login'>('register');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [nickname, setNickname] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
+
+  async function handleAuthSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setAuthError('');
+    setAuthBusy(true);
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: authMode, phone, password, nickname }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setAuthError(data.error ?? '發生錯誤');
+        return;
+      }
+      const { id, nickname: nick } = data.user;
+      if (authMode === 'register') {
+        registerCustomer(id, nick);
+        setTimeout(() => router.push('/onboarding'), 300);
+      } else {
+        loginCustomer(id, nick);
+        setTimeout(() => {
+          router.push(localStorage.getItem('sl_onboarded') === 'true' ? '/lobby/explore' : '/onboarding');
+        }, 300);
+      }
+    } catch {
+      setAuthError('連線失敗，請稍後再試');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
 
   function handleLogin(userId: string) {
     setLoading(userId);
@@ -107,6 +148,64 @@ export default function LoginPage() {
           <p className="text-zinc-500 text-sm text-center mb-10">
             台北最即時的社交配對平台
           </p>
+
+          {/* 手機 + 密碼 註冊/登入（客戶）*/}
+          <div className="w-full bg-white rounded-2xl border border-brand-lavender shadow-sm p-4 mb-5">
+            <div className="flex bg-brand-snow rounded-xl p-1 mb-3">
+              <button
+                onClick={() => { setAuthMode('register'); setAuthError(''); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${authMode === 'register' ? 'bg-white text-brand-ink shadow-sm' : 'text-zinc-400'}`}
+              >
+                註冊
+              </button>
+              <button
+                onClick={() => { setAuthMode('login'); setAuthError(''); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${authMode === 'login' ? 'bg-white text-brand-ink shadow-sm' : 'text-zinc-400'}`}
+              >
+                登入
+              </button>
+            </div>
+
+            <form onSubmit={handleAuthSubmit} className="flex flex-col gap-2.5">
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="手機號碼"
+                className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky"
+                aria-label="手機號碼"
+              />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="密碼（至少 4 碼）"
+                className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky"
+                aria-label="密碼"
+              />
+              {authMode === 'register' && (
+                <input
+                  type="text"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  placeholder="暱稱（選填）"
+                  className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky"
+                  aria-label="暱稱"
+                />
+              )}
+              {authError && <p className="text-xs text-red-500 font-semibold">{authError}</p>}
+              <button
+                type="submit"
+                disabled={authBusy}
+                className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60"
+              >
+                {authBusy ? '處理中…' : authMode === 'register' ? '註冊並開始' : '登入'}
+              </button>
+            </form>
+          </div>
+
+          <p className="w-full text-xs text-zinc-400 mb-2">或用示範帳號快速登入</p>
 
           {/* 客戶 / 訪客登入 */}
           <div className="w-full flex flex-col gap-3 mb-4">

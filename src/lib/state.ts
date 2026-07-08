@@ -65,6 +65,7 @@ export interface AppState {
   actingFromManagerId: string | null; // 幹部以旗下小姐身份操作時，記錄原幹部 id
   photoOverrides: { id: string; avatarUrl: string }[]; // 幹部改的小姐照片（跨裝置同步）
   photoGalleries: { id: string; urls: string[] }[]; // 各小姐的相簿（多張，跨裝置同步；id = 使用者 id）
+  registeredUsers: User[]; // 手機+密碼註冊的新客戶（跨裝置同步）
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
@@ -113,6 +114,7 @@ function getSeedState(): AppState {
     actingFromManagerId: null,
     photoOverrides: [],
     photoGalleries: [],
+    registeredUsers: [],
   };
 }
 
@@ -123,7 +125,8 @@ function loadState(): AppState {
     if (!raw) return getSeedState();
     const parsed = JSON.parse(raw);
     let merged = { ...getSeedState(), ...parsed } as AppState;
-    // 套用已儲存的 override（照片、上/下班）到 users/在線列表
+    // 套用已儲存的註冊用戶與 override（照片、上/下班）
+    if (merged.registeredUsers?.length) merged = applyRegisteredUsers(merged);
     if (merged.photoOverrides?.length) merged = applyPhotoOverrides(merged);
     if (merged.presence?.length) merged = reconcilePresence(merged);
     return merged;
@@ -152,8 +155,18 @@ const listeners = new Set<() => void>();
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
 // presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries'] as const;
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
+
+// 把註冊的新客戶併入 users（跨裝置：其他人才看得到發局者等資訊）
+function applyRegisteredUsers(next: AppState): AppState {
+  const regs = next.registeredUsers ?? [];
+  if (!regs.length) return next;
+  const existingIds = new Set(next.users.map((u) => u.id));
+  const toAdd = regs.filter((r) => !existingIds.has(r.id));
+  if (!toAdd.length) return next;
+  return { ...next, users: [...next.users, ...toAdd] };
+}
 
 // 依 photoOverrides 重算 users 的頭貼（無 override 者還原成 seed 原圖）
 function applyPhotoOverrides(next: AppState): AppState {
@@ -245,6 +258,7 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
   }
   if (changed) {
     let result = shared.presence ? reconcilePresence(next) : next;
+    if (shared.registeredUsers) result = applyRegisteredUsers(result);
     if (shared.photoOverrides) result = applyPhotoOverrides(result);
     globalState = result;
     saveState(globalState);
@@ -333,6 +347,52 @@ export function useAppState() {
 
   const switchUser = useCallback((userId: string) => {
     setState((prev) => ({ ...prev, currentUserId: userId }));
+  }, []);
+
+  // 手機+密碼註冊成功後：建立客戶 user 物件、加入同步的 registeredUsers、設為目前身份
+  const registerCustomer = useCallback((userId: string, nickname: string) => {
+    setState((prev) => {
+      const already = prev.registeredUsers.some((u) => u.id === userId);
+      const newUser: User = {
+        id: userId,
+        lineUserId: userId,
+        nickname,
+        avatarUrl: 'https://randomuser.me/api/portraits/lego/5.jpg',
+        cardImageUrl: 'https://randomuser.me/api/portraits/lego/5.jpg',
+        bio: '',
+        defaultArea: '信義區',
+        interests: [],
+        tier: 'vip', // demo：註冊客戶給 VIP 完整功能，方便測試發局
+        role: 'user',
+        credits: 100,
+        monthlyRequestsLeft: 999,
+        lineOAFollowed: false,
+        createdAt: new Date().toISOString(),
+      };
+      const registeredUsers = already ? prev.registeredUsers : [...prev.registeredUsers, newUser];
+      const users = prev.users.some((u) => u.id === userId) ? prev.users : [...prev.users, newUser];
+      return { ...prev, registeredUsers, users, currentUserId: userId };
+    });
+  }, []);
+
+  // 已註冊客戶登入：設為目前身份（user 物件由同步的 registeredUsers 帶入）
+  const loginCustomer = useCallback((userId: string, nickname: string) => {
+    setState((prev) => {
+      // 若本機還沒有這個 user（尚未同步到），先補一個基本物件，稍後 poll 會覆蓋
+      const hasUser = prev.users.some((u) => u.id === userId);
+      const users = hasUser
+        ? prev.users
+        : [...prev.users, {
+            id: userId, lineUserId: userId, nickname,
+            avatarUrl: 'https://randomuser.me/api/portraits/lego/5.jpg',
+            cardImageUrl: 'https://randomuser.me/api/portraits/lego/5.jpg',
+            bio: '', defaultArea: '信義區', interests: [],
+            tier: 'vip' as const, role: 'user' as const, credits: 100,
+            monthlyRequestsLeft: 999, lineOAFollowed: false,
+            createdAt: new Date().toISOString(),
+          } as User];
+      return { ...prev, users, currentUserId: userId };
+    });
   }, []);
 
   const setOnline = useCallback((online: boolean) => {
@@ -1173,6 +1233,8 @@ export function useAppState() {
     resetPhotoOverride,
     addGalleryPhoto,
     removeGalleryPhoto,
+    registerCustomer,
+    loginCustomer,
     switchToRosterGirl,
     returnToManager,
     swapIdentities,
