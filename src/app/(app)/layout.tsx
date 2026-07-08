@@ -35,6 +35,8 @@ function AsParamHandler() {
   const { switchUser } = useAppState();
 
   useEffect(() => {
+    // ?as= 冒充僅限示範模式（正式環境停用）
+    if (process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') return;
     const asParam = searchParams.get('as');
     if (asParam) {
       switchUser(asParam);

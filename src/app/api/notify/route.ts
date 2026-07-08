@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { getSubscriptionsForUsers } from '@/lib/push-store';
+import { getSessionFromRequest } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,10 @@ function ensureVapid(): boolean {
 
 export async function POST(req: NextRequest) {
   try {
+    // 需登入才能觸發推播（防止匿名釣魚推播）
+    const session = await getSessionFromRequest(req);
+    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
     if (!ensureVapid()) {
       // 尚未設定 VAPID 金鑰（例如環境變數未填）→ 靜默略過，不影響主流程
       return NextResponse.json({ sent: 0, skipped: 'vapid not configured' });

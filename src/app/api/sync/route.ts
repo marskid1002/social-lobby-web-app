@@ -1,15 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShared, mergeShared, clearShared } from '@/lib/sync-store';
+import { getShared, mergeShared, clearShared, type SharedState } from '@/lib/sync-store';
+import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 
-// 避免快取，確保每次都拿到最新共享狀態
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+// 依登入者角色/身份，只回傳其有權看到的資料（私訊、邀請、通知不外洩）
+function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
+  const me = s.userId;
+  const pub = {
+    presence: all.presence ?? [],
+    photoOverrides: all.photoOverrides ?? [],
+    photoGalleries: all.photoGalleries ?? [],
+    registeredUsers: all.registeredUsers ?? [],
+  } as Partial<SharedState>;
+  const empty: SharedState = {
+    requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
+    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [],
+  };
+
+  if (s.role === 'guest') return { ...empty, ...pub } as SharedState;
+
+  const isManager = s.role === 'manager';
+  const requests = all.requests ?? [];
+  const responses = all.responses ?? [];
+  const asRec = (x: unknown) => x as Record<string, unknown>;
+  const visibleRequests = isManager ? requests : requests.filter((r) => asRec(r).creatorId === me);
+  const visibleReqIds = new Set(visibleRequests.map((r) => r.id));
+
+  const scopedResponses = isManager
+    ? responses
+    : responses.filter((r) => {
+        const x = asRec(r);
+        return visibleReqIds.has(x.requestId as string) || x.userId === me || x.dispatcherId === me;
+      });
+
+  const invitations = (all.invitations ?? []).filter((i) => {
+    const x = asRec(i);
+    return x.fromUserId === me || x.toUserId === me || (isManager && x.dispatcherId === me);
+  });
+
+  const updates = (all.updates ?? []).filter((u) => asRec(u).userId === me);
+
+  const chatMessages = (all.chatMessages ?? []).filter((m) => {
+    const tid = asRec(m).threadId as string;
+    if (tid.startsWith('g-')) {
+      const reqId = tid.slice(2);
+      const req = requests.find((r) => r.id === reqId);
+      if (req && asRec(req).creatorId === me) return true;
+      return responses.some((r) => {
+        const x = asRec(r);
+        return x.requestId === reqId && x.userId === me && x.responseStatus === 'joining';
+      });
+    }
+    return tid.includes(me);
+  });
+
+  return {
+    requests: visibleRequests, responses: scopedResponses, invitations, updates, chatMessages,
+    ...pub,
+  } as SharedState;
+}
+
+// 阻擋把 data: URL（base64 圖片）寫進共享狀態，避免膨脹
+function hasDataUrl(patch: Record<string, unknown>): boolean {
   try {
+    return JSON.stringify(patch).includes('data:image');
+  } catch {
+    return false;
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     const shared = await getShared();
-    return NextResponse.json(shared, {
-      headers: { 'Cache-Control': 'no-store' },
-    });
+    return NextResponse.json(scopeForSession(shared, session), { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     console.error('[sync GET]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });
@@ -18,15 +84,32 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSessionFromRequest(req);
+    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
     const body = await req.json();
-    // 重設：{ reset: true } → 清空共享資料
+
+    // 清庫僅限帶正確 ADMIN_SECRET
     if (body?.reset) {
+      if (!process.env.ADMIN_SECRET || body.secret !== process.env.ADMIN_SECRET) {
+        return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+      }
       await clearShared();
       return NextResponse.json({ ok: true, cleared: true });
     }
-    // patch：{ requests?, responses?, invitations?, updates?, chatMessages? }
-    const merged = await mergeShared(body?.patch ?? {});
-    return NextResponse.json(merged);
+
+    // 訪客唯讀，不可寫入
+    if (session.role === 'guest') {
+      return NextResponse.json({ error: 'guest is read-only' }, { status: 403 });
+    }
+
+    const patch = body?.patch ?? {};
+    if (hasDataUrl(patch)) {
+      return NextResponse.json({ error: 'inline image not allowed' }, { status: 400 });
+    }
+
+    const merged = await mergeShared(patch);
+    return NextResponse.json(scopeForSession(merged, session));
   } catch (e) {
     console.error('[sync POST]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });

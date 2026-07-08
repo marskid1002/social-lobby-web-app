@@ -63,6 +63,8 @@ export function DemoUserSwitcher({ open, onClose }: Props) {
   const { state, switchUser, setSecondaryUser } = useAppState();
   const router = useRouter();
 
+  // 冒充/切換身份僅限示範模式，正式環境完全停用
+  if (process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') return null;
   if (!open) return null;
 
   function handleSwitch(userId: string) {

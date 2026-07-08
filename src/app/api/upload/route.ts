@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getSessionFromRequest } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,11 @@ function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; contentType: string
 
 export async function POST(req: NextRequest) {
   try {
+    // 僅限登入的幹部（管理小姐照片）
+    const session = await getSessionFromRequest(req);
+    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    if (session.role !== 'manager') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+
     const body = await req.json();
 
     // Blob 是否可用：OIDC 連結會注入 BLOB_STORE_ID；本地或明確 token 則有 BLOB_READ_WRITE_TOKEN
