@@ -29,6 +29,28 @@ function getTitle(pathname: string) {
   return PAGE_TITLES[pathname] ?? 'Social Lobby';
 }
 
+// 以 server session 校正前端身份：避免 localStorage 過期/預設造成畫面顯示錯的人
+function SessionSync() {
+  const { state, switchUser, loginCustomer } = useAppState();
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.user) return;
+        const { id, role } = data.user;
+        if (id === state.currentUserId) return; // 已一致
+        if (role === 'user') loginCustomer(id, '用戶');
+        else switchUser(id); // 幹部 / 訪客（在 seed 內）
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // 僅在掛載時校正一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
+
 function AsParamHandler() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -68,6 +90,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex flex-col min-h-screen bg-brand-snow">
+      <SessionSync />
       <Suspense fallback={null}>
         <AsParamHandler />
       </Suspense>

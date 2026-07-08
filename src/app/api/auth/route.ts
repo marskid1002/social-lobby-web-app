@@ -3,9 +3,16 @@ import {
   getAccount, createCustomer, verifyPassword, setInitialPassword,
   adminResetPassword, normalizeKey, normalizePhone,
 } from '@/lib/auth-store';
-import { signSession, sessionCookieHeader, clearSessionCookieHeader } from '@/lib/session';
+import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
+
+// GET：回傳目前 session 身份（供前端校正 currentUserId）
+export async function GET(req: NextRequest) {
+  const session = await getSessionFromRequest(req);
+  if (!session) return NextResponse.json({ user: null }, { status: 401 });
+  return NextResponse.json({ user: { id: session.userId, role: session.role, tier: session.tier } });
+}
 
 async function withSession(user: { id: string; role: 'user' | 'manager' | 'guest'; tier: string; nickname?: string }) {
   const token = await signSession({ userId: user.id, role: user.role, tier: user.tier });
