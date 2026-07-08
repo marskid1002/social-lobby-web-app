@@ -162,10 +162,12 @@ type SharedKey = typeof SHARED_KEYS[number];
 function applyRegisteredUsers(next: AppState): AppState {
   const regs = next.registeredUsers ?? [];
   if (!regs.length) return next;
-  const existingIds = new Set(next.users.map((u) => u.id));
+  const regMap = new Map(regs.map((r) => [r.id, r]));
+  // server 上的註冊用戶為權威：覆蓋既有同 id（修正本地 fallback 的 tier），其餘照舊
+  const users = next.users.map((u) => (regMap.has(u.id) ? { ...u, ...regMap.get(u.id)! } : u));
+  const existingIds = new Set(users.map((u) => u.id));
   const toAdd = regs.filter((r) => !existingIds.has(r.id));
-  if (!toAdd.length) return next;
-  return { ...next, users: [...next.users, ...toAdd] };
+  return { ...next, users: [...users, ...toAdd] };
 }
 
 // 依 photoOverrides 重算 users 的頭貼（無 override 者還原成 seed 原圖）
@@ -362,10 +364,10 @@ export function useAppState() {
         bio: '',
         defaultArea: '信義區',
         interests: [],
-        tier: 'vip', // demo：註冊客戶給 VIP 完整功能，方便測試發局
+        tier: 'standard', // 註冊客戶預設 standard（與 server createCustomer 一致）
         role: 'user',
         credits: 100,
-        monthlyRequestsLeft: 999,
+        monthlyRequestsLeft: 5,
         lineOAFollowed: false,
         createdAt: new Date().toISOString(),
       };
@@ -387,8 +389,8 @@ export function useAppState() {
             avatarUrl: 'https://randomuser.me/api/portraits/lego/5.jpg',
             cardImageUrl: 'https://randomuser.me/api/portraits/lego/5.jpg',
             bio: '', defaultArea: '信義區', interests: [],
-            tier: 'vip' as const, role: 'user' as const, credits: 100,
-            monthlyRequestsLeft: 999, lineOAFollowed: false,
+            tier: 'standard' as const, role: 'user' as const, credits: 100,
+            monthlyRequestsLeft: 5, lineOAFollowed: false,
             createdAt: new Date().toISOString(),
           } as User];
       return { ...prev, users, currentUserId: userId };
