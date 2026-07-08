@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Bell, X, Check, UserCog } from 'lucide-react';
+import { Bell, X, Check, UserCog, Camera } from 'lucide-react';
 
 
 const TYPE_LABELS: Record<string, string> = {
@@ -25,7 +25,55 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence } = useAppState();
+  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence, setPhotoOverride, resetPhotoOverride } = useAppState();
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoTargetId, setPhotoTargetId] = useState<string | null>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  function pickPhoto(girlId: string) {
+    setPhotoTargetId(girlId);
+    photoInputRef.current?.click();
+  }
+
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const girlId = photoTargetId;
+    e.target.value = ''; // 允許重選同一檔
+    if (!file || !girlId) return;
+    setUploadingId(girlId);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: girlId, dataUrl }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        setPhotoOverride(girlId, data.url);
+        setToast('✅ 已更新照片');
+      } else {
+        setToast('⚠️ 上傳失敗');
+      }
+    } catch {
+      setToast('⚠️ 上傳失敗');
+    } finally {
+      setUploadingId(null);
+      setPhotoTargetId(null);
+      setTimeout(() => setToast(''), 2500);
+    }
+  }
+
+  function handleResetPhoto(girlId: string) {
+    resetPhotoOverride(girlId);
+    setToast('已還原原始照片');
+    setTimeout(() => setToast(''), 2500);
+  }
   const router = useRouter();
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
@@ -219,18 +267,47 @@ export function OperatorHome() {
         {rosterGirls.map((user) => {
           if (!user) return null;
           const isOnline = state.onlineUserIds.includes(user.id);
+          const hasPhotoOverride = state.photoOverrides.some((o) => o.id === user.id);
+          const isUploading = uploadingId === user.id;
           return (
             <div
               key={user.id}
               className="flex items-center gap-3 px-4 py-3 bg-white border-b border-zinc-100"
             >
-              <button onClick={() => router.push(`/u/${user.id}`)} className="relative shrink-0">
-                <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover" />
+              <div className="relative shrink-0">
+                <button onClick={() => router.push(`/u/${user.id}`)}>
+                  <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover" />
+                </button>
                 <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
-              </button>
+                {/* 編輯照片 */}
+                <button
+                  onClick={() => pickPhoto(user.id)}
+                  disabled={isUploading}
+                  className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-brand-sky text-white flex items-center justify-center shadow ring-2 ring-white active:scale-90 transition-transform"
+                  aria-label={`編輯 ${user.nickname} 的照片`}
+                >
+                  {isUploading ? (
+                    <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
+                  ) : (
+                    <Camera size={11} strokeWidth={2.5} />
+                  )}
+                </button>
+              </div>
               <button onClick={() => router.push(`/u/${user.id}`)} className="flex-1 min-w-0 text-left">
                 <span className="text-sm font-semibold text-brand-ink truncate block">{user.nickname}</span>
-                <p className="text-xs text-zinc-400 mt-0.5">{user.defaultArea}</p>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {user.defaultArea}
+                  {hasPhotoOverride && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); handleResetPhoto(user.id); }}
+                      className="ml-2 text-brand-pink font-semibold"
+                    >
+                      還原照片
+                    </span>
+                  )}
+                </p>
               </button>
 
               {/* #6 幹部控制小姐上/下班（跨裝置同步）*/}
@@ -259,6 +336,15 @@ export function OperatorHome() {
           );
         })}
       </div>
+
+      {/* 隱藏檔案輸入（編輯照片用）*/}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handlePhotoChange}
+      />
 
       {/* Toast */}
       {toast && (

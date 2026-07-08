@@ -63,6 +63,7 @@ export interface AppState {
   rosters: { id: string; girlIds: string[] }[]; // 各幹部的女伴名單（id = 幹部 userId）
   presence: { id: string; online: boolean; updatedAt: string }[]; // 幹部設定的小姐上/下班（跨裝置同步）
   actingFromManagerId: string | null; // 幹部以旗下小姐身份操作時，記錄原幹部 id
+  photoOverrides: { id: string; avatarUrl: string }[]; // 幹部改的小姐照片（跨裝置同步）
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
@@ -109,6 +110,7 @@ function getSeedState(): AppState {
     ],
     presence: [],
     actingFromManagerId: null,
+    photoOverrides: [],
   };
 }
 
@@ -118,7 +120,11 @@ function loadState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return getSeedState();
     const parsed = JSON.parse(raw);
-    return { ...getSeedState(), ...parsed };
+    let merged = { ...getSeedState(), ...parsed } as AppState;
+    // 套用已儲存的 override（照片、上/下班）到 users/在線列表
+    if (merged.photoOverrides?.length) merged = applyPhotoOverrides(merged);
+    if (merged.presence?.length) merged = reconcilePresence(merged);
+    return merged;
   } catch {
     return getSeedState();
   }
@@ -143,9 +149,24 @@ const listeners = new Set<() => void>();
 // ── 跨裝置同步 ──────────────────────────────────────────────────────────────
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
-// presence：幹部設定的小姐上/下班狀態（override），跨裝置同步；id = 使用者 id
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence'] as const;
+// presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
+
+// 依 photoOverrides 重算 users 的頭貼（無 override 者還原成 seed 原圖）
+function applyPhotoOverrides(next: AppState): AppState {
+  const overrides = next.photoOverrides ?? [];
+  const map = new Map(overrides.map((o) => [o.id, o.avatarUrl]));
+  const users = next.users.map((u) => {
+    const seed = seedUsers.find((su) => su.id === u.id);
+    const override = map.get(u.id);
+    const avatarUrl = override ?? seed?.avatarUrl ?? u.avatarUrl;
+    const cardImageUrl = override ?? seed?.cardImageUrl ?? u.cardImageUrl;
+    if (avatarUrl === u.avatarUrl && cardImageUrl === u.cardImageUrl) return u;
+    return { ...u, avatarUrl, cardImageUrl };
+  });
+  return { ...next, users };
+}
 
 // 依 presence override 重算 onlineUserIds / onlineStatuses（有 override 者以 override 為準）
 function reconcilePresence(next: AppState): AppState {
@@ -221,7 +242,9 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
     changed = true;
   }
   if (changed) {
-    globalState = shared.presence ? reconcilePresence(next) : next;
+    let result = shared.presence ? reconcilePresence(next) : next;
+    if (shared.photoOverrides) result = applyPhotoOverrides(result);
+    globalState = result;
     saveState(globalState);
     listeners.forEach((l) => l());
   }
@@ -1019,6 +1042,23 @@ export function useAppState() {
     });
   }, []);
 
+  // 幹部設定某位小姐的照片（跨裝置同步）；avatarUrl 為新圖網址
+  const setPhotoOverride = useCallback((userId: string, avatarUrl: string) => {
+    setState((prev) => {
+      const exists = prev.photoOverrides.some((o) => o.id === userId);
+      const photoOverrides = exists
+        ? prev.photoOverrides.map((o) => (o.id === userId ? { ...o, avatarUrl } : o))
+        : [...prev.photoOverrides, { id: userId, avatarUrl }];
+      return applyPhotoOverrides({ ...prev, photoOverrides });
+    });
+  }, []);
+
+  // 刪除幹部改的照片 → 還原成原始 seed 頭貼（以 seed url 當 override 讓刪除也能跨裝置同步）
+  const resetPhotoOverride = useCallback((userId: string) => {
+    const seed = seedUsers.find((su) => su.id === userId);
+    setPhotoOverride(userId, seed?.avatarUrl ?? '');
+  }, [setPhotoOverride]);
+
   // 幹部以旗下小姐身份操作（記錄原幹部，供返回）
   const switchToRosterGirl = useCallback((girlId: string) => {
     setState((prev) => ({
@@ -1106,6 +1146,8 @@ export function useAppState() {
     setSecondaryUser,
     setRoster,
     setUserPresence,
+    setPhotoOverride,
+    resetPhotoOverride,
     switchToRosterGirl,
     returnToManager,
     swapIdentities,

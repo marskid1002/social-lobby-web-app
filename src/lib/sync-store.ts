@@ -9,13 +9,13 @@
 
 const REDIS_KEY = 'sl:shared:v1';
 
-export type SharedKey = 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages' | 'presence';
-export const SHARED_KEYS: SharedKey[] = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence'];
+export type SharedKey = 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages' | 'presence' | 'photoOverrides';
+export const SHARED_KEYS: SharedKey[] = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides'];
 
 export type SharedState = Record<SharedKey, Array<{ id: string; [k: string]: unknown }>>;
 
 function emptyShared(): SharedState {
-  return { requests: [], responses: [], invitations: [], updates: [], chatMessages: [], presence: [] };
+  return { requests: [], responses: [], invitations: [], updates: [], chatMessages: [], presence: [], photoOverrides: [] };
 }
 
 function getRedis() {
