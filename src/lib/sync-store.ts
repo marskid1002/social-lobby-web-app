@@ -60,6 +60,16 @@ export async function getShared(): Promise<SharedState> {
   return out;
 }
 
+/** 取單一集合（授權檢查用，避免抓全部）。 */
+export async function getCollection(key: SharedKey): Promise<Item[]> {
+  const redis = getRedis();
+  if (redis) {
+    const h = (await redis.hgetall(KEY_PREFIX + key)) as Record<string, unknown> | null;
+    return h ? (Object.values(h).map(parseItem).filter(Boolean) as Item[]) : [];
+  }
+  return Object.values(mem[key]);
+}
+
 /** 依 id 逐項 upsert（HSET 原子）；回傳合併後完整共享狀態。 */
 export async function mergeShared(patch: Partial<SharedState>): Promise<SharedState> {
   const redis = getRedis();

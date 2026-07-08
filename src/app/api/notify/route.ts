@@ -37,13 +37,15 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(userIds) || userIds.length === 0) {
       return NextResponse.json({ sent: 0, skipped: 'no target users' });
     }
+    // 連結只允許站內相對路徑，擋外部釣魚連結
+    const safeUrl = typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : '/';
     const subscriptions = await getSubscriptionsForUsers(userIds);
 
     if (subscriptions.length === 0) {
       return NextResponse.json({ sent: 0 });
     }
 
-    const payload = JSON.stringify({ title, body, url: url ?? '/' });
+    const payload = JSON.stringify({ title, body, url: safeUrl });
 
     const results = await Promise.allSettled(
       subscriptions.map((sub) => webpush.sendNotification(sub, payload))

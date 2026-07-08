@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShared, mergeShared, clearShared, type SharedState } from '@/lib/sync-store';
+import { getShared, mergeShared, clearShared, getCollection, type SharedState } from '@/lib/sync-store';
 import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -71,7 +71,8 @@ function hasDataUrl(patch: Record<string, unknown>): boolean {
 }
 
 // 依 session 檢查 patch 寫入權限，回傳違規原因或 null（通過）
-function checkWriteAuthz(patch: Record<string, unknown[]>, s: SessionPayload): string | null {
+// reqCreator：requestId -> creatorId（供驗證「該局發起人」可操作其回應）
+function checkWriteAuthz(patch: Record<string, unknown[]>, s: SessionPayload, reqCreator: Record<string, string>): string | null {
   const me = s.userId;
   const isManager = s.role === 'manager';
   const arr = (k: string) => (Array.isArray(patch[k]) ? (patch[k] as Record<string, unknown>[]) : []);
@@ -81,10 +82,20 @@ function checkWriteAuthz(patch: Record<string, unknown[]>, s: SessionPayload): s
   for (const m of arr('chatMessages')) if (m.senderId !== me) return 'chatMessages.senderId 必須為本人';
   for (const u of arr('registeredUsers')) if (u.id !== me) return 'registeredUsers 只能寫入本人';
 
-  // 邀請：本人須為 from/to 一方（客戶接受派工時 toUserId=本人；私人邀請 fromUserId=本人）
+  // 邀請：本人須為 from/to 一方
   for (const i of arr('invitations')) if (i.fromUserId !== me && i.toUserId !== me) return 'invitations 僅限本人參與者';
-  // 註：responses / updates 因涉及跨人流程（派工建立女伴回應、通知他人）本輪保持寬鬆，
-  //     完整寫入授權需改 per-action 端點（B 後續）。
+
+  // 回應：幹部（派工）／本人（加入）／該局發起人（接受、婉拒）
+  for (const r of arr('responses')) {
+    const ok = isManager || r.userId === me || reqCreator[r.requestId as string] === me;
+    if (!ok) return 'responses 僅限幹部/本人/該局發起人';
+  }
+
+  // 通知：幹部／本人為觸發者(actor)或收件人(userId)
+  for (const u of arr('updates')) {
+    const ok = isManager || u.actorId === me || u.userId === me;
+    if (!ok) return 'updates 僅限幹部/相關本人';
+  }
 
   // 小姐狀態/照片/相簿：僅限幹部
   if (!isManager) {
@@ -132,7 +143,13 @@ export async function POST(req: NextRequest) {
     if (hasDataUrl(patch)) {
       return NextResponse.json({ error: 'inline image not allowed' }, { status: 400 });
     }
-    const violation = checkWriteAuthz(patch, session);
+    // 若寫入含 responses，先取回 requests 建立 creator 對照表以驗證授權
+    let reqCreator: Record<string, string> = {};
+    if (Array.isArray(patch.responses) && patch.responses.length) {
+      const reqs = await getCollection('requests');
+      reqCreator = Object.fromEntries(reqs.map((r) => [r.id, (r as { creatorId?: string }).creatorId ?? '']));
+    }
+    const violation = checkWriteAuthz(patch, session, reqCreator);
     if (violation) {
       return NextResponse.json({ error: `forbidden write: ${violation}` }, { status: 403 });
     }
