@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Bell, X, Check, UserCog, Camera } from 'lucide-react';
+import { X, Check, UserCog, Camera } from 'lucide-react';
 
 
 const TYPE_LABELS: Record<string, string> = {
@@ -81,7 +81,6 @@ export function OperatorHome() {
     setTimeout(() => setToast(''), 2500);
   }
   const router = useRouter();
-  const [bannerDismissed, setBannerDismissed] = useState(false);
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
   const [selectedGirls, setSelectedGirls] = useState<string[]>([]); // 多選
   const [toast, setToast] = useState('');
@@ -164,24 +163,6 @@ export function OperatorHome() {
 
   return (
     <div className="pb-24">
-      {/* LINE notification banner */}
-      {!bannerDismissed && (
-        <div className="mx-4 mt-4 mb-2 flex items-center gap-3 px-4 py-3 rounded-2xl border-2 border-dashed border-brand-pink bg-pink-50">
-          <span className="text-xs font-bold text-brand-pink shrink-0">DEMO</span>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Bell size={14} className="text-brand-pink shrink-0" />
-            <p className="text-xs text-zinc-600 truncate">📲 LINE 通知：你有新的局邀請，點此查看</p>
-          </div>
-          <button
-            onClick={() => setBannerDismissed(true)}
-            className="shrink-0 text-zinc-400 active:text-zinc-600"
-            aria-label="關閉通知"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
       {/* Header */}
       <div className="px-4 pt-3 pb-2">
         <p className="text-sm font-bold text-brand-ink uppercase tracking-wider mb-4">新進活動邀請</p>

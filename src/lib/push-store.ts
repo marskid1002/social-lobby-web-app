@@ -8,19 +8,11 @@
  */
 
 import type { PushSubscription } from 'web-push';
+import { getRedis, kvKey } from './kv';
 
-const REDIS_KEY = 'push_subs_by_user:v1';
+const REDIS_KEY = kvKey('push_subs_by_user:v1');
 
 type SubsByUser = Record<string, PushSubscription[]>;
-
-function getRedis() {
-  // 支援 Upstash 原生整合與 Vercel KV(Redis) 整合的不同環境變數命名
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
-  const { Redis } = require('@upstash/redis');
-  return new Redis({ url, token });
-}
 
 const memStore: SubsByUser = {};
 
@@ -54,6 +46,19 @@ export async function saveSubscription(userId: string, sub: PushSubscription) {
   // 再加到目標 userId
   all[userId] = [...(all[userId] ?? []), sub];
   await writeAll(all);
+}
+
+/** 移除失效訂閱（web-push 回傳 404/410 時呼叫），從所有 userId 清掉該 endpoint。 */
+export async function removeSubscriptionByEndpoint(endpoint: string) {
+  const all = await readAll();
+  let changed = false;
+  for (const uid of Object.keys(all)) {
+    const before = all[uid]?.length ?? 0;
+    all[uid] = (all[uid] ?? []).filter((s) => s.endpoint !== endpoint);
+    if (all[uid].length !== before) changed = true;
+    if (all[uid].length === 0) delete all[uid];
+  }
+  if (changed) await writeAll(all);
 }
 
 /** 取得指定 userId 們的所有訂閱（去重）。 */

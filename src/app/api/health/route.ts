@@ -1,14 +1,34 @@
 import { NextResponse } from 'next/server';
+import { getRedis, isRedisConfigured, keyPrefix } from '@/lib/kv';
 
 export const dynamic = 'force-dynamic';
 
-// 診斷用：只回報儲存相關環境變數「是否存在」，不回傳實際值
+// 診斷 + 就緒檢查：回報儲存環境變數「是否存在」（不回傳值），並實際 ping Redis。
+// 生產環境若沒有可用的 Redis → ready:false 且回 503，讓外部監控能偵測到。
 export async function GET() {
   const present = (k: string) => Boolean(process.env[k]);
-  return NextResponse.json({
-    redisConfigured:
-      (present('UPSTASH_REDIS_REST_URL') && present('UPSTASH_REDIS_REST_TOKEN')) ||
-      (present('KV_REST_API_URL') && present('KV_REST_API_TOKEN')),
+  const redisConfigured = isRedisConfigured();
+
+  // 實際連線測試（避免只看 env 卻連不上）
+  let redisPing = false;
+  if (redisConfigured) {
+    try {
+      const redis = getRedis();
+      if (redis) { await redis.ping(); redisPing = true; }
+    } catch {
+      redisPing = false;
+    }
+  }
+
+  const isProd = process.env.NODE_ENV === 'production';
+  // 生產環境必須有可用 Redis 才算就緒；本地開發用記憶體 fallback 視為就緒
+  const ready = isProd ? redisPing : true;
+
+  const bodyData = {
+    ready,
+    redisConfigured,
+    redisPing,
+    keyPrefix: keyPrefix(),
     env: {
       UPSTASH_REDIS_REST_URL: present('UPSTASH_REDIS_REST_URL'),
       UPSTASH_REDIS_REST_TOKEN: present('UPSTASH_REDIS_REST_TOKEN'),
@@ -21,5 +41,7 @@ export async function GET() {
       BLOB_STORE_ID: present('BLOB_STORE_ID'),
     },
     blobConfigured: present('BLOB_READ_WRITE_TOKEN') || present('BLOB_STORE_ID'),
-  });
+  };
+
+  return NextResponse.json(bodyData, { status: ready ? 200 : 503 });
 }

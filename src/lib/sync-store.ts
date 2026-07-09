@@ -5,7 +5,11 @@
  * 本地開發（無 Redis）用記憶體 fallback。
  */
 
-const KEY_PREFIX = 'sl:h:v1:'; // 每個集合一個 hash：sl:h:v1:requests ...
+import { getRedis, kvKey, warnIfRedisMissingInProd } from './kv';
+
+warnIfRedisMissingInProd(); // 生產環境缺 Redis → 冷啟動時大聲警告（資料不會持久化）
+
+const hashKey = (col: string) => kvKey(`sl:h:v1:${col}`); // 每集合一個 hash（含環境前綴）
 
 export type SharedKey =
   | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
@@ -26,14 +30,6 @@ function emptyShared(): SharedState {
   };
 }
 
-function getRedis() {
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
-  const { Redis } = require('@upstash/redis');
-  return new Redis({ url, token });
-}
-
 // 記憶體 fallback：{ collection: { id: item } }
 const mem: Record<SharedKey, Record<string, Item>> = {
   requests: {}, responses: {}, invitations: {}, updates: {}, chatMessages: {},
@@ -51,7 +47,7 @@ export async function getShared(): Promise<SharedState> {
   const out = emptyShared();
   if (redis) {
     for (const key of SHARED_KEYS) {
-      const h = (await redis.hgetall(KEY_PREFIX + key)) as Record<string, unknown> | null;
+      const h = (await redis.hgetall(hashKey(key))) as Record<string, unknown> | null;
       if (h) out[key] = Object.values(h).map(parseItem).filter(Boolean) as Item[];
     }
   } else {
@@ -64,7 +60,7 @@ export async function getShared(): Promise<SharedState> {
 export async function getCollection(key: SharedKey): Promise<Item[]> {
   const redis = getRedis();
   if (redis) {
-    const h = (await redis.hgetall(KEY_PREFIX + key)) as Record<string, unknown> | null;
+    const h = (await redis.hgetall(hashKey(key))) as Record<string, unknown> | null;
     return h ? (Object.values(h).map(parseItem).filter(Boolean) as Item[]) : [];
   }
   return Object.values(mem[key]);
@@ -79,7 +75,7 @@ export async function mergeShared(patch: Partial<SharedState>): Promise<SharedSt
     if (redis) {
       const obj: Record<string, Item> = {};
       for (const it of items) if (it && it.id) obj[it.id] = it;
-      if (Object.keys(obj).length) await redis.hset(KEY_PREFIX + key, obj); // 逐 field 原子寫入
+      if (Object.keys(obj).length) await redis.hset(hashKey(key), obj); // 逐 field 原子寫入
     } else {
       for (const it of items) if (it && it.id) mem[key][it.id] = it;
     }
@@ -90,14 +86,14 @@ export async function mergeShared(patch: Partial<SharedState>): Promise<SharedSt
 /** 從某集合刪除一筆（跨裝置刪除用）。 */
 export async function deleteSharedItem(key: SharedKey, id: string): Promise<void> {
   const redis = getRedis();
-  if (redis) await redis.hdel(KEY_PREFIX + key, id);
+  if (redis) await redis.hdel(hashKey(key), id);
   else delete mem[key][id];
 }
 
 export async function clearShared(): Promise<void> {
   const redis = getRedis();
   if (redis) {
-    await redis.del(...SHARED_KEYS.map((k) => KEY_PREFIX + k));
+    await redis.del(...SHARED_KEYS.map((k) => hashKey(k)));
   } else {
     for (const key of SHARED_KEYS) mem[key] = {};
   }

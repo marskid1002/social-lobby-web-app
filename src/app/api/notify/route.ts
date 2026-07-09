@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
-import { getSubscriptionsForUsers } from '@/lib/push-store';
+import { getSubscriptionsForUsers, removeSubscriptionByEndpoint } from '@/lib/push-store';
 import { getSessionFromRequest } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -51,8 +51,20 @@ export async function POST(req: NextRequest) {
       subscriptions.map((sub) => webpush.sendNotification(sub, payload))
     );
 
+    // 清理失效訂閱：web-push 對已過期/取消的端點回傳 404 或 410
+    const stale: string[] = [];
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        const code = (r.reason as { statusCode?: number })?.statusCode;
+        if (code === 404 || code === 410) stale.push(subscriptions[i].endpoint);
+      }
+    });
+    if (stale.length) {
+      await Promise.allSettled(stale.map((ep) => removeSubscriptionByEndpoint(ep)));
+    }
+
     const sent = results.filter((r) => r.status === 'fulfilled').length;
-    return NextResponse.json({ sent, total: subscriptions.length });
+    return NextResponse.json({ sent, total: subscriptions.length, cleaned: stale.length });
   } catch (e) {
     console.error('[notify]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });

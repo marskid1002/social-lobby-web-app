@@ -12,18 +12,12 @@ export default function OnboardingPage() {
   const [nickname, setNickname] = useState(currentUser?.nickname ?? '');
   const [area, setArea] = useState(currentUser?.defaultArea ?? '信義區');
   const [bio, setBio] = useState(currentUser?.bio ?? '');
-  const [oaToast, setOaToast] = useState(false);
 
   function handleContinue() {
     if (!nickname.trim()) return;
     updateUser({ nickname: nickname.trim(), defaultArea: area, bio });
     localStorage.setItem('sl_onboarded', 'true');
     router.push('/lobby/explore');
-  }
-
-  function handleFollowOA() {
-    setOaToast(true);
-    setTimeout(() => setOaToast(false), 2000);
   }
 
   return (
@@ -103,21 +97,15 @@ export default function OnboardingPage() {
           />
         </div>
 
-        {/* LINE OA card */}
-        <div className="rounded-2xl border-2 border-line-green/30 bg-line-green/5 p-4 flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-line-green rounded-xl flex items-center justify-center">
-              <span className="text-white text-xs font-bold">L</span>
-            </div>
-            <p className="text-sm font-semibold text-brand-ink">加入官方 LINE 帳號接收通知</p>
+        {/* 推播通知提示 */}
+        <div className="rounded-2xl border-2 border-brand-lavender bg-white p-4 flex items-start gap-3">
+          <div className="w-8 h-8 bg-brand-sky/15 rounded-xl flex items-center justify-center shrink-0">
+            <span className="text-base">🔔</span>
           </div>
-          <button
-            onClick={handleFollowOA}
-            className="w-full rounded-xl border-2 border-line-green text-line-green font-semibold text-sm py-2.5 bg-white active:bg-line-green/5 transition-colors"
-          >
-            + 加入好友
-          </button>
-          <p className="text-xs text-zinc-400 text-center">掃描 QR 碼或在 LINE 搜尋 @sociallobby</p>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-brand-ink">開啟推播通知</p>
+            <p className="text-xs text-zinc-400 mt-0.5">進入後系統會詢問是否允許通知，允許後即可在收到邀請、回應時收到推播（關閉 App 也能收到）。</p>
+          </div>
         </div>
 
         {/* CTA */}
@@ -130,12 +118,6 @@ export default function OnboardingPage() {
         </button>
       </div>
 
-      {/* Toast */}
-      {oaToast && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50">
-          假裝你已加入！
-        </div>
-      )}
     </div>
   );
 }

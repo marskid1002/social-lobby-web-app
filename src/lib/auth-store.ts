@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { getRedis, kvKey } from './kv';
 
 /**
  * 帳號儲存層（帳號 + 密碼）。
@@ -7,7 +8,7 @@ import crypto from 'crypto';
  * - 生產：Upstash/KV Redis；本地：記憶體 fallback
  */
 
-const ACCOUNTS_KEY = 'sl:accounts:v2';
+const ACCOUNTS_KEY = kvKey('sl:accounts:v2');
 
 export type AccountRole = 'user' | 'manager';
 
@@ -37,14 +38,6 @@ const MANAGER_MAP: { code: string; userId: string; nickname: string }[] = [
   { code: 'A009', userId: 'u-030', nickname: '謝經理' },
   { code: 'A010', userId: 'u-031', nickname: '許經理' },
 ];
-
-function getRedis() {
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  if (!url || !token) return null;
-  const { Redis } = require('@upstash/redis');
-  return new Redis({ url, token });
-}
 
 const memAccounts: AccountsMap = {};
 

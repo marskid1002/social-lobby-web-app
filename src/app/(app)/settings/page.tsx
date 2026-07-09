@@ -50,7 +50,6 @@ export default function SettingsPage() {
           <div className="bg-white rounded-2xl shadow-card overflow-hidden">
             {[
               { label: '使用者 ID', value: currentUser?.id },
-              { label: 'LINE 帳號', value: '已連結 @lineuser' },
             ].map((row, i) => (
               <div key={row.label} className={`flex items-center justify-between px-4 py-3.5 ${i > 0 ? 'border-t border-brand-lavender' : ''}`}>
                 <span className="text-sm text-zinc-500">{row.label}</span>
@@ -73,25 +72,17 @@ export default function SettingsPage() {
           <div className="bg-white rounded-2xl shadow-card overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3.5">
               <div className="flex-1 min-w-0 mr-4">
-                <p className="text-sm font-medium text-brand-ink">LINE 通知</p>
-                <p className="text-xs text-zinc-400">收到邀請、回應、需求媒合時 LINE 推播</p>
+                <p className="text-sm font-medium text-brand-ink">推播通知</p>
+                <p className="text-xs text-zinc-400">收到邀請、回應、需求媒合時，透過瀏覽器 / 裝置推播</p>
               </div>
               <button
                 onClick={() => setNotifs(!notifs)}
                 className={`w-11 h-6 rounded-full transition-colors shrink-0 ${notifs ? 'bg-status-available' : 'bg-zinc-200'}`}
-                aria-label="LINE 通知開關"
+                aria-label="推播通知開關"
               >
                 <div className={`w-5 h-5 bg-white rounded-full shadow-sm mt-0.5 transition-transform ${notifs ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
               </button>
             </div>
-            {!currentUser?.lineOAFollowed && (
-              <div className="flex items-center justify-between px-4 py-3.5 border-t border-brand-lavender">
-                <p className="text-sm text-brand-ink">加入官方 LINE 帳號</p>
-                <button onClick={() => showToast('假裝你已加入官方 LINE！')} className="text-xs font-semibold text-line-green px-3 py-1.5 rounded-full border border-line-green">
-                  + 加入
-                </button>
-              </div>
-            )}
           </div>
         </section>
 
