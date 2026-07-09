@@ -104,13 +104,12 @@ export default function LoginPage() {
 
             {mode === 'login' ? (
               <form onSubmit={handleLogin} className="flex flex-col gap-2.5">
-                <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="帳號（手機號碼 或 幹部代碼）" className={inputCls} aria-label="帳號" />
+                <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="帳號" className={inputCls} aria-label="帳號" />
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼" className={inputCls} aria-label="密碼" />
                 {error && <p className="text-xs text-red-500 font-semibold">{error}</p>}
                 <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
                   {busy ? '登入中…' : '登入'}
                 </button>
-                <p className="text-[11px] text-zinc-400 text-center mt-1">幹部首次登入請直接輸入代碼與欲設定的密碼</p>
               </form>
             ) : (
               <form onSubmit={handleRegister} className="flex flex-col gap-2.5">
@@ -121,7 +120,6 @@ export default function LoginPage() {
                 <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
                   {busy ? '註冊中…' : '註冊並開始'}
                 </button>
-                <p className="text-[11px] text-zinc-400 text-center mt-1">未來將加入手機簡訊驗證（OTP）</p>
               </form>
             )}
           </div>
@@ -132,7 +130,7 @@ export default function LoginPage() {
             disabled={busy}
             className="w-full py-3 rounded-2xl bg-white border-2 border-brand-lavender text-sm font-bold text-brand-ink active:scale-[0.98] transition-transform disabled:opacity-60"
           >
-            👀 訪客瀏覽（只看 3 位）
+            訪客瀏覽
           </button>
 
           <p className="text-xs text-zinc-400 text-center mt-6 leading-relaxed">
