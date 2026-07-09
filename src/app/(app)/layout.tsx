@@ -72,6 +72,10 @@ function AsParamHandler() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Hydration 安全：SSR 與客戶端首次渲染都先顯示中性佔位（內容來自 localStorage/相對時間，
+  // 兩邊本就不一致 → 用 mounted 閘門避免 React #418），掛載後才渲染真實內容。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const pathname = usePathname();
   const router = useRouter();
   const { currentUser, state, returnToManager } = useAppState();
@@ -86,6 +90,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   function handleReturnToManager() {
     returnToManager();
     router.push('/lobby/explore');
+  }
+
+  // 掛載前顯示中性佔位（SSR 與 client 首次渲染一致，避免 hydration 不匹配）
+  if (!mounted) {
+    return <div className="mx-auto max-w-[430px] min-h-screen bg-brand-snow" />;
   }
 
   return (
