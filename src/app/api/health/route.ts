@@ -32,10 +32,13 @@ export async function GET() {
     redisConfigured,
     redisPing,
     sessionSecretConfigured,
+    sentryConfigured: present('SENTRY_DSN') && present('NEXT_PUBLIC_SENTRY_DSN'),
     keyPrefix: keyPrefix(),
     env: {
       SESSION_SECRET: present('SESSION_SECRET'),
       ADMIN_SECRET: present('ADMIN_SECRET'),
+      SENTRY_DSN: present('SENTRY_DSN'),
+      NEXT_PUBLIC_SENTRY_DSN: present('NEXT_PUBLIC_SENTRY_DSN'),
       UPSTASH_REDIS_REST_URL: present('UPSTASH_REDIS_REST_URL'),
       UPSTASH_REDIS_REST_TOKEN: present('UPSTASH_REDIS_REST_TOKEN'),
       KV_REST_API_URL: present('KV_REST_API_URL'),
