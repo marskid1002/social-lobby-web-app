@@ -61,6 +61,15 @@ export async function removeSubscriptionByEndpoint(endpoint: string) {
   if (changed) await writeAll(all);
 }
 
+/** 移除某 userId 的所有推播訂閱（帳號刪除時用）。 */
+export async function removeSubscriptionsForUser(userId: string) {
+  const all = await readAll();
+  if (all[userId]) {
+    delete all[userId];
+    await writeAll(all);
+  }
+}
+
 /** 取得指定 userId 們的所有訂閱（去重）。 */
 export async function getSubscriptionsForUsers(userIds: string[]): Promise<PushSubscription[]> {
   const all = await readAll();

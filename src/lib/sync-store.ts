@@ -13,11 +13,11 @@ const hashKey = (col: string) => kvKey(`sl:h:v1:${col}`); // 每集合一個 has
 
 export type SharedKey =
   | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
-  | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers';
+  | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers' | 'blocks';
 
 export const SHARED_KEYS: SharedKey[] = [
   'requests', 'responses', 'invitations', 'updates', 'chatMessages',
-  'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers',
+  'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks',
 ];
 
 type Item = { id: string; [k: string]: unknown };
@@ -26,14 +26,14 @@ export type SharedState = Record<SharedKey, Item[]>;
 function emptyShared(): SharedState {
   return {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
-    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [],
+    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [],
   };
 }
 
 // 記憶體 fallback：{ collection: { id: item } }
 const mem: Record<SharedKey, Record<string, Item>> = {
   requests: {}, responses: {}, invitations: {}, updates: {}, chatMessages: {},
-  presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {},
+  presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {}, blocks: {},
 };
 
 function parseItem(v: unknown): Item | null {
@@ -97,4 +97,21 @@ export async function clearShared(): Promise<void> {
   } else {
     for (const key of SHARED_KEYS) mem[key] = {};
   }
+}
+
+/** 級聯刪除某使用者的所有共享資料（帳號真刪除時用）。 */
+export async function deleteUserData(userId: string): Promise<void> {
+  const all = await getShared();
+  const f = (col: SharedKey, pred: (it: Item) => boolean) =>
+    Promise.all(all[col].filter(pred).map((it) => deleteSharedItem(col, it.id)));
+  await f('requests', (r) => r.creatorId === userId);
+  await f('responses', (r) => r.userId === userId || r.dispatcherId === userId);
+  await f('invitations', (i) => i.fromUserId === userId || i.toUserId === userId);
+  await f('updates', (u) => u.userId === userId || u.actorId === userId);
+  await f('chatMessages', (m) => m.senderId === userId);
+  await f('presence', (p) => p.id === userId);
+  await f('photoOverrides', (p) => p.id === userId);
+  await f('photoGalleries', (p) => p.id === userId);
+  await f('registeredUsers', (u) => u.id === userId);
+  await f('blocks', (b) => b.blockerId === userId || b.blockedId === userId);
 }

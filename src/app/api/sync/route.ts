@@ -12,16 +12,32 @@ function canSeeGalleries(s: SessionPayload): boolean {
 
 function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
   const me = s.userId;
+  const asRec = (x: unknown) => x as Record<string, unknown>;
+
+  // 雙向封鎖：我封鎖的 + 封鎖我的（只算生效中的 active !== false）
+  const myBlocks = (all.blocks ?? []).filter((b) => {
+    const x = asRec(b);
+    return (x.blockerId === me || x.blockedId === me) && x.active !== false;
+  });
+  const blockedPeers = new Set<string>();
+  for (const b of myBlocks) {
+    const x = asRec(b);
+    if (x.blockerId === me) blockedPeers.add(x.blockedId as string);
+    if (x.blockedId === me) blockedPeers.add(x.blockerId as string);
+  }
+  const ok = (uid: unknown) => uid == null || !blockedPeers.has(uid as string);
+
   const pub = {
-    presence: all.presence ?? [],
-    photoOverrides: all.photoOverrides ?? [],
+    presence: (all.presence ?? []).filter((p) => ok(asRec(p).id)),
+    photoOverrides: (all.photoOverrides ?? []).filter((p) => ok(asRec(p).id)),
     // 相簿：僅付費會員可取得（伺服器端授權，非前端渲染），從源頭擋住照片外洩
-    photoGalleries: canSeeGalleries(s) ? (all.photoGalleries ?? []) : [],
-    registeredUsers: all.registeredUsers ?? [],
+    photoGalleries: canSeeGalleries(s) ? (all.photoGalleries ?? []).filter((p) => ok(asRec(p).id)) : [],
+    registeredUsers: (all.registeredUsers ?? []).filter((u) => ok(asRec(u).id)),
+    blocks: myBlocks, // 讓前端知道自己封鎖了誰（含被封鎖）
   } as Partial<SharedState>;
   const empty: SharedState = {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
-    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [],
+    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [],
   };
 
   if (s.role === 'guest') return { ...empty, ...pub } as SharedState;
@@ -29,33 +45,37 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
   const isManager = s.role === 'manager';
   const requests = all.requests ?? [];
   const responses = all.responses ?? [];
-  const asRec = (x: unknown) => x as Record<string, unknown>;
-  const visibleRequests = isManager ? requests : requests.filter((r) => asRec(r).creatorId === me);
+  const visibleRequests = (isManager ? requests : requests.filter((r) => asRec(r).creatorId === me))
+    .filter((r) => ok(asRec(r).creatorId));
   const visibleReqIds = new Set(visibleRequests.map((r) => r.id));
 
-  const scopedResponses = isManager
+  const scopedResponses = (isManager
     ? responses
     : responses.filter((r) => {
         const x = asRec(r);
         return visibleReqIds.has(x.requestId as string) || x.userId === me || x.dispatcherId === me;
-      });
+      })
+  ).filter((r) => ok(asRec(r).userId) && ok(asRec(r).dispatcherId));
 
   const invitations = (all.invitations ?? []).filter((i) => {
     const x = asRec(i);
-    return x.fromUserId === me || x.toUserId === me || (isManager && x.dispatcherId === me);
+    return (x.fromUserId === me || x.toUserId === me || (isManager && x.dispatcherId === me))
+      && ok(x.fromUserId) && ok(x.toUserId);
   });
 
-  const updates = (all.updates ?? []).filter((u) => asRec(u).userId === me);
+  const updates = (all.updates ?? []).filter((u) => asRec(u).userId === me && ok(asRec(u).actorId));
 
   const chatMessages = (all.chatMessages ?? []).filter((m) => {
-    const tid = asRec(m).threadId as string;
+    const x = asRec(m);
+    if (!ok(x.senderId)) return false; // 封鎖對象的訊息不下發
+    const tid = x.threadId as string;
     if (tid.startsWith('g-')) {
       const reqId = tid.slice(2);
       const req = requests.find((r) => r.id === reqId);
       if (req && asRec(req).creatorId === me) return true;
       return responses.some((r) => {
-        const x = asRec(r);
-        return x.requestId === reqId && x.userId === me && x.responseStatus === 'joining';
+        const y = asRec(r);
+        return y.requestId === reqId && y.userId === me && y.responseStatus === 'joining';
       });
     }
     return tid.includes(me);
@@ -101,6 +121,7 @@ function checkWriteAuthz(patch: Record<string, unknown[]>, s: SessionPayload, re
   for (const r of arr('requests')) if (r.creatorId !== me) return 'requests.creatorId 必須為本人';
   for (const m of arr('chatMessages')) if (m.senderId !== me) return 'chatMessages.senderId 必須為本人';
   for (const u of arr('registeredUsers')) if (u.id !== me) return 'registeredUsers 只能寫入本人';
+  for (const b of arr('blocks')) if (b.blockerId !== me) return 'blocks 僅能由本人建立/移除';
 
   // 邀請：本人須為 from/to 一方
   for (const i of arr('invitations')) if (i.fromUserId !== me && i.toUserId !== me) return 'invitations 僅限本人參與者';

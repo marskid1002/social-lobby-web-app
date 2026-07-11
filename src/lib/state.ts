@@ -66,6 +66,7 @@ export interface AppState {
   photoOverrides: { id: string; avatarUrl: string }[]; // 幹部改的小姐照片（跨裝置同步）
   photoGalleries: { id: string; urls: string[] }[]; // 各小姐的相簿（多張，跨裝置同步；id = 使用者 id）
   registeredUsers: User[]; // 手機+密碼註冊的新客戶（跨裝置同步）
+  blocks: { id: string; blockerId: string; blockedId: string; active: boolean; createdAt: string }[]; // 雙向封鎖（跨裝置同步；id = `${blockerId}__${blockedId}`）
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
@@ -116,6 +117,7 @@ function getSeedState(): AppState {
     photoOverrides: [],
     photoGalleries: [],
     registeredUsers: [],
+    blocks: [],
   };
 }
 
@@ -156,7 +158,7 @@ const listeners = new Set<() => void>();
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
 // presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers'] as const;
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
 
 // 把註冊的新客戶併入 users（跨裝置：其他人才看得到發局者等資訊）
@@ -273,6 +275,18 @@ function unionById<T extends { id: string }>(local: T[], server: T[]): T[] {
 
 // 由 1:1 threadId（sort([a,b]).join('-')）與已知一方，取出另一方 id。
 // 客戶 id 為 c-<uuid>（含連字號），不能用正則/切割硬拆 → 以已知一方做邊界比對。
+// 我方相關的封鎖對象 id（雙向、只算 active 中），供前端隱藏 seed 名單用
+export function blockedPeerIds(state: AppState): Set<string> {
+  const me = state.currentUserId;
+  const set = new Set<string>();
+  for (const b of state.blocks ?? []) {
+    if (!b.active) continue;
+    if (b.blockerId === me) set.add(b.blockedId);
+    if (b.blockedId === me) set.add(b.blockerId);
+  }
+  return set;
+}
+
 export function otherIdFromThread(threadId: string, me: string): string {
   if (!me || !threadId) return '';
   if (threadId.startsWith(me + '-')) return threadId.slice(me.length + 1);
@@ -984,16 +998,26 @@ export function useAppState() {
   }, []);
 
   const blockUser = useCallback((targetId: string) => {
-    setState((prev) => ({
-      ...prev,
-      userBlocks: [...new Set([...prev.userBlocks, targetId])],
-    }));
+    const me = getState().currentUserId;
+    const id = `${me}__${targetId}`;
+    const now = new Date().toISOString();
+    setState((prev) => {
+      const exists = prev.blocks.some((b) => b.id === id);
+      const blocks = exists
+        ? prev.blocks.map((b) => (b.id === id ? { ...b, active: true } : b))
+        : [...prev.blocks, { id, blockerId: me, blockedId: targetId, active: true, createdAt: now }];
+      return { ...prev, blocks, userBlocks: [...new Set([...prev.userBlocks, targetId])] };
+    });
   }, []);
 
   const unblockUser = useCallback((targetId: string) => {
+    const me = getState().currentUserId;
+    const id = `${me}__${targetId}`;
     setState((prev) => ({
       ...prev,
-      userBlocks: prev.userBlocks.filter((id) => id !== targetId),
+      // 軟刪除（active:false）以配合 merge-only 同步；伺服器只認 active 的封鎖
+      blocks: prev.blocks.map((b) => (b.id === id ? { ...b, active: false } : b)),
+      userBlocks: prev.userBlocks.filter((x) => x !== targetId),
     }));
   }, []);
 

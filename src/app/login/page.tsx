@@ -37,6 +37,7 @@ export default function LoginPage() {
         return;
       }
       const u = data.user;
+      if (u.role === 'admin') { switchUser(u.id); setTimeout(() => router.push('/admin'), 250); return; }
       if (u.role === 'manager') switchUser(u.id);
       else loginCustomer(u.id, u.nickname);
       setTimeout(() => router.push('/lobby/explore'), 250);

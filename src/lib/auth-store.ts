@@ -10,20 +10,24 @@ import { getRedis, kvKey } from './kv';
 
 const ACCOUNTS_KEY = kvKey('sl:accounts:v2');
 
-export type AccountRole = 'user' | 'manager';
+export type AccountRole = 'user' | 'manager' | 'admin';
 
 export interface Account {
-  key: string;              // 登入帳號：手機（客戶）或 A001（幹部）
+  key: string;              // 登入帳號：手機（客戶）、A001（幹部）或 A000（管理員）
   role: AccountRole;
   tier: string;
   userId: string;           // 對應 app 內 user id
   nickname: string;
   salt: string;
-  hash: string | null;      // null = 尚未設定密碼（幹部首次登入前）
+  hash: string | null;      // null = 尚未設定密碼（幹部/管理員首次登入前）
   createdAt: string;
+  disabled?: boolean;       // true = 已停用（登入被擋）
 }
 
 type AccountsMap = Record<string, Account>; // key -> Account
+
+// 最高權限管理員帳號（後台 /admin 用）；首次登入需 ADMIN_SECRET 啟用
+const ADMIN_ACCOUNT = { code: 'A000', userId: 'u-016', nickname: '管理員' };
 
 // 幹部帳號 A001~A010 對應到現有 10 個幹部 user
 const MANAGER_MAP: { code: string; userId: string; nickname: string }[] = [
@@ -70,9 +74,16 @@ export function normalizeKey(key: string): string {
   return /^A\d{3}$/i.test(k) ? k.toUpperCase() : normalizePhone(k);
 }
 
-// 確保 10 個幹部帳號存在（無密碼），首次呼叫時建立
+// 確保管理員(A000)與 10 個幹部帳號存在（無密碼），首次呼叫時建立
 async function ensureManagerAccounts(accounts: AccountsMap): Promise<boolean> {
   let changed = false;
+  if (!accounts[ADMIN_ACCOUNT.code]) {
+    accounts[ADMIN_ACCOUNT.code] = {
+      key: ADMIN_ACCOUNT.code, role: 'admin', tier: 'admin', userId: ADMIN_ACCOUNT.userId,
+      nickname: ADMIN_ACCOUNT.nickname, salt: '', hash: null, createdAt: new Date().toISOString(),
+    };
+    changed = true;
+  }
   for (const m of MANAGER_MAP) {
     if (!accounts[m.code]) {
       accounts[m.code] = {
@@ -138,4 +149,34 @@ export function verifyPassword(account: Account, password: string): boolean {
   const a = Buffer.from(candidate, 'hex');
   const b = Buffer.from(account.hash, 'hex');
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// ── 管理後台用 ──────────────────────────────────────────────────────────────
+
+// 列出所有帳號（含 A000/幹部/客戶）；呼叫端負責去除敏感欄位再回前端
+export async function listAccounts(): Promise<Account[]> {
+  const accounts = await readAccounts();
+  if (await ensureManagerAccounts(accounts)) await writeAccounts(accounts);
+  return Object.values(accounts);
+}
+
+// 停用/啟用帳號（admin 帳號不可停用）
+export async function setAccountDisabled(key: string, disabled: boolean): Promise<boolean> {
+  const accounts = await readAccounts();
+  const acc = accounts[normalizeKey(key)];
+  if (!acc || acc.role === 'admin') return false;
+  acc.disabled = disabled;
+  await writeAccounts(accounts);
+  return true;
+}
+
+// 真刪除帳號（僅限客戶；幹部/管理員請用停用/重設）。回傳被刪的帳號供級聯清資料。
+export async function deleteAccount(key: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  const k = normalizeKey(key);
+  const acc = accounts[k];
+  if (!acc || acc.role !== 'user') return null;
+  delete accounts[k];
+  await writeAccounts(accounts);
+  return acc;
 }

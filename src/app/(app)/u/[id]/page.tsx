@@ -71,6 +71,18 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     setTimeout(() => { setToast(''); router.back(); }, 1000);
   }
 
+  async function handleReport() {
+    setMenuOpen(false);
+    try {
+      const res = await fetch('/api/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: id, targetName: user?.nickname, reason: '' }),
+      });
+      showToast(res.ok ? '已檢舉，我們會盡快處理' : '檢舉失敗');
+    } catch { showToast('連線失敗'); }
+  }
+
   function handleSendPrivateInvite() {
     const message = [
       `活動類型：${REQUEST_TYPES.find((t) => t.value === inviteType)?.label}`,
@@ -119,7 +131,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
               封鎖
             </button>
             <button
-              onClick={() => { setMenuOpen(false); showToast('已檢舉'); }}
+              onClick={handleReport}
               className="w-full px-4 py-3 text-sm text-zinc-600 font-medium text-left hover:bg-brand-snow border-t border-brand-lavender"
             >
               檢舉

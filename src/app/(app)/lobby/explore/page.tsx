@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAppState } from '@/lib/state';
+import { useAppState, blockedPeerIds } from '@/lib/state';
 import { OperatorHome } from '@/components/OperatorHome';
 import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -219,10 +219,11 @@ function ExploreContent() {
   const atCapList = withJoinerCount.filter((x) => x.atCap);
   const hasMyRequests = myRequests.length > 0;
 
+  const blocked = blockedPeerIds(state); // 雙向封鎖：從瀏覽清單隱藏
   const femaleUserIds = state.onlineStatuses
     .filter((s) => {
       const u = state.users.find((u) => u.id === s.userId);
-      return u && (u.role === 'user' || u.role === 'escort') && u.id !== currentUser?.id;
+      return u && (u.role === 'user' || u.role === 'escort') && u.id !== currentUser?.id && !blocked.has(s.userId);
     })
     .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime())
     .map((s) => s.userId);

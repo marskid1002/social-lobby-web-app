@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ user: { id: session.userId, role: session.role, tier: session.tier } });
 }
 
-async function withSession(user: { id: string; role: 'user' | 'manager' | 'guest'; tier: string; nickname?: string }) {
+async function withSession(user: { id: string; role: 'user' | 'manager' | 'guest' | 'admin'; tier: string; nickname?: string }) {
   const token = await signSession({ userId: user.id, role: user.role, tier: user.tier });
   const res = NextResponse.json({ ok: true, user });
   res.headers.set('Set-Cookie', sessionCookieHeader(token));
@@ -87,6 +87,18 @@ export async function POST(req: NextRequest) {
 
       const acc = await getAccount(key);
       if (!acc) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
+      if (acc.disabled) return NextResponse.json({ error: '此帳號已被停用' }, { status: 403 });
+
+      // 管理員(A000)首次登入 → 需 ADMIN_SECRET 啟用（只有你手上有），再自設密碼
+      if (acc.role === 'admin' && acc.hash === null) {
+        if (!process.env.ADMIN_SECRET || String(body.activationCode ?? '') !== process.env.ADMIN_SECRET) {
+          return NextResponse.json({ error: '請輸入管理員啟用碼', needActivation: true }, { status: 403 });
+        }
+        if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `首次登入請設定 ${PW_MIN}~${PW_MAX} 碼密碼` }, { status: 400 });
+        const activated = await setInitialPassword(key, pw);
+        if (!activated) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
+        return withSession({ id: activated.userId, role: 'admin', tier: activated.tier, nickname: activated.nickname });
+      }
 
       // 幹部首次登入 → 以此次密碼設定並寫死（需啟用碼，防止外人搶註可枚舉的 A00x 帳號）
       if (acc.role === 'manager' && acc.hash === null) {
