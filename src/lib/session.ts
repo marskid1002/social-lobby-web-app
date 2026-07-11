@@ -9,9 +9,25 @@ export interface SessionPayload {
   tier: string;
 }
 
+// 是否為正式生產環境
+function isProd(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
+
+// SESSION_SECRET 是否已正確設定（供 /api/health 就緒檢查）
+export function isSessionSecretConfigured(): boolean {
+  return Boolean(process.env.SESSION_SECRET);
+}
+
 function getSecret(): Uint8Array {
-  // 生產必須設 SESSION_SECRET；本地 dev 用固定字串（僅供開發）
-  const secret = process.env.SESSION_SECRET || 'dev-only-insecure-secret-change-me';
+  const secret = process.env.SESSION_SECRET;
+  // 生產環境「必須」設 SESSION_SECRET；缺少時直接 throw（fail-safe）：
+  // signSession 會 500（登入失敗）、verifySession 會捕捉成 null（全部視為未登入），
+  // 兩者都無法用公開已知字串偽造 session，避免安全地基被瓦解。
+  if (!secret) {
+    if (isProd()) throw new Error('SESSION_SECRET 未設定：生產環境拒絕使用不安全的預設密鑰');
+    return new TextEncoder().encode('dev-only-insecure-secret-change-me'); // 僅本地開發
+  }
   return new TextEncoder().encode(secret);
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRedis, isRedisConfigured, keyPrefix } from '@/lib/kv';
+import { isSessionSecretConfigured } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,16 +21,21 @@ export async function GET() {
     }
   }
 
-  const isProd = process.env.NODE_ENV === 'production';
-  // 生產環境必須有可用 Redis 才算就緒；本地開發用記憶體 fallback 視為就緒
-  const ready = isProd ? redisPing : true;
+  const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+  const sessionSecretConfigured = isSessionSecretConfigured();
+  // 生產環境必須同時具備：可用 Redis + 已設定 SESSION_SECRET 才算就緒；
+  // 本地開發用記憶體 fallback / 預設密鑰視為就緒
+  const ready = isProd ? redisPing && sessionSecretConfigured : true;
 
   const bodyData = {
     ready,
     redisConfigured,
     redisPing,
+    sessionSecretConfigured,
     keyPrefix: keyPrefix(),
     env: {
+      SESSION_SECRET: present('SESSION_SECRET'),
+      ADMIN_SECRET: present('ADMIN_SECRET'),
       UPSTASH_REDIS_REST_URL: present('UPSTASH_REDIS_REST_URL'),
       UPSTASH_REDIS_REST_TOKEN: present('UPSTASH_REDIS_REST_TOKEN'),
       KV_REST_API_URL: present('KV_REST_API_URL'),

@@ -4,8 +4,16 @@ import {
   adminResetPassword, normalizeKey, normalizePhone,
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
+import { rateLimit, clientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
+
+const PW_MIN = 6;
+const PW_MAX = 128; // 上限避免 scryptSync 被超長密碼拖成 CPU DoS
+
+function isProd(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
 
 // GET：回傳目前 session 身份（供前端校正 currentUserId）
 export async function GET(req: NextRequest) {
@@ -47,32 +55,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok });
     }
 
+    const ip = clientIp(req);
+
     // 客戶註冊：手機 + 暱稱 + 密碼
     if (action === 'register') {
+      // 限流：同 IP 每小時最多 10 次註冊，抵擋洗註冊
+      const rl = await rateLimit('register', ip, 10, 60 * 60);
+      if (!rl.ok) return NextResponse.json({ error: `註冊過於頻繁，請 ${rl.retryAfter} 秒後再試` }, { status: 429 });
+
       const phone = normalizePhone(body.phone ?? '');
+      const pw = String(body.password ?? '');
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
-      if (!body.password || String(body.password).length < 6) return NextResponse.json({ error: '密碼至少 6 碼' }, { status: 400 });
+      if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
       if (await getAccount(phone)) return NextResponse.json({ error: '此手機已註冊，請直接登入' }, { status: 409 });
-      const acc = await createCustomer(phone, body.password, body.nickname);
+      const acc = await createCustomer(phone, pw, body.nickname);
       return withSession({ id: acc.userId, role: 'user', tier: acc.tier, nickname: acc.nickname });
     }
 
     // 登入：帳號（手機 or A00x）+ 密碼
     if (action === 'login') {
       const key = normalizeKey(body.account ?? '');
-      if (!key || !body.password) return NextResponse.json({ error: '請輸入帳號與密碼' }, { status: 400 });
+      const pw = String(body.password ?? '');
+      if (!key || !pw) return NextResponse.json({ error: '請輸入帳號與密碼' }, { status: 400 });
+      if (pw.length > PW_MAX) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
+
+      // 限流：同 IP 每 15 分鐘 20 次、同帳號每 15 分鐘 10 次失敗嘗試
+      const rlIp = await rateLimit('login-ip', ip, 20, 15 * 60);
+      if (!rlIp.ok) return NextResponse.json({ error: `嘗試過於頻繁，請 ${rlIp.retryAfter} 秒後再試` }, { status: 429 });
+      const rlAcc = await rateLimit('login-acc', key, 10, 15 * 60);
+      if (!rlAcc.ok) return NextResponse.json({ error: `此帳號嘗試過於頻繁，請 ${rlAcc.retryAfter} 秒後再試` }, { status: 429 });
+
       const acc = await getAccount(key);
       if (!acc) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
 
-      // 幹部首次登入 → 以此次密碼設定並寫死
+      // 幹部首次登入 → 以此次密碼設定並寫死（需啟用碼，防止外人搶註可枚舉的 A00x 帳號）
       if (acc.role === 'manager' && acc.hash === null) {
-        if (String(body.password).length < 6) return NextResponse.json({ error: '首次登入請設定至少 6 碼密碼' }, { status: 400 });
-        const activated = await setInitialPassword(key, body.password);
+        const required = process.env.MANAGER_ACTIVATION_CODE;
+        if (required) {
+          if (String(body.activationCode ?? '') !== required) {
+            return NextResponse.json({ error: '請輸入幹部啟用碼', needActivation: true }, { status: 403 });
+          }
+        } else if (isProd()) {
+          // 生產環境未設定啟用碼 → 拒絕首次設密（fail-safe，避免無防護的搶註）
+          return NextResponse.json({ error: '幹部啟用尚未開放，請聯絡管理員' }, { status: 403 });
+        }
+        if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `首次登入請設定 ${PW_MIN}~${PW_MAX} 碼密碼` }, { status: 400 });
+        const activated = await setInitialPassword(key, pw);
         if (!activated) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
         return withSession({ id: activated.userId, role: 'manager', tier: activated.tier, nickname: activated.nickname });
       }
 
-      if (!verifyPassword(acc, body.password)) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
+      if (!verifyPassword(acc, pw)) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
       return withSession({ id: acc.userId, role: acc.role, tier: acc.tier, nickname: acc.nickname });
     }
 

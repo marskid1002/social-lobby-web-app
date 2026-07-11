@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { MomentCard } from '@/components/MomentCard';
@@ -12,8 +11,6 @@ export default function PlazaPage() {
   const { state, currentUser, switchUser } = useAppState();
   const router = useRouter();
   const tier = currentUser?.tier ?? 'free';
-  const [draftText, setDraftText] = useState('');
-  const [posted, setPosted] = useState(false);
 
   // Manager: read-only feed + roster quick-switch to post as a girl
   if (currentUser?.role === 'manager' || currentUser?.role === 'operator') {
@@ -63,21 +60,10 @@ export default function PlazaPage() {
     );
   }
 
-  const isVip = tier === 'vip';
-  const canPost = tier === 'premium' || tier === 'vip';
-
   // Sort posts newest first
   const posts = [...state.momentPosts].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
-
-  function handlePost() {
-    if (!draftText.trim()) return;
-    // Demo: just show a toast-style confirmation, no real state mutation needed
-    setPosted(true);
-    setDraftText('');
-    setTimeout(() => setPosted(false), 3000);
-  }
 
   return (
     <div className="relative" style={{ minHeight: 'calc(100dvh - 57px - 56px)' }}>
@@ -102,47 +88,11 @@ export default function PlazaPage() {
       )}
 
     <div className={`px-4 pt-4 pb-24 ${tier === 'free' ? 'filter blur-[4px] pointer-events-none select-none' : ''}`}>
-      {/* Post composer (premium + vip only) */}
-      {canPost && (
-        <div className="bg-white rounded-2xl border border-brand-lavender p-4 mb-4 shadow-card">
-          <div className="flex items-start gap-3">
-            {currentUser && (
-              <img
-                src={currentUser.avatarUrl}
-                alt={currentUser.nickname}
-                className="w-9 h-9 rounded-full object-cover shrink-0 mt-0.5"
-              />
-            )}
-            <textarea
-              value={draftText}
-              onChange={(e) => setDraftText(e.target.value)}
-              placeholder="分享你今晚的心情或想法..."
-              className="flex-1 text-sm text-brand-ink placeholder:text-zinc-400 resize-none outline-none min-h-[64px] bg-transparent"
-              rows={3}
-            />
-          </div>
-          <div className="flex justify-end mt-2">
-            <button
-              onClick={handlePost}
-              disabled={!draftText.trim()}
-              className="px-4 py-2 rounded-xl bg-brand-sky text-sm font-semibold text-brand-ink disabled:opacity-40 active:scale-95 transition-all"
-            >
-              發文
-            </button>
-          </div>
-          {posted && (
-            <p className="text-xs text-center text-brand-sky font-semibold mt-2">貼文已發布 ✓</p>
-          )}
-        </div>
-      )}
-
-      {/* Standard users: composer locked prompt */}
-      {!canPost && (
-        <div className="flex items-center gap-2 bg-brand-snow rounded-2xl border border-brand-lavender px-4 py-3 mb-4">
-          <PenLine className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
-          <p className="text-sm text-zinc-400">升級至進階會員即可在廣場發文</p>
-        </div>
-      )}
+      {/* 發文功能尚未落地（送出不會儲存），上線前先以誠實提示取代可輸入的編輯器，避免誤導付費用戶 */}
+      <div className="flex items-center gap-2 bg-brand-snow rounded-2xl border border-brand-lavender px-4 py-3 mb-4">
+        <PenLine className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
+        <p className="text-sm text-zinc-400">廣場發文功能整備中，敬請期待</p>
+      </div>
 
       {/* Feed */}
       <div className="flex flex-col gap-3">

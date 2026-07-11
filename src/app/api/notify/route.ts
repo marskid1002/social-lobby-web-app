@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { getSubscriptionsForUsers, removeSubscriptionByEndpoint } from '@/lib/push-store';
 import { getSessionFromRequest } from '@/lib/session';
+import { rateLimit } from '@/lib/rate-limit';
+
+const MAX_RECIPIENTS = 50;
+const MAX_TITLE = 100;
+const MAX_BODY = 300;
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +32,12 @@ export async function POST(req: NextRequest) {
     // 需登入才能觸發推播（防止匿名釣魚推播）
     const session = await getSessionFromRequest(req);
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    // 訪客唯讀，不可觸發推播
+    if (session.role === 'guest') return NextResponse.json({ error: 'guest is read-only' }, { status: 403 });
+
+    // 速率限制：每人每 5 分鐘最多 30 次，抵擋大量濫發/騷擾
+    const rl = await rateLimit('notify', session.userId, 30, 5 * 60);
+    if (!rl.ok) return NextResponse.json({ error: 'too many requests', retryAfter: rl.retryAfter }, { status: 429 });
 
     if (!ensureVapid()) {
       // 尚未設定 VAPID 金鑰（例如環境變數未填）→ 靜默略過，不影響主流程
@@ -37,15 +48,20 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(userIds) || userIds.length === 0) {
       return NextResponse.json({ sent: 0, skipped: 'no target users' });
     }
+    // 收件人數上限，避免單次群發全站
+    const targetIds = userIds.slice(0, MAX_RECIPIENTS).map((x) => String(x));
+    // 標題/內文長度上限（降低濫發與注入風險）
+    const safeTitle = String(title ?? '').slice(0, MAX_TITLE);
+    const safeBody = String(body ?? '').slice(0, MAX_BODY);
     // 連結只允許站內相對路徑，擋外部釣魚連結
     const safeUrl = typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : '/';
-    const subscriptions = await getSubscriptionsForUsers(userIds);
+    const subscriptions = await getSubscriptionsForUsers(targetIds);
 
     if (subscriptions.length === 0) {
       return NextResponse.json({ sent: 0 });
     }
 
-    const payload = JSON.stringify({ title, body, url: safeUrl });
+    const payload = JSON.stringify({ title: safeTitle, body: safeBody, url: safeUrl });
 
     const results = await Promise.allSettled(
       subscriptions.map((sub) => webpush.sendNotification(sub, payload))

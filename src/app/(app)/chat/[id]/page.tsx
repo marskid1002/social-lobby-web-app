@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Send, Clock, CheckCircle, Users } from 'lucide-react';
-import { useAppState } from '@/lib/state';
+import { useAppState, otherIdFromThread } from '@/lib/state';
 import type { ChatMessage } from '@/lib/mock';
 
 interface ChatPageProps {
@@ -88,8 +88,8 @@ export default function ChatPage({ params }: ChatPageProps) {
   const isGroupCreator = groupRequest?.creatorId === currentUser?.id;
 
   // ── 1:1 chat logic ────────────────────────────────────────────────────────
-  const userIdMatches = !isGroup ? (id.match(/u-\d+/g) ?? []) : [];
-  const otherUserId = userIdMatches.find((uid) => uid !== currentUser?.id) ?? userIdMatches[0] ?? '';
+  // 用邊界比對從 threadId 取另一方（支援註冊客戶 c-<uuid>，避免 /u-\d+/ 抓不到造成幹部代談失效）
+  const otherUserId = !isGroup ? otherIdFromThread(id, currentUser?.id ?? '') : '';
   const otherUser = state.users.find((u) => u.id === otherUserId);
   const isOtherOnline = state.onlineUserIds.includes(otherUserId);
 
@@ -487,7 +487,7 @@ export default function ChatPage({ params }: ChatPageProps) {
             value={xiaomeiInput}
             onChange={(e) => setXiaomeiInput(e.target.value)}
             onKeyDown={handleXiaomeiKeyDown}
-            placeholder="王小美 輸入訊息…"
+            placeholder={`${otherUser?.nickname ?? '對方'} 輸入訊息…`}
             aria-label="輸入訊息"
             className="flex-1 bg-pink-50 border border-pink-200 rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-pink-300 transition-all"
           />
@@ -686,15 +686,16 @@ export default function ChatPage({ params }: ChatPageProps) {
         <div ref={bottomRef} />
       </div>
 
-      {hasSentMessage && !isEscort && (
+      {/* DEMO 專用：切換到對方視角，僅示範模式顯示，正式環境不出現 */}
+      {process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && hasSentMessage && !isEscort && (
         <div className="shrink-0 px-4 pb-2">
           <button
             onClick={() => setViewAs('xiaomei')}
             className="w-full flex items-center justify-between px-4 py-2.5 rounded-2xl border-2 border-dashed border-pink-300 bg-pink-50 active:scale-[0.98] transition-all"
-            aria-label="切換到王小美視角"
+            aria-label="切換到對方視角（示範）"
           >
             <span className="text-[10px] font-bold text-zinc-400 tracking-widest">DEMO</span>
-            <span className="text-sm font-semibold text-brand-ink">切換到王小美視角 →</span>
+            <span className="text-sm font-semibold text-brand-ink">切換到對方視角 →</span>
           </button>
         </div>
       )}

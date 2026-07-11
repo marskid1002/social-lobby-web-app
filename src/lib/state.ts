@@ -76,14 +76,15 @@ const CLEAN_START = true;
 function getSeedState(): AppState {
   return {
     currentUserId: 'u-017', // 預設以 VIP 用戶身份登入（demo 展示用）
-    onlineUserIds: seedOnlineStatuses.map((s) => s.userId),
+    // CLEAN_START：在線狀態改由 presence（幹部上/下班）驅動，起始為空，避免正式站顯示假的在線小姐
+    onlineUserIds: CLEAN_START ? [] : seedOnlineStatuses.map((s) => s.userId),
     users: seedUsers,
-    onlineStatuses: seedOnlineStatuses,
+    onlineStatuses: CLEAN_START ? [] : seedOnlineStatuses,
     requests: CLEAN_START ? [] : seedRequests,
     responses: CLEAN_START ? [] : seedResponses,
     invitations: CLEAN_START ? [] : seedInvitations,
     updates: CLEAN_START ? [] : seedUpdates,
-    follows: seedFollows,
+    follows: CLEAN_START ? [] : seedFollows,
     readUpdateIds: CLEAN_START ? [] : seedUpdates.filter((u) => u.read).map((u) => u.id),
     userBlocks: [],
     notificationsEnabled: true,
@@ -94,7 +95,7 @@ function getSeedState(): AppState {
     meetRecords: [],
     teaserMessages: CLEAN_START ? [] : seedTeaserMessages,
     inboxUnread: false,
-    momentPosts: seedMomentPosts,
+    momentPosts: CLEAN_START ? [] : seedMomentPosts, // 正式站不放假貼文
     likedPostIds: [],
     secondaryUserId: null,
     // 各幹部預設女伴名單（屬設定，不受 CLEAN_START 清除影響）
@@ -163,10 +164,20 @@ function applyRegisteredUsers(next: AppState): AppState {
   const regs = next.registeredUsers ?? [];
   if (!regs.length) return next;
   const regMap = new Map(regs.map((r) => [r.id, r]));
-  // server 上的註冊用戶為權威：覆蓋既有同 id（修正本地 fallback 的 tier），其餘照舊
-  const users = next.users.map((u) => (regMap.has(u.id) ? { ...u, ...regMap.get(u.id)! } : u));
+  // server 上的註冊用戶為權威（暱稱/等級/角色/頭像等），但「點數/發局額度」屬本機經濟狀態，
+  // 不可被註冊當下的快照每次輪詢還原（#9）→ 既有 user 保留本機 credits/monthlyRequestsLeft。
+  const users = next.users.map((u) => {
+    const reg = regMap.get(u.id);
+    if (!reg) return u;
+    // 排除 server 快照的經濟欄位，保留本機 credits/monthlyRequestsLeft（#9）
+    const { credits: _c, monthlyRequestsLeft: _m, ...regRest } = reg;
+    return { ...u, ...regRest };
+  });
   const existingIds = new Set(users.map((u) => u.id));
-  const toAdd = regs.filter((r) => !existingIds.has(r.id));
+  // 新加入（其他裝置註冊的）用戶：補經濟欄位預設，避免 undefined
+  const toAdd = regs
+    .filter((r) => !existingIds.has(r.id))
+    .map((r) => ({ ...r, credits: r.credits ?? 0, monthlyRequestsLeft: r.monthlyRequestsLeft ?? 0 }));
   return { ...next, users: [...users, ...toAdd] };
 }
 
@@ -215,17 +226,40 @@ const SYNC_POLL_MS = 4000;
 let syncStarted = false;
 let isPushing = false;
 
-// 將變動的共享集合 POST 到 server（fire-and-forget）
-function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>) {
+// 尚未確認送達 server 的本機項目（避免 poll 以 server 舊版覆蓋樂觀更新造成靜默遺失，#10）
+const unconfirmed: Partial<Record<SharedKey, Map<string, { id: string }>>> = {};
+
+function trackUnconfirmed(patch: Partial<Record<SharedKey, unknown[]>>, add: boolean) {
+  for (const key of Object.keys(patch) as SharedKey[]) {
+    const arr = patch[key];
+    if (!arr || !arr.length) continue;
+    const m = unconfirmed[key] ?? (unconfirmed[key] = new Map());
+    for (const it of arr as { id: string }[]) {
+      if (!it || !it.id) continue;
+      if (add) m.set(it.id, it); else m.delete(it.id);
+    }
+  }
+}
+
+// 將變動的共享集合 POST 到 server；失敗自動重試（最多 3 次），未確認前以本機為準（防靜默遺失，#10）
+function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt = 0) {
   if (typeof window === 'undefined') return;
   if (Object.keys(patch).length === 0) return;
+  if (attempt === 0) trackUnconfirmed(patch, true);
   isPushing = true;
   fetch('/api/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ patch }),
   })
-    .catch(() => {})
+    .then((res) => {
+      if (!res.ok) throw new Error(`sync ${res.status}`);
+      trackUnconfirmed(patch, false); // 確認送達 → 解除本機保護
+    })
+    .catch(() => {
+      if (attempt < 3) setTimeout(() => pushSharedPatch(patch, attempt + 1), 1000 * (attempt + 1));
+      // 超過重試上限：仍保留於 unconfirmed，後續輪詢不會用 server 舊版覆蓋
+    })
     .finally(() => { isPushing = false; });
 }
 
@@ -237,6 +271,16 @@ function unionById<T extends { id: string }>(local: T[], server: T[]): T[] {
   return [...map.values()];
 }
 
+// 由 1:1 threadId（sort([a,b]).join('-')）與已知一方，取出另一方 id。
+// 客戶 id 為 c-<uuid>（含連字號），不能用正則/切割硬拆 → 以已知一方做邊界比對。
+export function otherIdFromThread(threadId: string, me: string): string {
+  if (!me || !threadId) return '';
+  if (threadId.startsWith(me + '-')) return threadId.slice(me.length + 1);
+  if (threadId.endsWith('-' + me)) return threadId.slice(0, threadId.length - me.length - 1);
+  const m = threadId.match(/u-\d+/g) ?? []; // fallback：舊 u-\d+ 格式
+  return m.find((x) => x !== me) ?? m[0] ?? '';
+}
+
 function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>) {
   if (!globalState) globalState = loadState();
   let changed = false;
@@ -244,10 +288,17 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
   for (const key of SHARED_KEYS) {
     const serverArr = shared[key];
     if (!serverArr) continue;
-    const merged = unionById(
+    let merged = unionById(
       (globalState[key] as unknown as { id: string }[]) ?? [],
       serverArr
     );
+    // 疊回尚未確認送達 server 的本機項目：server 版本不得覆蓋（#10）
+    const uc = unconfirmed[key];
+    if (uc && uc.size) {
+      const map = new Map(merged.map((x) => [x.id, x]));
+      for (const [id, item] of uc) map.set(id, item);
+      merged = [...map.values()];
+    }
     // 排序：通知/局新到舊，聊天訊息舊到新
     const ts = (x: { id: string }) => new Date((x as unknown as { createdAt: string }).createdAt).getTime();
     if (key === 'updates' || key === 'requests') {
@@ -873,10 +924,13 @@ export function useAppState() {
         ? prev.requests.map((r) => r.id === req.id ? { ...r, status: 'open' as const } : r)
         : prev.requests;
 
-      // Decline the matching invitation too (if one existed from accept)
+      // Decline the matching invitation too (if one existed from accept)。
+      // 代談派工時，acceptResponder 產生的 invitation.fromUserId = dispatcherId（幹部），
+      // 故撤銷條件需比對 dispatcherId ?? userId，否則幹部聊天室/名額會殘留（#11）。
+      const inviteFrom = target.dispatcherId ?? target.userId;
       const invitations = wasAccepted
         ? prev.invitations.map((i) =>
-            i.requestId === target.requestId && i.fromUserId === target.userId && i.status === 'accepted'
+            i.requestId === target.requestId && i.fromUserId === inviteFrom && i.status === 'accepted'
               ? { ...i, status: 'declined' as const, respondedAt: new Date().toISOString() }
               : i
           )
@@ -985,8 +1039,9 @@ export function useAppState() {
         .map((r) => r.userId);
       recipients = [...(req ? [req.creatorId] : []), ...joinerIds];
     } else {
-      // 1:1：threadId 是兩個 user id 排序組成
-      recipients = (threadId.match(/u-\d+/g) ?? []);
+      // 1:1：threadId 是兩個 user id 排序組成；用邊界比對取另一方（支援 c-<uuid> 客戶）
+      const other = otherIdFromThread(threadId, senderId);
+      recipients = other ? [other] : [];
     }
     recipients = [...new Set(recipients)].filter((id) => id !== senderId);
     if (recipients.length) {

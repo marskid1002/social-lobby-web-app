@@ -15,6 +15,8 @@ export default function LoginPage() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
+  const [activationCode, setActivationCode] = useState('');
+  const [needActivation, setNeedActivation] = useState(false); // 幹部首次登入需啟用碼
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -26,10 +28,14 @@ export default function LoginPage() {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'login', account, password }),
+        body: JSON.stringify({ action: 'login', account, password, activationCode }),
       });
       const data = await res.json();
-      if (!res.ok || !data.ok) { setError(data.error ?? '登入失敗'); return; }
+      if (!res.ok || !data.ok) {
+        if (data.needActivation) setNeedActivation(true); // 顯示啟用碼欄位
+        setError(data.error ?? '登入失敗');
+        return;
+      }
       const u = data.user;
       if (u.role === 'manager') switchUser(u.id);
       else loginCustomer(u.id, u.nickname);
@@ -106,6 +112,15 @@ export default function LoginPage() {
               <form onSubmit={handleLogin} className="flex flex-col gap-2.5">
                 <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="帳號" className={inputCls} aria-label="帳號" />
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼" className={inputCls} aria-label="密碼" />
+                {needActivation && (
+                  <input
+                    value={activationCode}
+                    onChange={(e) => setActivationCode(e.target.value)}
+                    placeholder="幹部啟用碼（首次登入）"
+                    className={inputCls}
+                    aria-label="幹部啟用碼"
+                  />
+                )}
                 {error && <p className="text-xs text-red-500 font-semibold">{error}</p>}
                 <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
                   {busy ? '登入中…' : '登入'}
@@ -134,7 +149,11 @@ export default function LoginPage() {
           </button>
 
           <p className="text-xs text-zinc-400 text-center mt-6 leading-relaxed">
-            登入即表示你同意服務條款與隱私權政策<br />本平台限 18 歲以上使用
+            登入即表示你同意
+            <a href="/legal/terms" className="underline text-zinc-500">服務條款</a>
+            與
+            <a href="/legal/privacy" className="underline text-zinc-500">隱私權政策</a>
+            <br />本平台限 18 歲以上使用
           </p>
         </div>
       </div>

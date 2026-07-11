@@ -163,9 +163,13 @@ export default function SettingsPage() {
         <section>
           <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">關於</p>
           <div className="bg-white rounded-2xl shadow-card overflow-hidden">
-            {['服務條款', '隱私權政策', '檢舉問題'].map((item, i) => (
-              <button key={item} onClick={() => showToast('假連結')} className={`w-full flex items-center justify-between px-4 py-3.5 ${i > 0 ? 'border-t border-brand-lavender' : ''}`}>
-                <span className="text-sm text-brand-ink">{item}</span>
+            {[
+              { label: '服務條款', onClick: () => router.push('/legal/terms') },
+              { label: '隱私權政策', onClick: () => router.push('/legal/privacy') },
+              { label: '檢舉問題', onClick: () => showToast('檢舉功能開放中，請先截圖並來信客服') },
+            ].map((item, i) => (
+              <button key={item.label} onClick={item.onClick} className={`w-full flex items-center justify-between px-4 py-3.5 ${i > 0 ? 'border-t border-brand-lavender' : ''}`}>
+                <span className="text-sm text-brand-ink">{item.label}</span>
                 <ChevronRight className="w-4 h-4 text-zinc-300" strokeWidth={1.75} />
               </button>
             ))}

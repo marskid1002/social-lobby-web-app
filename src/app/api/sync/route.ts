@@ -5,12 +5,18 @@ import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 export const dynamic = 'force-dynamic';
 
 // 依登入者角色/身份，只回傳其有權看到的資料（私訊、邀請、通知不外洩）
+// 付費才可取得完整相簿（相簿 URL 屬付費內容，避免訪客/免費用戶繞前端馬賽克直接拿全部照片）
+function canSeeGalleries(s: SessionPayload): boolean {
+  return s.role !== 'guest' && (s.tier === 'vip' || s.tier === 'premium');
+}
+
 function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
   const me = s.userId;
   const pub = {
     presence: all.presence ?? [],
     photoOverrides: all.photoOverrides ?? [],
-    photoGalleries: all.photoGalleries ?? [],
+    // 相簿：僅付費會員可取得（伺服器端授權，非前端渲染），從源頭擋住照片外洩
+    photoGalleries: canSeeGalleries(s) ? (all.photoGalleries ?? []) : [],
     registeredUsers: all.registeredUsers ?? [],
   } as Partial<SharedState>;
   const empty: SharedState = {
@@ -59,6 +65,20 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
     requests: visibleRequests, responses: scopedResponses, invitations, updates, chatMessages,
     ...pub,
   } as SharedState;
+}
+
+// 清洗 registeredUsers 寫入：權限/等級一律以 session 為準，並移除 client 傳入的點數/額度，
+// 防止客戶自行把 tier 改成 vip、role 改成 manager 提權，或竄改經濟欄位。
+function sanitizePatch(patch: Record<string, unknown>, s: SessionPayload): void {
+  const ru = patch.registeredUsers;
+  if (Array.isArray(ru)) {
+    patch.registeredUsers = ru.map((u) => {
+      const rest = { ...(u as Record<string, unknown>) };
+      delete rest.credits;
+      delete rest.monthlyRequestsLeft;
+      return { ...rest, role: s.role === 'guest' ? 'user' : s.role, tier: s.tier };
+    });
+  }
 }
 
 // 阻擋把 data: URL（base64 圖片）寫進共享狀態，避免膨脹
@@ -143,6 +163,7 @@ export async function POST(req: NextRequest) {
     if (hasDataUrl(patch)) {
       return NextResponse.json({ error: 'inline image not allowed' }, { status: 400 });
     }
+    sanitizePatch(patch, session); // 權限/等級以伺服器 session 為準，擋自升 tier/role
     // 若寫入含 responses，先取回 requests 建立 creator 對照表以驗證授權
     let reqCreator: Record<string, string> = {};
     if (Array.isArray(patch.responses) && patch.responses.length) {
