@@ -25,9 +25,9 @@ export function ProfileDrawer({ open, onClose }: Props) {
   }
 
   function handleLogout() {
-    resetState();
-    onClose();
-    router.push('/login');
+    resetState(); // 清本機狀態
+    // 導到 /logout 由伺服器清除 session cookie 再回登入頁（用整頁導向確保 Set-Cookie 生效）
+    window.location.href = '/logout';
   }
 
   function navigate(path: string) {
