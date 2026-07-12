@@ -25,7 +25,7 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto } = useAppState();
+  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto, updateUser } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
   const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
@@ -86,6 +86,7 @@ export function OperatorHome() {
   const [toast, setToast] = useState('');
   const [rosterEditOpen, setRosterEditOpen] = useState(false);
   const [rosterDraft, setRosterDraft] = useState<string[]>([]);
+  const [nameDraft, setNameDraft] = useState('');
 
   // 目前幹部的女伴名單（可自行設定，存本機）
   const currentRosterIds = state.rosters.find((r) => r.id === state.currentUserId)?.girlIds ?? [];
@@ -159,6 +160,37 @@ export function OperatorHome() {
     setSelectedGirls([]);
     setToast(`✅ 已安排 ${names} 出席，通知已發送`);
     setTimeout(() => setToast(''), 3000);
+  }
+
+  // 首登強制設定顯示名稱：幹部在 registeredUsers 尚無自己的紀錄（＝從沒設過），
+  // 就擋住後台、要求先設定暱稱（設定後會同步、也會顯示給客戶）。
+  const needsNickname = !state.registeredUsers.some((u) => u.id === state.currentUserId);
+  if (needsNickname) {
+    const me = state.users.find((u) => u.id === state.currentUserId);
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center px-6 text-center">
+        <div className="w-full max-w-sm bg-white rounded-3xl border border-brand-lavender p-6 shadow-card">
+          <div className="text-3xl mb-2">👋</div>
+          <h1 className="text-base font-bold text-brand-ink mb-1">設定你的顯示名稱</h1>
+          <p className="text-sm text-zinc-500 mb-4">這會顯示給客戶看，設定後才能開始使用後台。</p>
+          <input
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            placeholder={me?.nickname ? `目前：${me.nickname}` : '輸入顯示名稱'}
+            maxLength={20}
+            className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky mb-4"
+            aria-label="顯示名稱"
+          />
+          <button
+            onClick={() => { const n = nameDraft.trim(); if (n) updateUser({ nickname: n }); }}
+            disabled={!nameDraft.trim()}
+            className="w-full py-3 rounded-xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 active:bg-purple-600 transition-colors"
+          >
+            儲存並開始
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (

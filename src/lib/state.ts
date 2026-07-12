@@ -524,12 +524,20 @@ export function useAppState() {
   }, []);
 
   const updateUser = useCallback((updates: Partial<User>) => {
-    setState((prev) => ({
-      ...prev,
-      users: prev.users.map((u) =>
+    setState((prev) => {
+      const users = prev.users.map((u) =>
         u.id === prev.currentUserId ? { ...u, ...updates } : u
-      ),
-    }));
+      );
+      // 將本人資料 upsert 進 registeredUsers（唯一跨裝置同步、且客戶端會套用的集合），
+      // 讓暱稱/地區/簡介等 profile 編輯能同步並顯示給其他人（含幹部改名）。
+      const me = users.find((u) => u.id === prev.currentUserId);
+      const registeredUsers = !me
+        ? prev.registeredUsers
+        : prev.registeredUsers.some((u) => u.id === me.id)
+          ? prev.registeredUsers.map((u) => (u.id === me.id ? { ...u, ...me } : u))
+          : [...prev.registeredUsers, me];
+      return { ...prev, users, registeredUsers };
+    });
   }, []);
 
   const postRequest = useCallback((req: Omit<Request, 'id' | 'creatorId' | 'createdAt' | 'expiresAt' | 'status' | 'metrics'>) => {
