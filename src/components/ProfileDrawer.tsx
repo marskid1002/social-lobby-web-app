@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { X, User, ClipboardList, ShieldOff, Settings, RotateCcw, LogOut, MapPin, ChevronRight, Bell } from 'lucide-react';
 import { useAppState, resetState } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
-import { DemoUserSwitcher } from './DemoUserSwitcher';
 import { useNotificationPermission } from './PushManager';
 import { toast } from 'sonner';
 
@@ -18,22 +17,13 @@ interface Props {
 export function ProfileDrawer({ open, onClose }: Props) {
   const { currentUser, isOnline, setOnline, setArea, reset } = useAppState();
   const router = useRouter();
-  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [resetToast, setResetToast] = useState(false);
   const { permission, request: requestNotif } = useNotificationPermission();
-  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function handleEnableNotif() {
     const p = await requestNotif();
     if (p === 'granted') toast.success('已開啟通知 🔔');
     else if (p === 'denied') toast('通知被拒絕，請到瀏覽器設定開啟');
-  }
-
-  function handleAvatarPress() {
-    pressTimer.current = setTimeout(() => setSwitcherOpen(true), 600);
-  }
-  function handleAvatarRelease() {
-    if (pressTimer.current) clearTimeout(pressTimer.current);
   }
 
   function handleReset() {
@@ -72,10 +62,6 @@ export function ProfileDrawer({ open, onClose }: Props) {
           <div className="bg-gradient-card-a p-5 pt-10">
             <div className="flex items-start justify-between mb-3">
               <button
-                onMouseDown={handleAvatarPress}
-                onMouseUp={handleAvatarRelease}
-                onTouchStart={handleAvatarPress}
-                onTouchEnd={handleAvatarRelease}
                 onClick={() => navigate('/me')}
                 className="active:scale-95 transition-transform"
                 aria-label="我的個人檔案"
@@ -208,14 +194,6 @@ export function ProfileDrawer({ open, onClose }: Props) {
               </button>
             </div>
 
-            {/* Demo switcher shortcut */}
-            <button
-              onClick={() => setSwitcherOpen(true)}
-              className="w-full text-center text-xs text-zinc-400 py-2 rounded-xl bg-white/60 border border-brand-lavender"
-            >
-              🔄 切換示範用戶
-            </button>
-
             <p className="text-center text-xs text-zinc-300 pb-2">v0.1 · zh-Hant</p>
           </div>
         </div>
@@ -226,8 +204,6 @@ export function ProfileDrawer({ open, onClose }: Props) {
           示範資料已重置
         </div>
       )}
-
-      <DemoUserSwitcher open={switcherOpen} onClose={() => setSwitcherOpen(false)} />
     </>
   );
 }
