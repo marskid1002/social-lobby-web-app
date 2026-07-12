@@ -36,6 +36,13 @@ export async function rateLimit(bucket: string, id: string, limit: number, windo
   }
 }
 
+/** 清除某計數（例如登入成功後清掉該帳號的失敗計數，避免正常重登被誤鎖）。 */
+export async function clearRateLimit(bucket: string, id: string): Promise<void> {
+  const redis = getRedis();
+  if (!redis) return;
+  try { await redis.del(kvKey(`sl:rl:${bucket}:${id}`)); } catch { /* 忽略 */ }
+}
+
 /** 從 Request 取用戶端 IP（Vercel/一般代理）。 */
 export function clientIp(req: Request): string {
   const h = req.headers;

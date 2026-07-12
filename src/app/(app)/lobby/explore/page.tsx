@@ -191,7 +191,7 @@ function ExploreContent() {
 
   if (currentUser?.role === 'escort') return null;
 
-  if (currentUser?.role === 'manager' || currentUser?.role === 'operator') {
+  if (currentUser?.role === 'manager') {
     return <OperatorHome />;
   }
 

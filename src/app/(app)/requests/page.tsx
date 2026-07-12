@@ -44,8 +44,8 @@ export default function RequestsPage() {
 
   if (role === 'user') return null;
 
-  // ── Manager/operator view ────────────────────────────────────────────────
-  if (role === 'manager' || role === 'operator') {
+  // ── Manager view ────────────────────────────────────────────────
+  if (role === 'manager') {
     const openRequests = state.requests.filter(
       (r) => r.status === 'open' && r.creatorId !== state.currentUserId
     );

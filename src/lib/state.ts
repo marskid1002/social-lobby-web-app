@@ -13,7 +13,7 @@ import {
   seedTeaserMessages,
   momentPosts as seedMomentPosts,
 } from '@/lib/mock';
-import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, DirectMessage, MeetRecord, MomentPost } from '@/lib/mock';
+import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, MeetRecord, MomentPost } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
 import { sendPushNotification } from '@/lib/notify';
 
@@ -53,7 +53,6 @@ export interface AppState {
   showOnNearby: boolean;
   autoOfflineHours: number;
   chatMessages: ChatMessage[];
-  directMessages: DirectMessage[];
   meetRecords: MeetRecord[];
   teaserMessages: TeaserMessage[];
   inboxUnread: boolean;      // true when a new accepted invite is waiting in inbox
@@ -92,7 +91,6 @@ function getSeedState(): AppState {
     showOnNearby: true,
     autoOfflineHours: 4,
     chatMessages: CLEAN_START ? [] : seedChatMessages,
-    directMessages: [],
     meetRecords: [],
     teaserMessages: CLEAN_START ? [] : seedTeaserMessages,
     inboxUnread: false,
@@ -176,10 +174,11 @@ function applyRegisteredUsers(next: AppState): AppState {
     return { ...u, ...regRest };
   });
   const existingIds = new Set(users.map((u) => u.id));
-  // 新加入（其他裝置註冊的）用戶：補經濟欄位預設，避免 undefined
+  // 新加入（其他裝置註冊的）用戶：經濟欄位依 tier 帶合理預設（server 快照已剝除經濟欄位），
+  // 避免該客戶日後在此裝置登入時額度顯示 0、發局被誤擋（收斂總檢 #3）
   const toAdd = regs
     .filter((r) => !existingIds.has(r.id))
-    .map((r) => ({ ...r, credits: r.credits ?? 0, monthlyRequestsLeft: r.monthlyRequestsLeft ?? 0 }));
+    .map((r) => ({ ...r, credits: r.credits ?? 100, monthlyRequestsLeft: r.monthlyRequestsLeft ?? (TIER_MONTHLY_LIMITS[r.tier] ?? 5) }));
   return { ...next, users: [...users, ...toAdd] };
 }
 
@@ -247,7 +246,14 @@ function trackUnconfirmed(patch: Partial<Record<SharedKey, unknown[]>>, add: boo
 function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt = 0) {
   if (typeof window === 'undefined') return;
   if (Object.keys(patch).length === 0) return;
-  if (attempt === 0) trackUnconfirmed(patch, true);
+  if (attempt === 0) {
+    // 只推送本人擁有的項目：blocks 限本人建立、registeredUsers 限本人，
+    // 避免把 poll 併入的他人資料送回導致伺服器整批 403（收斂總檢 #1/#2）
+    const me = getState().currentUserId;
+    if (Array.isArray(patch.blocks)) patch.blocks = (patch.blocks as { blockerId?: string }[]).filter((b) => b.blockerId === me);
+    if (Array.isArray(patch.registeredUsers)) patch.registeredUsers = (patch.registeredUsers as { id?: string }[]).filter((u) => u.id === me);
+    trackUnconfirmed(patch, true);
+  }
   isPushing = true;
   fetch('/api/sync', {
     method: 'POST',
@@ -448,7 +454,14 @@ export function useAppState() {
       // 若本機還沒有這個 user（尚未同步到），先補一個基本物件，稍後 poll 會覆蓋
       const hasUser = prev.users.some((u) => u.id === userId);
       const users = hasUser
-        ? prev.users
+        ? prev.users.map((u) => {
+            // 修復被 poll 以 0 併入的舊客戶額度（credits 與額度同為 0 = 未初始化簽名），避免發局被誤擋
+            if (u.id !== userId) return u;
+            if ((u.monthlyRequestsLeft ?? 0) === 0 && (u.credits ?? 0) === 0) {
+              return { ...u, credits: 100, monthlyRequestsLeft: TIER_MONTHLY_LIMITS[u.tier] ?? 5 };
+            }
+            return u;
+          })
         : [...prev.users, {
             id: userId, lineUserId: userId, nickname,
             avatarUrl: 'https://randomuser.me/api/portraits/lego/5.jpg',
@@ -1080,22 +1093,6 @@ export function useAppState() {
     return newMsg;
   }, []);
 
-  const sendDirectMessage = useCallback(
-    (toUserId: string, msg: Omit<DirectMessage, 'id' | 'createdAt' | 'read'>) => {
-      const newDm: DirectMessage = {
-        ...msg,
-        id: `dm-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        read: false,
-      };
-      setState((prev) => ({
-        ...prev,
-        directMessages: [...prev.directMessages, newDm],
-      }));
-      return newDm;
-    },
-    []
-  );
 
   // Confirm meetup: locks the chat and records the meet
   const confirmMeetup = useCallback((inviteId: string, otherUserId: string) => {
@@ -1302,7 +1299,6 @@ export function useAppState() {
     markUpdatesRead,
     reset,
     sendChatMessage,
-    sendDirectMessage,
     confirmMeetup,
     confirmGroupAttendance,
     clearInboxUnread,

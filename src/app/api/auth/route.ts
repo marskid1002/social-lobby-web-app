@@ -4,7 +4,7 @@ import {
   adminResetPassword, normalizeKey, normalizePhone,
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
-import { rateLimit, clientIp } from '@/lib/rate-limit';
+import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       if (!key || !pw) return NextResponse.json({ error: '請輸入帳號與密碼' }, { status: 400 });
       if (pw.length > PW_MAX) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
 
-      // 限流：同 IP 每 15 分鐘 20 次、同帳號每 15 分鐘 10 次失敗嘗試
+      // 限流：同 IP 每 15 分鐘 20 次、同帳號每 15 分鐘 10 次；登入成功會清掉帳號計數（見下方）避免正常重登被鎖
       const rlIp = await rateLimit('login-ip', ip, 20, 15 * 60);
       if (!rlIp.ok) return NextResponse.json({ error: `嘗試過於頻繁，請 ${rlIp.retryAfter} 秒後再試` }, { status: 429 });
       const rlAcc = await rateLimit('login-acc', key, 10, 15 * 60);
@@ -118,6 +118,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (!verifyPassword(acc, pw)) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
+      await clearRateLimit('login-acc', key); // 成功登入 → 清掉該帳號失敗計數
       return withSession({ id: acc.userId, role: acc.role, tier: acc.tier, nickname: acc.nickname });
     }
 

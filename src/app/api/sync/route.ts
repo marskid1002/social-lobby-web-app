@@ -14,14 +14,16 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
   const me = s.userId;
   const asRec = (x: unknown) => x as Record<string, unknown>;
 
-  // 雙向封鎖：我封鎖的 + 封鎖我的（只算生效中的 active !== false）
-  const myBlocks = (all.blocks ?? []).filter((b) => {
+  // 與我相關的所有封鎖（含 active:false）：回傳給前端讓「解除封鎖」能收斂到對方端
+  const relatedBlocks = (all.blocks ?? []).filter((b) => {
     const x = asRec(b);
-    return (x.blockerId === me || x.blockedId === me) && x.active !== false;
+    return x.blockerId === me || x.blockedId === me;
   });
+  // 實際過濾內容只用「生效中」的封鎖
   const blockedPeers = new Set<string>();
-  for (const b of myBlocks) {
+  for (const b of relatedBlocks) {
     const x = asRec(b);
+    if (x.active === false) continue;
     if (x.blockerId === me) blockedPeers.add(x.blockedId as string);
     if (x.blockedId === me) blockedPeers.add(x.blockerId as string);
   }
@@ -33,7 +35,7 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
     // 相簿：僅付費會員可取得（伺服器端授權，非前端渲染），從源頭擋住照片外洩
     photoGalleries: canSeeGalleries(s) ? (all.photoGalleries ?? []).filter((p) => ok(asRec(p).id)) : [],
     registeredUsers: (all.registeredUsers ?? []).filter((u) => ok(asRec(u).id)),
-    blocks: myBlocks, // 讓前端知道自己封鎖了誰（含被封鎖）
+    blocks: relatedBlocks, // 含 active:false，讓對方端能收斂解除封鎖
   } as Partial<SharedState>;
   const empty: SharedState = {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
@@ -90,14 +92,23 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
 // 清洗 registeredUsers 寫入：權限/等級一律以 session 為準，並移除 client 傳入的點數/額度，
 // 防止客戶自行把 tier 改成 vip、role 改成 manager 提權，或竄改經濟欄位。
 function sanitizePatch(patch: Record<string, unknown>, s: SessionPayload): void {
+  const me = s.userId;
   const ru = patch.registeredUsers;
   if (Array.isArray(ru)) {
-    patch.registeredUsers = ru.map((u) => {
-      const rest = { ...(u as Record<string, unknown>) };
-      delete rest.credits;
-      delete rest.monthlyRequestsLeft;
-      return { ...rest, role: s.role === 'guest' ? 'user' : s.role, tier: s.tier };
-    });
+    // 只保留本人（丟掉 poll 併入的他人帳號，避免外來項導致整批 403）；權限/等級以 session 為準、剔除經濟欄位
+    patch.registeredUsers = ru
+      .filter((u) => (u as Record<string, unknown>).id === me)
+      .map((u) => {
+        const rest = { ...(u as Record<string, unknown>) };
+        delete rest.credits;
+        delete rest.monthlyRequestsLeft;
+        return { ...rest, role: s.role === 'guest' ? 'user' : s.role, tier: s.tier };
+      });
+  }
+  const bl = patch.blocks;
+  if (Array.isArray(bl)) {
+    // 只保留本人建立的封鎖（丟掉「別人封鎖我」的外來項，避免整批 403）
+    patch.blocks = bl.filter((b) => (b as Record<string, unknown>).blockerId === me);
   }
 }
 

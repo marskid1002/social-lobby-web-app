@@ -13,7 +13,7 @@ export default function PlazaPage() {
   const tier = currentUser?.tier ?? 'free';
 
   // Manager: read-only feed + roster quick-switch to post as a girl
-  if (currentUser?.role === 'manager' || currentUser?.role === 'operator') {
+  if (currentUser?.role === 'manager') {
     const posts = [...state.momentPosts].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
