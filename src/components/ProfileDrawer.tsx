@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { X, User, ClipboardList, ShieldOff, Settings, RotateCcw, LogOut, MapPin, ChevronRight, Bell } from 'lucide-react';
+import { X, User, ClipboardList, ShieldOff, Settings, LogOut, MapPin, ChevronRight, Bell } from 'lucide-react';
 import { useAppState, resetState } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import { useNotificationPermission } from './PushManager';
@@ -15,21 +14,14 @@ interface Props {
 }
 
 export function ProfileDrawer({ open, onClose }: Props) {
-  const { currentUser, isOnline, setOnline, setArea, reset } = useAppState();
+  const { currentUser, isOnline, setOnline, setArea } = useAppState();
   const router = useRouter();
-  const [resetToast, setResetToast] = useState(false);
   const { permission, request: requestNotif } = useNotificationPermission();
 
   async function handleEnableNotif() {
     const p = await requestNotif();
     if (p === 'granted') toast.success('已開啟通知 🔔');
     else if (p === 'denied') toast('通知被拒絕，請到瀏覽器設定開啟');
-  }
-
-  function handleReset() {
-    reset();
-    setResetToast(true);
-    setTimeout(() => setResetToast(false), 2000);
   }
 
   function handleLogout() {
@@ -176,18 +168,11 @@ export function ProfileDrawer({ open, onClose }: Props) {
               ))}
             </div>
 
-            {/* Dev actions */}
+            {/* 帳號 */}
             <div className="bg-white rounded-2xl shadow-card overflow-hidden">
               <button
-                onClick={handleReset}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-brand-ice transition-colors"
-              >
-                <RotateCcw className="w-4.5 h-4.5 text-zinc-400" strokeWidth={1.75} />
-                <span className="text-sm font-medium text-zinc-500">重置示範資料</span>
-              </button>
-              <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left border-t border-brand-lavender hover:bg-red-50 transition-colors"
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-red-50 transition-colors"
               >
                 <LogOut className="w-4.5 h-4.5 text-red-400" strokeWidth={1.75} />
                 <span className="text-sm font-medium text-red-500">登出</span>
@@ -199,11 +184,6 @@ export function ProfileDrawer({ open, onClose }: Props) {
         </div>
       </div>
 
-      {resetToast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-[200]">
-          示範資料已重置
-        </div>
-      )}
     </>
   );
 }
