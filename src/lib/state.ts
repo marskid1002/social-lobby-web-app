@@ -558,15 +558,11 @@ export function useAppState() {
       read: false,
     }));
 
+    // 發局不佔額度（暫不收費）：發局不再扣 monthlyRequestsLeft
     setState((prev) => ({
       ...prev,
       requests: [newReq, ...prev.requests],
       updates: [...managerNotifs, ...prev.updates],
-      users: prev.users.map((u) =>
-        u.id === prev.currentUserId
-          ? { ...u, monthlyRequestsLeft: Math.max(0, u.monthlyRequestsLeft - 1) }
-          : u
-      ),
     }));
 
     // 推播給幹部（背景通知）
@@ -963,16 +959,8 @@ export function useAppState() {
           )
         : prev.invitations;
 
-      // Penalty only when rejecting an already-accepted joiner
-      const users = wasAccepted
-        ? prev.users.map((u) =>
-            u.id === prev.currentUserId
-              ? { ...u, monthlyRequestsLeft: Math.max(0, u.monthlyRequestsLeft - 1) }
-              : u
-          )
-        : prev.users;
-
-      return { ...prev, responses, requests, invitations, users };
+      // 發局不佔額度（暫不收費）：拒絕已入局者不再扣次數
+      return { ...prev, responses, requests, invitations };
     });
   }, []);
 

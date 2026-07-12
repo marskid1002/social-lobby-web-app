@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Clock, MapPin, Users, Share2, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, Users, Share2 } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -36,7 +36,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const {
     state, currentUser,
     respondToInvite, closeRequest,
-    declineResponder, buyExtraSlot,
+    declineResponder,
     joinRequest, acceptResponder,
     cancelJoinRequest,
     recordRequestViewer,
@@ -45,7 +45,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
   const rejectTargetId  = useRef<string | null>(null);
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
-  const [showNoSlotSheet, setShowNoSlotSheet]   = useState(false);
 
   // 安全返回：PWA 從推播進來沒有上一頁記錄時，router.back() 會卡住 → 改導到收件匣
   const goBack = () => {
@@ -94,9 +93,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const expiresIn  = formatDistance(new Date(request.expiresAt), new Date(), { locale: zhTW });
   const isExpired  = new Date(request.expiresAt) <= new Date();
 
-  const slotsLeft     = currentUser?.monthlyRequestsLeft ?? 0;
-  const isVip         = currentUser?.tier === 'vip';
-  const canAffordSlot = (currentUser?.credits ?? 0) >= 35;
 
   function showToast(msg: string) {
     setToast(msg);
@@ -140,12 +136,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       showToast('已婉拒');
       return;
     }
-    // Rejecting a 'joining' — costs a slot
-    if (!isVip && slotsLeft <= 0) {
-      setShowNoSlotSheet(true);
-    } else {
-      setShowConfirmSheet(true);
-    }
+    // 拒絕已入局者：發局不佔額度，直接確認
+    setShowConfirmSheet(true);
   }
 
   function handleConfirmReject() {
@@ -154,15 +146,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     rejectTargetId.current = null;
     setShowConfirmSheet(false);
     showToast('已拒絕，名額重新開放 🔓');
-  }
-
-  function handleBuySlotAndReject() {
-    if (!rejectTargetId.current) return;
-    buyExtraSlot();
-    declineResponder(rejectTargetId.current);
-    rejectTargetId.current = null;
-    setShowNoSlotSheet(false);
-    showToast('已使用 35 💗，名額重新開放 🔓');
   }
 
   function handleShare() {
@@ -399,43 +382,11 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           <div className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-5" />
             <p className="text-base font-bold text-brand-ink mb-1">確認拒絕？</p>
-            <p className="text-sm text-zinc-500 mb-1 leading-snug">她將被移除，名額重新開放。</p>
-            <p className="text-sm text-red-500 font-semibold mb-5">
-              此操作將消耗 1 次本月邀請名額（{isVip ? '∞' : slotsLeft} → {isVip ? '∞' : slotsLeft - 1}）
-            </p>
+            <p className="text-sm text-zinc-500 mb-5 leading-snug">她將被移除，名額重新開放。</p>
             <button onClick={handleConfirmReject} className="w-full py-3.5 rounded-2xl bg-red-500 text-white font-semibold text-base active:scale-[0.98] transition-all mb-2 shadow-card">
-              確認拒絕（−1 名額）
+              確認拒絕
             </button>
             <button onClick={() => setShowConfirmSheet(false)} className="w-full py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm">取消</button>
-          </div>
-        </div>
-      )}
-
-      {/* ── No-slot upsell sheet ── */}
-      {showNoSlotSheet && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => { setShowNoSlotSheet(false); rejectTargetId.current = null; }}>
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-5" />
-            <p className="text-base font-bold text-brand-ink mb-1">本月名額已用完</p>
-            <p className="text-sm text-zinc-500 mb-4 leading-snug">消耗 35 💗 可獲得 1 次額外名額，拒絕她並重新開放邀請。</p>
-            <div className="flex items-center justify-between bg-brand-ice rounded-2xl px-4 py-3 mb-4">
-              <span className="text-sm text-zinc-500">目前點數</span>
-              <span className="text-lg font-bold text-brand-ink">{currentUser?.credits ?? 0} 💗</span>
-            </div>
-            {canAffordSlot ? (
-              <button onClick={handleBuySlotAndReject} className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base active:scale-[0.98] transition-all mb-2 shadow-card">
-                消耗 35 💗 並拒絕
-              </button>
-            ) : (
-              <>
-                <p className="text-xs text-red-500 text-center mb-3 font-semibold">點數不足（需要 35 💗）</p>
-                <button onClick={() => { setShowNoSlotSheet(false); rejectTargetId.current = null; router.push('/store'); }} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-amber-400 text-white font-semibold text-base active:scale-[0.98] transition-all mb-2 shadow-card">
-                  <ShoppingBag className="w-5 h-5" strokeWidth={1.75} />前往購買點數
-                </button>
-              </>
-            )}
-            <button onClick={() => { setShowNoSlotSheet(false); rejectTargetId.current = null; }} className="w-full py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm">取消</button>
           </div>
         </div>
       )}

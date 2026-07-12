@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, X, Plus, ShoppingBag } from 'lucide-react';
-import { useAppState, TIER_MONTHLY_LIMITS } from '@/lib/state';
+import { useAppState } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -91,19 +91,13 @@ export default function MyProfilePage() {
           <span className="text-xs text-zinc-400">加入於 2026 年 4 月</span>
         </div>
 
-        {/* Monthly slot counter */}
+        {/* 發局次數：目前不限量（暫不收費） */}
         <div className="flex items-center justify-between bg-brand-ice rounded-2xl px-4 py-3 mb-4">
           <div>
-            <p className="text-xs font-semibold text-brand-ink">本月邀請名額</p>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              {currentUser.tier === 'vip'
-                ? 'VIP · 無限制'
-                : `${tier.label} · 每月 ${TIER_MONTHLY_LIMITS[currentUser.tier] ?? 3} 次`}
-            </p>
+            <p className="text-xs font-semibold text-brand-ink">發局</p>
+            <p className="text-xs text-zinc-400 mt-0.5">目前不限次數</p>
           </div>
-          <span className="text-2xl font-bold text-brand-ink">
-            {currentUser.tier === 'vip' ? '∞' : currentUser.monthlyRequestsLeft}
-          </span>
+          <span className="text-2xl font-bold text-brand-ink">∞</span>
         </div>
 
         {/* Store entry */}

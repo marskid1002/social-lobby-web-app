@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Minus, Plus, Lock, ShoppingBag } from 'lucide-react';
-import { useAppState, TIER_SLOT_CAPS, TIER_MONTHLY_LIMITS } from '@/lib/state';
+import { X, Minus, Plus } from 'lucide-react';
+import { useAppState, TIER_SLOT_CAPS } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import type { RequestType } from '@/lib/mock';
 import { useRouter } from 'next/navigation';
@@ -33,10 +33,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
 
   const tier = currentUser?.tier ?? 'free';
   const maxCount = TIER_SLOT_CAPS[tier] ?? 1;
-  const monthlyLimit = TIER_MONTHLY_LIMITS[tier] ?? 3;
-  const slotsLeft = currentUser?.monthlyRequestsLeft ?? 0;
   const isVip = tier === 'vip';
-  const canPost = isVip || slotsLeft > 0;
 
   const [area, setArea] = useState(currentUser?.defaultArea ?? '信義區');
   const [type, setType] = useState<RequestType | null>(null);
@@ -45,7 +42,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
   const [toast, setToast] = useState(false);
 
   function handleSubmit() {
-    if (!type || !canPost) return;
+    if (!type) return;
     postRequest({ area, requestType: type, peopleCount: count, note });
     setToast(true);
     setTimeout(() => {
@@ -78,47 +75,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
           </button>
         </div>
 
-        {/* Monthly slot counter */}
-        <div className={`flex items-center justify-between rounded-2xl px-4 py-3 mb-5 ${canPost ? 'bg-brand-ice' : 'bg-red-50 border border-red-200'}`}>
-          <div>
-            <p className={`text-xs font-semibold ${canPost ? 'text-brand-ink' : 'text-red-600'}`}>
-              本月邀請名額
-            </p>
-            <p className={`text-xs mt-0.5 ${canPost ? 'text-zinc-500' : 'text-red-400'}`}>
-              {isVip ? '無限制（VIP 專屬）' : `${TIER_LABELS[tier]} · 每月 ${monthlyLimit} 次`}
-            </p>
-          </div>
-          <span className={`text-2xl font-bold ${canPost ? 'text-brand-ink' : 'text-red-500'}`}>
-            {isVip ? '∞' : `${slotsLeft}`}
-          </span>
-        </div>
-
-        {/* Blocked state */}
-        {!canPost ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col items-center text-center gap-2 py-6">
-              <Lock className="w-10 h-10 text-red-300" strokeWidth={1.5} />
-              <p className="text-base font-bold text-brand-ink">本月名額已用完</p>
-              <p className="text-sm text-zinc-500 leading-snug">
-                購買點數可獲得額外名額，或升級方案享有更多次數
-              </p>
-            </div>
-            <button
-              onClick={() => { onClose(); router.push('/store'); }}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-amber-400 text-white font-semibold text-base active:scale-[0.98] transition-all shadow-card"
-            >
-              <ShoppingBag className="w-5 h-5" strokeWidth={1.75} />
-              購買點數 / 升級方案
-            </button>
-            <button
-              onClick={onClose}
-              className="w-full py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm"
-            >
-              取消
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5">
             {/* Area */}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-semibold text-brand-ink">區域</label>
@@ -201,10 +158,9 @@ export function PostRequestSheet({ open, onClose }: Props) {
               disabled={!type}
               className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
             >
-              發送邀請（剩餘 {isVip ? '∞' : slotsLeft - 1} 次）
+              發送邀請
             </button>
           </div>
-        )}
       </div>
 
       {toast && (
