@@ -265,14 +265,6 @@ export function OperatorHome() {
                   <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover" />
                 </button>
                 <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
-                {/* 管理照片（大頭照 + 相簿）*/}
-                <button
-                  onClick={() => setPhotoSheetGirlId(user.id)}
-                  className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-brand-sky text-white flex items-center justify-center shadow ring-2 ring-white active:scale-90 transition-transform"
-                  aria-label={`管理 ${user.nickname} 的照片`}
-                >
-                  <Camera size={11} strokeWidth={2.5} />
-                </button>
               </div>
               <button onClick={() => router.push(`/u/${user.id}`)} className="flex-1 min-w-0 text-left">
                 <span className="text-sm font-semibold text-brand-ink truncate block">{user.nickname}</span>
@@ -280,20 +272,6 @@ export function OperatorHome() {
                   {user.defaultArea}
                   {galleryCount > 0 && <span className="ml-2 text-brand-sky">相簿 {galleryCount}</span>}
                 </p>
-              </button>
-
-              {/* #6 幹部控制小姐上/下班（跨裝置同步）*/}
-              <button
-                onClick={() => setUserPresence(user.id, !isOnline)}
-                className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border transition-colors ${
-                  isOnline
-                    ? 'bg-green-50 border-green-200 text-green-700 active:bg-green-100'
-                    : 'bg-zinc-100 border-zinc-200 text-zinc-400 active:bg-zinc-200'
-                }`}
-                aria-label={`${isOnline ? '設為下班' : '設為上班'}：${user.nickname}`}
-              >
-                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-zinc-400'}`} />
-                <span className="text-[11px] font-bold">{isOnline ? '上班' : '下班'}</span>
               </button>
 
               <button
@@ -308,6 +286,57 @@ export function OperatorHome() {
           );
         })}
       </div>
+
+      {/* 小姐管理：集中控管上線狀態 + 照片 */}
+      {rosterGirls.length > 0 && (
+        <>
+          <div className="flex items-center gap-3 px-4 py-3 mt-2 bg-brand-snow border-y border-zinc-100">
+            <p className="text-sm font-bold text-brand-ink uppercase tracking-wider flex-1">小姐管理</p>
+            <span className="text-[11px] text-zinc-400">上線狀態 · 照片</span>
+          </div>
+          <div>
+            {rosterGirls.map((user) => {
+              if (!user) return null;
+              const isOnline = state.onlineUserIds.includes(user.id);
+              const galleryCount = galleryOf(user.id).length;
+              return (
+                <div key={`mng-${user.id}`} className="flex items-center gap-3 px-4 py-3 bg-white border-b border-zinc-100">
+                  <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {isOnline ? '🟢 上線中' : '⚪ 離線'}
+                      {galleryCount > 0 && <span className="ml-2 text-brand-sky">相簿 {galleryCount}</span>}
+                    </p>
+                  </div>
+                  {/* 上線/下班開關（跨裝置同步）*/}
+                  <button
+                    onClick={() => setUserPresence(user.id, !isOnline)}
+                    className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border transition-colors ${
+                      isOnline
+                        ? 'bg-green-50 border-green-200 text-green-700 active:bg-green-100'
+                        : 'bg-zinc-100 border-zinc-200 text-zinc-400 active:bg-zinc-200'
+                    }`}
+                    aria-label={`${isOnline ? '設為下班' : '設為上班'}：${user.nickname}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-zinc-400'}`} />
+                    <span className="text-[11px] font-bold">{isOnline ? '上班' : '下班'}</span>
+                  </button>
+                  {/* 編輯照片（大頭照 + 相簿）*/}
+                  <button
+                    onClick={() => setPhotoSheetGirlId(user.id)}
+                    className="shrink-0 flex items-center gap-1 text-[11px] font-bold text-brand-sky bg-brand-sky/10 border border-brand-sky/30 px-2.5 py-1.5 rounded-full active:opacity-80 transition-opacity"
+                    aria-label={`編輯 ${user.nickname} 的照片`}
+                  >
+                    <Camera size={12} />
+                    照片
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* 隱藏檔案輸入（編輯照片用）*/}
       <input
