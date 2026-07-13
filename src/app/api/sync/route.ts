@@ -5,9 +5,11 @@ import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 export const dynamic = 'force-dynamic';
 
 // 依登入者角色/身份，只回傳其有權看到的資料（私訊、邀請、通知不外洩）
-// 付費才可取得完整相簿（相簿 URL 屬付費內容，避免訪客/免費用戶繞前端馬賽克直接拿全部照片）
+// 相簿觀看權限：demo 階段已隱藏升級/收費入口（客戶皆為 standard，無法升 vip/premium），
+// 故開放所有「登入客戶」觀看小姐相簿；訪客(guest)仍只看大頭照/封面，不下發相簿。
+// 未來要恢復付費牆時，把條件改回 (s.tier === 'vip' || s.tier === 'premium') 即可。
 function canSeeGalleries(s: SessionPayload): boolean {
-  return s.role !== 'guest' && (s.tier === 'vip' || s.tier === 'premium');
+  return s.role !== 'guest';
 }
 
 function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
