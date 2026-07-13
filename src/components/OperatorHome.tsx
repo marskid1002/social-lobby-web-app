@@ -24,6 +24,32 @@ const TYPE_COLORS: Record<string, string> = {
   other: '#DED9E5',
 };
 
+// 上傳前先在前端縮圖並轉成 JPEG：手機相簿常是數 MB 大圖或 iPhone HEIC，
+// 直接上傳會超過請求大小限制或無法顯示；縮到最長邊 1280、品質 0.82 可大幅縮小並轉成通用格式。
+async function downscaleToJpegDataUrl(file: File, maxDim = 1280, quality = 0.82): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = () => reject(new Error('image load failed'));
+      im.src = objectUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', quality);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function OperatorHome() {
   const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto, updateUser } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -37,17 +63,24 @@ export function OperatorHome() {
   function pickGallery() { uploadModeRef.current = 'gallery'; photoInputRef.current?.click(); }
 
   async function uploadImage(girlId: string, file: File): Promise<string | null> {
-    const dataUrl: string = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    // 先縮圖轉 JPEG（相容手機大圖 / HEIC）；縮圖失敗才退回原始檔
+    let dataUrl: string;
+    try {
+      dataUrl = await downscaleToJpegDataUrl(file);
+    } catch {
+      dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
     const res = await fetch('/api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: girlId, dataUrl }),
     });
+    if (!res.ok) return null; // 讓呼叫端顯示「上傳失敗」
     const data = await res.json();
     return data.url ?? null;
   }
