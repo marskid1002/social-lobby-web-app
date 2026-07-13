@@ -150,7 +150,8 @@ export function ProfileDrawer({ open, onClose }: Props) {
               </div>
             </div>
 
-            {/* Nav links */}
+            {/* Nav links（訪客為唯讀，不顯示個人功能選單）*/}
+            {currentUser?.tier !== 'guest' && (
             <div className="bg-white rounded-2xl shadow-card overflow-hidden">
               {[
                 { icon: User, label: '我的個人檔案', path: '/me' },
@@ -169,6 +170,7 @@ export function ProfileDrawer({ open, onClose }: Props) {
                 </button>
               ))}
             </div>
+            )}
 
             {/* 帳號 */}
             <div className="bg-white rounded-2xl shadow-card overflow-hidden">

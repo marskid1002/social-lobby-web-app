@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pencil, X, Plus, ShoppingBag } from 'lucide-react';
 import { useAppState } from '@/lib/state';
@@ -28,7 +28,13 @@ export default function MyProfilePage() {
   const [newInterest, setNewInterest] = useState('');
   const [toast, setToast] = useState('');
 
+  // 訪客沒有個人檔案 → 導回大廳
+  useEffect(() => {
+    if (currentUser && currentUser.tier === 'guest') router.replace('/lobby/explore');
+  }, [currentUser, router]);
+
   if (!currentUser) return null;
+  if (currentUser.tier === 'guest') return null;
 
   const tier = TIER_STYLES[currentUser.tier] ?? TIER_STYLES.free;
 
@@ -49,7 +55,7 @@ export default function MyProfilePage() {
   return (
     <div className="min-h-screen bg-brand-snow">
       {/* Hero */}
-      <div className="relative h-52 bg-gradient-card-c">
+      <div className="relative h-32 bg-gradient-card-c">
         <div className="absolute top-4 left-4">
           <button onClick={() => router.back()} className="w-9 h-9 rounded-full bg-white/70 backdrop-blur flex items-center justify-center" aria-label="返回">
             <svg className="w-5 h-5 text-brand-ink" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
@@ -73,15 +79,13 @@ export default function MyProfilePage() {
           {currentUser.bio && <p className="text-sm text-zinc-500 mt-1">{currentUser.bio}</p>}
         </div>
 
-        {/* Edit button（訪客唯讀，不顯示編輯）*/}
-        {currentUser.tier !== 'guest' && (
-          <button
-            onClick={() => setEditOpen(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm mb-4 shadow-card active:scale-[0.98] transition-all"
-          >
-            <Pencil className="w-4 h-4" strokeWidth={1.75} /> 編輯個人檔案
-          </button>
-        )}
+        {/* Edit button（訪客已在上方導離，不會到這裡）*/}
+        <button
+          onClick={() => setEditOpen(true)}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm mb-4 shadow-card active:scale-[0.98] transition-all"
+        >
+          <Pencil className="w-4 h-4" strokeWidth={1.75} /> 編輯個人檔案
+        </button>
 
         {/* Info row */}
         <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">
