@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
+    const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
     // Blob 是否可用：OIDC 連結會注入 BLOB_STORE_ID；本地或明確 token 則有 BLOB_READ_WRITE_TOKEN
     const blobAvailable = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 
@@ -38,8 +39,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
     }
 
-    // Blob 不可用（本地開發無設定）→ 直接回傳 data URL（存進 override，本地可測）
+    // Blob 不可用：正式站直接報錯（dataURL 會被 /api/sync 擋下，塞了也存不進去）；本地開發才回 dataURL 供測試
     if (!blobAvailable) {
+      if (isProd) return NextResponse.json({ error: '圖片儲存尚未設定（請在 Vercel 連結 Blob）' }, { status: 503 });
       return NextResponse.json({ url: dataUrl, fallback: true });
     }
 
@@ -57,8 +59,10 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ url: blob.url });
     } catch (e) {
-      // Blob 上傳失敗（例如 OIDC 權限）→ 退回 data URL，不阻斷功能
-      console.error('[upload] blob put failed, fallback to dataUrl:', e);
+      // Blob 上傳失敗（例如缺少 BLOB_READ_WRITE_TOKEN / OIDC 權限）
+      console.error('[upload] blob put failed:', e);
+      // 正式站報錯（dataURL 會被 /api/sync 擋下，不做無效退回）；本地才退回 dataURL
+      if (isProd) return NextResponse.json({ error: '圖片上傳失敗，請確認 Vercel Blob 設定' }, { status: 502 });
       return NextResponse.json({ url: dataUrl, fallback: true, blobError: String(e) });
     }
   } catch (e) {
