@@ -5,23 +5,24 @@ import type { User, OnlineStatus } from './types';
 
 const baseDate = new Date('2026-04-15T10:00:00+08:00').toISOString();
 
-// Asian female portrait photos — randomuser.me seeds are stable
+// 小姐(escort)預設為中性佔位頭像 → 幹部上傳前不顯示真實人像；其餘（示範/幹部）沿用示範頭像
+const ESCORT_PLACEHOLDER = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Crect%20width='100'%20height='100'%20fill='%23E5E7EB'/%3E%3Ccircle%20cx='50'%20cy='40'%20r='16'%20fill='%239CA3AF'/%3E%3Cpath%20d='M22%2084c0-16%2012-26%2028-26s28%2010%2028%2026'%20fill='%239CA3AF'/%3E%3C/svg%3E";
 const CARD_PHOTOS: Record<string, string> = {
   'u-001': 'https://randomuser.me/api/portraits/men/44.jpg',
-  'u-002': 'https://randomuser.me/api/portraits/women/68.jpg',
-  'u-003': 'https://randomuser.me/api/portraits/women/65.jpg',
-  'u-004': 'https://randomuser.me/api/portraits/women/90.jpg',
-  'u-005': 'https://randomuser.me/api/portraits/women/26.jpg',
-  'u-006': 'https://randomuser.me/api/portraits/women/48.jpg',
-  'u-007': 'https://randomuser.me/api/portraits/women/32.jpg',
-  'u-008': 'https://randomuser.me/api/portraits/women/55.jpg',
-  'u-009': 'https://randomuser.me/api/portraits/women/72.jpg',
-  'u-010': 'https://randomuser.me/api/portraits/women/17.jpg',
-  'u-011': 'https://randomuser.me/api/portraits/women/81.jpg',
-  'u-012': 'https://randomuser.me/api/portraits/women/39.jpg',
-  'u-013': 'https://randomuser.me/api/portraits/women/23.jpg',
-  'u-014': 'https://randomuser.me/api/portraits/women/58.jpg',
-  'u-015': 'https://randomuser.me/api/portraits/women/77.jpg',
+  'u-002': ESCORT_PLACEHOLDER,
+  'u-003': ESCORT_PLACEHOLDER,
+  'u-004': ESCORT_PLACEHOLDER,
+  'u-005': ESCORT_PLACEHOLDER,
+  'u-006': ESCORT_PLACEHOLDER,
+  'u-007': ESCORT_PLACEHOLDER,
+  'u-008': ESCORT_PLACEHOLDER,
+  'u-009': ESCORT_PLACEHOLDER,
+  'u-010': ESCORT_PLACEHOLDER,
+  'u-011': ESCORT_PLACEHOLDER,
+  'u-012': ESCORT_PLACEHOLDER,
+  'u-013': ESCORT_PLACEHOLDER,
+  'u-014': ESCORT_PLACEHOLDER,
+  'u-015': ESCORT_PLACEHOLDER,
   'u-016': 'https://randomuser.me/api/portraits/women/11.jpg',
   'u-017': 'https://randomuser.me/api/portraits/men/32.jpg',
   'u-018': 'https://randomuser.me/api/portraits/men/55.jpg',

@@ -73,13 +73,15 @@ export default function MyProfilePage() {
           {currentUser.bio && <p className="text-sm text-zinc-500 mt-1">{currentUser.bio}</p>}
         </div>
 
-        {/* Edit button */}
-        <button
-          onClick={() => setEditOpen(true)}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm mb-4 shadow-card active:scale-[0.98] transition-all"
-        >
-          <Pencil className="w-4 h-4" strokeWidth={1.75} /> 編輯個人檔案
-        </button>
+        {/* Edit button（訪客唯讀，不顯示編輯）*/}
+        {currentUser.tier !== 'guest' && (
+          <button
+            onClick={() => setEditOpen(true)}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm mb-4 shadow-card active:scale-[0.98] transition-all"
+          >
+            <Pencil className="w-4 h-4" strokeWidth={1.75} /> 編輯個人檔案
+          </button>
+        )}
 
         {/* Info row */}
         <div className="flex items-center justify-center gap-3 mb-4 flex-wrap">

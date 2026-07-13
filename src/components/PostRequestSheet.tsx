@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, Minus, Plus } from 'lucide-react';
-import { useAppState, TIER_SLOT_CAPS } from '@/lib/state';
+import { useAppState } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import type { RequestType } from '@/lib/mock';
 import { useRouter } from 'next/navigation';
@@ -15,13 +15,6 @@ const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
   { value: 'other', label: '其他', color: '#DED9E5' },
 ];
 
-const TIER_LABELS: Record<string, string> = {
-  free: '基本',
-  standard: '標準',
-  premium: '進階',
-  vip: 'VIP',
-};
-
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -31,9 +24,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
   const { currentUser, postRequest } = useAppState();
   const router = useRouter();
 
-  const tier = currentUser?.tier ?? 'free';
-  const maxCount = TIER_SLOT_CAPS[tier] ?? 1;
-  const isVip = tier === 'vip';
+  const maxCount = 20; // 發局免費、不分等級：可加入人數 1~20
 
   const [area, setArea] = useState(currentUser?.defaultArea ?? '信義區');
   const [type, setType] = useState<RequestType | null>(null);
@@ -113,9 +104,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-semibold text-brand-ink">可加入人數</label>
-                <span className="text-xs text-zinc-400">
-                  {isVip ? '無上限' : `上限 ${maxCount} 人（${TIER_LABELS[tier]}）`}
-                </span>
+                <span className="text-xs text-zinc-400">最多 {maxCount} 人</span>
               </div>
               <div className="flex items-center gap-4">
                 <button
@@ -127,7 +116,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
                 </button>
                 <span className="text-2xl font-semibold text-brand-ink w-8 text-center">{count}</span>
                 <button
-                  onClick={() => setCount((c) => Math.min(isVip ? 20 : maxCount, c + 1))}
+                  onClick={() => setCount((c) => Math.min(maxCount, c + 1))}
                   className="w-10 h-10 rounded-full border-2 border-brand-lavender flex items-center justify-center active:bg-brand-ice transition-colors"
                   aria-label="增加人數"
                 >

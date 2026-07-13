@@ -80,7 +80,8 @@ export function ProfileDrawer({ open, onClose }: Props) {
 
           {/* Scrollable body */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-            {/* Status controls */}
+            {/* Status controls（訪客/管理員不顯示自身上班狀態）*/}
+            {currentUser && currentUser.tier !== 'guest' && currentUser.role !== 'admin' && (
             <div className="bg-white rounded-2xl p-4 shadow-card flex flex-col gap-3">
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">上班狀態</p>
 
@@ -114,6 +115,7 @@ export function ProfileDrawer({ open, onClose }: Props) {
                 </div>
               </button>
             </div>
+            )}
 
             {/* 通知開關 */}
             <div className="bg-white rounded-2xl p-4 shadow-card">
