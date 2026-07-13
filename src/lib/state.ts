@@ -219,7 +219,9 @@ function applyPhotoOverrides(next: AppState): AppState {
   const map = new Map(overrides.map((o) => [o.id, o.avatarUrl]));
   const users = next.users.map((u) => {
     const seed = seedUsers.find((su) => su.id === u.id);
-    const override = map.get(u.id);
+    const raw = map.get(u.id);
+    // 空字串視為「無覆寫」：還原照片時（尤其幹部自建、無 seed 原圖的小姐）不要讓 avatarUrl 變成 '' → <img src=""> 全白
+    const override = raw && raw.length > 0 ? raw : undefined;
     const avatarUrl = override ?? seed?.avatarUrl ?? u.avatarUrl;
     const cardImageUrl = override ?? seed?.cardImageUrl ?? u.cardImageUrl;
     if (avatarUrl === u.avatarUrl && cardImageUrl === u.cardImageUrl) return u;
