@@ -36,10 +36,11 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
     photoGalleries: canSeeGalleries(s) ? (all.photoGalleries ?? []).filter((p) => ok(asRec(p).id)) : [],
     registeredUsers: (all.registeredUsers ?? []).filter((u) => ok(asRec(u).id)),
     blocks: relatedBlocks, // 含 active:false，讓對方端能收斂解除封鎖
+    escorts: (all.escorts ?? []).filter((e) => ok(asRec(e).id)), // 幹部自建的小姐（大家可見，供瀏覽/派工）
   } as Partial<SharedState>;
   const empty: SharedState = {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
-    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [],
+    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [], escorts: [],
   };
 
   if (s.role === 'guest') return { ...empty, ...pub } as SharedState;
@@ -110,6 +111,11 @@ function sanitizePatch(patch: Record<string, unknown>, s: SessionPayload): void 
     // 只保留本人建立的封鎖（丟掉「別人封鎖我」的外來項，避免整批 403）
     patch.blocks = bl.filter((b) => (b as Record<string, unknown>).blockerId === me);
   }
+  const es = patch.escorts;
+  if (Array.isArray(es)) {
+    // 幹部自建的小姐：managerId 一律以 session 為準，避免掛到別人名下
+    patch.escorts = es.map((e) => ({ ...(e as Record<string, unknown>), managerId: me }));
+  }
 }
 
 // 阻擋把 data: URL（base64 圖片）寫進共享狀態，避免膨脹
@@ -133,6 +139,10 @@ function checkWriteAuthz(patch: Record<string, unknown[]>, s: SessionPayload, re
   for (const m of arr('chatMessages')) if (m.senderId !== me) return 'chatMessages.senderId 必須為本人';
   for (const u of arr('registeredUsers')) if (u.id !== me) return 'registeredUsers 只能寫入本人';
   for (const b of arr('blocks')) if (b.blockerId !== me) return 'blocks 僅能由本人建立/移除';
+  for (const e of arr('escorts')) {
+    if (!isManager) return 'escorts 僅限幹部';
+    if (e.managerId !== me) return 'escorts 僅能管理本人建立的人員';
+  }
 
   // 邀請：本人須為 from/to 一方
   for (const i of arr('invitations')) if (i.fromUserId !== me && i.toUserId !== me) return 'invitations 僅限本人參與者';

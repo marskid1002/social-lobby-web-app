@@ -13,11 +13,11 @@ const hashKey = (col: string) => kvKey(`sl:h:v1:${col}`); // 每集合一個 has
 
 export type SharedKey =
   | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
-  | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers' | 'blocks';
+  | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers' | 'blocks' | 'escorts';
 
 export const SHARED_KEYS: SharedKey[] = [
   'requests', 'responses', 'invitations', 'updates', 'chatMessages',
-  'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks',
+  'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts',
 ];
 
 type Item = { id: string; [k: string]: unknown };
@@ -26,14 +26,14 @@ export type SharedState = Record<SharedKey, Item[]>;
 function emptyShared(): SharedState {
   return {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
-    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [],
+    presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [], escorts: [],
   };
 }
 
 // 記憶體 fallback：{ collection: { id: item } }
 const mem: Record<SharedKey, Record<string, Item>> = {
   requests: {}, responses: {}, invitations: {}, updates: {}, chatMessages: {},
-  presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {}, blocks: {},
+  presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {}, blocks: {}, escorts: {},
 };
 
 function parseItem(v: unknown): Item | null {
@@ -114,4 +114,5 @@ export async function deleteUserData(userId: string): Promise<void> {
   await f('photoGalleries', (p) => p.id === userId);
   await f('registeredUsers', (u) => u.id === userId);
   await f('blocks', (b) => b.blockerId === userId || b.blockedId === userId);
+  await f('escorts', (e) => e.managerId === userId || e.id === userId);
 }

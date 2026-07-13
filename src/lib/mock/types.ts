@@ -46,6 +46,7 @@ export interface User {
   lineOAFollowed: boolean;
   createdAt: string;         // ISO
   following?: string[];
+  managerId?: string;        // 幹部自建的小姐所屬的幹部 userId（B：人員由幹部自建）
 }
 
 export interface OnlineStatus {

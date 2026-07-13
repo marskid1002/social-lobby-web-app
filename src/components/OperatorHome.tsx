@@ -51,7 +51,7 @@ async function downscaleToJpegDataUrl(file: File, maxDim = 1280, quality = 0.82)
 }
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchToRosterGirl, setRoster, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto, updateUser } = useAppState();
+  const { state, dispatchGirl, switchToRosterGirl, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto, updateUser, addEscort, removeEscort } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
   const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
@@ -117,29 +117,21 @@ export function OperatorHome() {
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
   const [selectedGirls, setSelectedGirls] = useState<string[]>([]); // 多選
   const [toast, setToast] = useState('');
-  const [rosterEditOpen, setRosterEditOpen] = useState(false);
-  const [rosterDraft, setRosterDraft] = useState<string[]>([]);
-  const [nameDraft, setNameDraft] = useState('');
+  const [nameDraft, setNameDraft] = useState(''); // 首登設定顯示名稱
+  const [addOpen, setAddOpen] = useState(false); // 新增人員彈窗
+  const [newEscortName, setNewEscortName] = useState('');
 
-  // 目前幹部的女伴名單（可自行設定，存本機）
-  const currentRosterIds = state.rosters.find((r) => r.id === state.currentUserId)?.girlIds ?? [];
+  // 幹部自建的小姐（B）：名單以 managerId === 本人 動態產生（一開始為空，全部由幹部自建）
+  const rosterGirls = state.users.filter((u) => u.role === 'escort' && u.managerId === state.currentUserId);
+  const currentRosterIds = rosterGirls.map((u) => u.id);
 
-  // 所有可加入名單的女伴（escort 角色）
-  const allEscorts = state.users.filter((u) => u.role === 'escort');
-
-  function openRosterEdit() {
-    setRosterDraft(currentRosterIds);
-    setRosterEditOpen(true);
-  }
-  function toggleRosterDraft(girlId: string) {
-    setRosterDraft((prev) =>
-      prev.includes(girlId) ? prev.filter((id) => id !== girlId) : [...prev, girlId]
-    );
-  }
-  function saveRoster() {
-    setRoster(state.currentUserId, rosterDraft);
-    setRosterEditOpen(false);
-    setToast('✅ 已更新女伴名單');
+  function handleAddEscort() {
+    const name = newEscortName.trim();
+    if (!name) return;
+    addEscort(name);
+    setNewEscortName('');
+    setAddOpen(false);
+    setToast('✅ 已新增人員');
     setTimeout(() => setToast(''), 2500);
   }
 
@@ -153,7 +145,6 @@ export function OperatorHome() {
     })
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const rosterGirls = currentRosterIds.map((id) => state.users.find((u) => u.id === id)).filter(Boolean);
 
   // 該局已派工的旗下女伴 id（interested 或 joining）
   function dispatchedGirlIds(requestId: string) {
@@ -297,17 +288,17 @@ export function OperatorHome() {
       <div className="flex items-center gap-3 px-4 py-3 mt-2 bg-brand-snow border-y border-zinc-100">
         <p className="text-sm font-bold text-brand-ink uppercase tracking-wider flex-1">人員管理（{currentRosterIds.length}）</p>
         <button
-          onClick={openRosterEdit}
+          onClick={() => { setNewEscortName(''); setAddOpen(true); }}
           className="shrink-0 text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1.5 rounded-full active:bg-purple-100 transition-colors"
         >
-          編輯名單
+          ＋ 新增人員
         </button>
       </div>
 
       {rosterGirls.length === 0 ? (
         <div className="px-4 py-6 text-center">
-          <p className="text-sm text-zinc-400">尚未設定名單</p>
-          <button onClick={openRosterEdit} className="mt-2 text-xs font-bold text-purple-600 underline">點此設定</button>
+          <p className="text-sm text-zinc-400">目前沒有人員，請自行新增</p>
+          <button onClick={() => { setNewEscortName(''); setAddOpen(true); }} className="mt-2 text-xs font-bold text-purple-600 underline">＋ 新增人員</button>
         </div>
       ) : (
         <div>
@@ -436,52 +427,35 @@ export function OperatorHome() {
         </div>
       )}
 
-      {/* 編輯女伴名單 sheet */}
-      {rosterEditOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setRosterEditOpen(false)}>
+      {/* 新增人員 sheet（幹部自建小姐）*/}
+      {addOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setAddOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl max-h-[80vh] flex flex-col"
+            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4 shrink-0" />
-            <p className="text-base font-bold text-brand-ink text-center shrink-0">設定我的女伴名單</p>
-            <p className="text-xs text-zinc-400 mb-4 text-center shrink-0">
-              勾選要納入你旗下的女伴（已選 {rosterDraft.length}）
-            </p>
-
-            <div className="flex flex-col gap-2 mb-4 overflow-y-auto">
-              {allEscorts.map((user) => {
-                const checked = rosterDraft.includes(user.id);
-                return (
-                  <button
-                    key={user.id}
-                    onClick={() => toggleRosterDraft(user.id)}
-                    className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
-                      checked ? 'border-purple-400 bg-purple-50' : 'border-transparent bg-brand-snow'
-                    }`}
-                  >
-                    <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-brand-ink">{user.nickname}</p>
-                      <p className="text-xs text-zinc-400">{user.defaultArea}</p>
-                    </div>
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 ${
-                      checked ? 'bg-purple-500 border-purple-500' : 'border-zinc-300'
-                    }`}>
-                      {checked && <Check size={12} className="text-white" />}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
+            <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
+            <p className="text-base font-bold text-brand-ink text-center mb-1">新增人員</p>
+            <p className="text-xs text-zinc-400 text-center mb-4">先輸入名稱建立；建立後在列表按「照片」上傳大頭照 / 相簿。</p>
+            <input
+              value={newEscortName}
+              onChange={(e) => setNewEscortName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddEscort(); }}
+              placeholder="輸入人員名稱（例如 小美）"
+              maxLength={20}
+              className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky mb-4"
+              aria-label="人員名稱"
+              autoFocus
+            />
             <button
-              onClick={saveRoster}
-              className="shrink-0 w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold active:bg-purple-600 transition-colors"
+              onClick={handleAddEscort}
+              disabled={!newEscortName.trim()}
+              className="w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 active:bg-purple-600 transition-colors"
             >
-              儲存名單（{rosterDraft.length} 位）
+              建立
             </button>
+            <button onClick={() => setAddOpen(false)} className="w-full mt-2 py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm">取消</button>
           </div>
         </div>
       )}
@@ -564,8 +538,21 @@ export function OperatorHome() {
               </div>
 
               <button
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.confirm(`確定移除人員「${girl.nickname}」？此動作無法復原。`)) {
+                    removeEscort(girl.id);
+                    setPhotoSheetGirlId(null);
+                    setToast('已移除人員');
+                    setTimeout(() => setToast(''), 2500);
+                  }
+                }}
+                className="shrink-0 mt-5 w-full py-3 rounded-2xl border border-red-200 text-sm font-semibold text-red-500 bg-white active:bg-red-50"
+              >
+                移除此人員
+              </button>
+              <button
                 onClick={() => setPhotoSheetGirlId(null)}
-                className="shrink-0 mt-5 w-full py-3 rounded-2xl border border-brand-lavender text-sm font-semibold text-zinc-500 active:bg-brand-snow"
+                className="shrink-0 mt-2 w-full py-3 rounded-2xl border border-brand-lavender text-sm font-semibold text-zinc-500 active:bg-brand-snow"
               >
                 完成
               </button>

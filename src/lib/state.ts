@@ -66,12 +66,16 @@ export interface AppState {
   photoGalleries: { id: string; urls: string[] }[]; // 各小姐的相簿（多張，跨裝置同步；id = 使用者 id）
   registeredUsers: User[]; // 手機+密碼註冊的新客戶（跨裝置同步）
   blocks: { id: string; blockerId: string; blockedId: string; active: boolean; createdAt: string }[]; // 雙向封鎖（跨裝置同步；id = `${blockerId}__${blockedId}`）
+  escorts: { id: string; managerId: string; nickname: string; createdAt: string; removed?: boolean }[]; // 幹部自建的小姐（B：跨裝置同步；merge 進 users 顯示）
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
 //   保留用戶清單、在線狀態、廣場貼文，供「從零驗證流程」使用。
 // 改回 false 即還原原本豐富的 demo seed 資料。
 const CLEAN_START = true;
+
+// 幹部自建小姐的預設頭像（上傳前顯示中性佔位，不用真人臉）
+const ESCORT_PLACEHOLDER = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Crect%20width='100'%20height='100'%20fill='%23E5E7EB'/%3E%3Ccircle%20cx='50'%20cy='40'%20r='16'%20fill='%239CA3AF'/%3E%3Cpath%20d='M22%2084c0-16%2012-26%2028-26s28%2010%2028%2026'%20fill='%239CA3AF'/%3E%3C/svg%3E";
 
 function getSeedState(): AppState {
   return {
@@ -116,6 +120,7 @@ function getSeedState(): AppState {
     photoGalleries: [],
     registeredUsers: [],
     blocks: [],
+    escorts: [],
   };
 }
 
@@ -156,7 +161,7 @@ const listeners = new Set<() => void>();
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
 // presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks'] as const;
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
 
 // 把註冊的新客戶併入 users（跨裝置：其他人才看得到發局者等資訊）
@@ -180,6 +185,32 @@ function applyRegisteredUsers(next: AppState): AppState {
     .filter((r) => !existingIds.has(r.id))
     .map((r) => ({ ...r, credits: r.credits ?? 100, monthlyRequestsLeft: r.monthlyRequestsLeft ?? (TIER_MONTHLY_LIMITS[r.tier] ?? 5) }));
   return { ...next, users: [...users, ...toAdd] };
+}
+
+// 把幹部自建的小姐（escorts）併入 users 供顯示/派工/聊天；removed 的則從 users 移除
+function applyEscorts(next: AppState): AppState {
+  const escorts = next.escorts ?? [];
+  if (!escorts.length) return next;
+  const users = [...next.users];
+  for (const e of escorts) {
+    const idx = users.findIndex((u) => u.id === e.id);
+    if (e.removed) {
+      if (idx >= 0) users.splice(idx, 1);
+      continue;
+    }
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], nickname: e.nickname, role: 'escort', managerId: e.managerId };
+    } else {
+      users.push({
+        id: e.id, lineUserId: e.id, nickname: e.nickname,
+        avatarUrl: ESCORT_PLACEHOLDER, cardImageUrl: ESCORT_PLACEHOLDER,
+        bio: '', defaultArea: '信義區', interests: [],
+        tier: 'standard', role: 'escort', credits: 0, monthlyRequestsLeft: 0,
+        lineOAFollowed: false, createdAt: e.createdAt, managerId: e.managerId,
+      });
+    }
+  }
+  return { ...next, users };
 }
 
 // 依 photoOverrides 重算 users 的頭貼（無 override 者還原成 seed 原圖）
@@ -252,6 +283,7 @@ function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt =
     const me = getState().currentUserId;
     if (Array.isArray(patch.blocks)) patch.blocks = (patch.blocks as { blockerId?: string }[]).filter((b) => b.blockerId === me);
     if (Array.isArray(patch.registeredUsers)) patch.registeredUsers = (patch.registeredUsers as { id?: string }[]).filter((u) => u.id === me);
+    if (Array.isArray(patch.escorts)) patch.escorts = (patch.escorts as { managerId?: string }[]).filter((e) => e.managerId === me);
     trackUnconfirmed(patch, true);
   }
   isPushing = true;
@@ -332,6 +364,7 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
   if (changed) {
     let result = shared.presence ? reconcilePresence(next) : next;
     if (shared.registeredUsers) result = applyRegisteredUsers(result);
+    if (shared.escorts) result = applyEscorts(result);
     if (shared.photoOverrides) result = applyPhotoOverrides(result);
     globalState = result;
     saveState(globalState);
@@ -538,6 +571,37 @@ export function useAppState() {
           : [...prev.registeredUsers, me];
       return { ...prev, users, registeredUsers };
     });
+  }, []);
+
+  // 幹部自建小姐（B）：新增（名字必填，照片事後用「照片」按鈕上傳）、移除（軟刪除同步）
+  const addEscort = useCallback((nickname: string) => {
+    const name = nickname.trim();
+    if (!name) return;
+    const me = getState().currentUserId;
+    const now = new Date().toISOString();
+    const id = `g-${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+    setState((prev) => {
+      const newUser: User = {
+        id, lineUserId: id, nickname: name,
+        avatarUrl: ESCORT_PLACEHOLDER, cardImageUrl: ESCORT_PLACEHOLDER,
+        bio: '', defaultArea: '信義區', interests: [],
+        tier: 'standard', role: 'escort', credits: 0, monthlyRequestsLeft: 0,
+        lineOAFollowed: false, createdAt: now, managerId: me,
+      };
+      return {
+        ...prev,
+        escorts: [...prev.escorts, { id, managerId: me, nickname: name, createdAt: now }],
+        users: [...prev.users, newUser],
+      };
+    });
+  }, []);
+
+  const removeEscort = useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      escorts: prev.escorts.map((e) => (e.id === id ? { ...e, removed: true } : e)),
+      users: prev.users.filter((u) => u.id !== id),
+    }));
   }, []);
 
   const postRequest = useCallback((req: Omit<Request, 'id' | 'creatorId' | 'createdAt' | 'expiresAt' | 'status' | 'metrics'>) => {
@@ -1306,6 +1370,8 @@ export function useAppState() {
     resetPhotoOverride,
     addGalleryPhoto,
     removeGalleryPhoto,
+    addEscort,
+    removeEscort,
     registerCustomer,
     loginCustomer,
     switchToRosterGirl,
