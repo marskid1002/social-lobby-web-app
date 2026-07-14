@@ -275,6 +275,17 @@ function trackUnconfirmed(patch: Partial<Record<SharedKey, unknown[]>>, add: boo
   }
 }
 
+// 同步錯誤對外通報（供 UI 顯示，避免靜默失敗；診斷用）
+type SyncErrorListener = (msg: string) => void;
+const syncErrorListeners = new Set<SyncErrorListener>();
+export function onSyncError(cb: SyncErrorListener): () => void {
+  syncErrorListeners.add(cb);
+  return () => { syncErrorListeners.delete(cb); };
+}
+function emitSyncError(msg: string): void {
+  if (typeof window !== 'undefined') syncErrorListeners.forEach((l) => l(msg));
+}
+
 // 將變動的共享集合 POST 到 server；失敗自動重試（最多 3 次），未確認前以本機為準（防靜默遺失，#10）
 function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt = 0) {
   if (typeof window === 'undefined') return;
@@ -288,19 +299,24 @@ function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt =
     if (Array.isArray(patch.escorts)) patch.escorts = (patch.escorts as { managerId?: string }[]).filter((e) => e.managerId === me);
     trackUnconfirmed(patch, true);
   }
+  const keys = Object.keys(patch).join(',');
   isPushing = true;
   fetch('/api/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ patch }),
   })
-    .then((res) => {
-      if (!res.ok) throw new Error(`sync ${res.status}`);
-      trackUnconfirmed(patch, false); // 確認送達 → 解除本機保護
+    .then(async (res) => {
+      if (res.ok) { trackUnconfirmed(patch, false); return; } // 確認送達 → 解除本機保護
+      // 4xx（如 400 圖片格式不符 / 403 權限）重試也不會過 → 直接對外通報，不再靜默
+      let detail = String(res.status);
+      try { const j = await res.json(); if (j?.error) detail += ` ${j.error}`; } catch {}
+      if (res.status >= 400 && res.status < 500) { emitSyncError(`同步被拒(${detail})·${keys}`); return; }
+      throw new Error(`sync ${res.status}`);
     })
     .catch(() => {
       if (attempt < 3) setTimeout(() => pushSharedPatch(patch, attempt + 1), 1000 * (attempt + 1));
-      // 超過重試上限：仍保留於 unconfirmed，後續輪詢不會用 server 舊版覆蓋
+      else emitSyncError(`同步失敗(連線問題)·${keys}`); // 超過重試上限：仍保留於 unconfirmed，後續輪詢不會用 server 舊版覆蓋
     })
     .finally(() => { isPushing = false; });
 }

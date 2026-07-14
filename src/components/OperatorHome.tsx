@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAppState } from '@/lib/state';
+import { useAppState, onSyncError } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { X, Check, UserCog, Camera } from 'lucide-react';
@@ -125,6 +125,12 @@ export function OperatorHome() {
   const [selectedGirls, setSelectedGirls] = useState<string[]>([]); // 多選
   const [toast, setToast] = useState('');
   const [nameDraft, setNameDraft] = useState(''); // 首登設定顯示名稱
+
+  // 訂閱同步錯誤 → 顯示原因（避免上傳看似成功、其實沒同步到伺服器卻無提示）
+  useEffect(() => onSyncError((msg) => {
+    setToast(`⚠️ ${msg}`);
+    setTimeout(() => setToast(''), 9000);
+  }), []);
   const [addOpen, setAddOpen] = useState(false); // 新增人員彈窗
   const [newEscortName, setNewEscortName] = useState('');
 
