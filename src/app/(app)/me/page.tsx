@@ -92,8 +92,7 @@ export default function MyProfilePage() {
           <span className="px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: tier.bg, color: tier.color }}>
             {tier.label}
           </span>
-          <span className="text-sm text-zinc-500">💗 {currentUser.credits} 點</span>
-          <span className="text-sm text-zinc-400">·</span>
+          {/* 點數顯示暫時隱藏（收費功能尚未開放）*/}
           <span className="text-xs text-zinc-400">加入於 2026 年 4 月</span>
         </div>
 

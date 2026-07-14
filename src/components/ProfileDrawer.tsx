@@ -19,9 +19,11 @@ export function ProfileDrawer({ open, onClose }: Props) {
   const { permission, request: requestNotif } = useNotificationPermission();
 
   async function handleEnableNotif() {
-    const p = await requestNotif();
-    if (p === 'granted') toast.success('已開啟通知 🔔');
-    else if (p === 'denied') toast('通知被拒絕，請到瀏覽器設定開啟');
+    const { permission: p, subscribed } = await requestNotif();
+    if (p === 'granted' && subscribed) toast.success('已開啟通知 🔔');
+    else if (p === 'granted' && !subscribed) toast('通知已授權，但綁定失敗，請確認網路後再試一次');
+    else if (p === 'denied') toast('通知被拒絕，請到瀏覽器/系統設定開啟');
+    else if (p === 'unsupported') toast('此瀏覽器不支援推播');
   }
 
   function handleLogout() {
@@ -70,11 +72,14 @@ export function ProfileDrawer({ open, onClose }: Props) {
             </div>
             <p className="text-lg font-semibold text-brand-ink">{currentUser?.nickname}</p>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-zinc-500">{currentUser?.id}</span>
+              {/* 客戶 id 為 c-<uuid> 內部隨機碼、又長又不該給人看 → 只對短碼(u-0xx 幹部/管理員)顯示 */}
+              {currentUser?.id && !currentUser.id.startsWith('c-') && (
+                <span className="text-xs text-zinc-500">{currentUser.id}</span>
+              )}
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ backgroundColor: tierColor + '20', color: tierColor }}>
                 {tierLabel}
               </span>
-              <span className="text-xs text-zinc-500">{currentUser?.credits} 點</span>
+              {/* 點數顯示暫時隱藏（收費功能尚未開放）*/}
             </div>
           </div>
 
@@ -128,7 +133,7 @@ export function ProfileDrawer({ open, onClose }: Props) {
                   <p className="text-xs text-zinc-400">
                     {permission === 'granted' ? '已開啟，新邀請會提醒你'
                       : permission === 'denied' ? '已被拒絕，請到瀏覽器設定開啟'
-                      : permission === 'unsupported' ? '此瀏覽器不支援（iPhone 請用 Safari 加入主畫面）'
+                      : permission === 'unsupported' ? '此瀏覽器不支援推播（iPhone 請用 Safari 加到主畫面後開啟；Android 請用 Chrome）'
                       : '開啟後，關掉網頁也能收到新邀請'}
                   </p>
                 </div>

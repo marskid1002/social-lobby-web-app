@@ -17,9 +17,11 @@ export function NotificationBanner() {
   if (permission !== 'default') return null; // 已決定（允許/拒絕）或不支援 → 不顯示
 
   async function handleEnable() {
-    const p = await request();
-    if (p === 'granted') toast.success('已開啟通知，新邀請會即時提醒你 🔔');
-    else if (p === 'denied') toast('通知已被拒絕，可到瀏覽器設定重新開啟');
+    const { permission: p, subscribed } = await request();
+    if (p === 'granted' && subscribed) toast.success('已開啟通知，新邀請會即時提醒你 🔔');
+    else if (p === 'granted' && !subscribed) toast('通知已授權，但綁定失敗，請確認網路後再試一次');
+    else if (p === 'denied') toast('通知已被拒絕，可到瀏覽器/系統設定重新開啟');
+    else if (p === 'unsupported') toast('此瀏覽器不支援推播');
   }
 
   return (

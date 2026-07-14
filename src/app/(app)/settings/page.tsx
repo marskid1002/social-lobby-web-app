@@ -59,7 +59,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between px-4 py-3.5 border-t border-brand-lavender">
               <span className="text-sm text-zinc-500">會員等級</span>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-brand-ink capitalize">{currentUser?.tier} · {currentUser?.credits} 點</span>
+                <span className="text-sm font-medium text-brand-ink capitalize">{currentUser?.tier}</span>
                 <button onClick={() => setUpgradeOpen(true)} className="text-xs font-semibold text-brand-sky px-2 py-0.5 rounded-full bg-brand-sky/10">升級</button>
               </div>
             </div>

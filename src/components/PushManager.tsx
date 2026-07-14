@@ -37,11 +37,16 @@ async function registerAndSubscribe(userId: string): Promise<boolean> {
     }
 
     // 綁定訂閱到目前使用者（切換身份會把 endpoint 移到新 userId）
-    await fetch('/api/subscribe', {
+    const res = await fetch('/api/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, subscription: sub }),
     });
+    if (!res.ok) {
+      // 後端沒存成功 → 之後 /api/notify 撈不到訂閱，等於收不到推播。回報失敗而非假成功。
+      console.warn('[push] 後端儲存訂閱失敗:', res.status);
+      return false;
+    }
     return true;
   } catch (e) {
     console.warn('[push] 訂閱失敗:', e);
@@ -53,16 +58,20 @@ async function registerAndSubscribe(userId: string): Promise<boolean> {
  * 由使用者點擊觸發：請求通知權限並訂閱推播。
  * 必須在點擊事件中呼叫（iOS / 現代瀏覽器要求使用者手勢）。
  */
-export async function enablePushNotifications(userId: string): Promise<NotificationPermission> {
-  if (!pushSupported()) return 'denied';
+export async function enablePushNotifications(
+  userId: string
+): Promise<{ permission: NotificationPermission | 'unsupported'; subscribed: boolean }> {
+  if (!pushSupported()) return { permission: 'unsupported', subscribed: false };
   let permission = Notification.permission;
   if (permission === 'default') {
     permission = await Notification.requestPermission();
   }
+  // subscribed 反映「訂閱是否真的存進後端」，讓 UI 不再只憑瀏覽器權限就報成功
+  let subscribed = false;
   if (permission === 'granted') {
-    await registerAndSubscribe(userId);
+    subscribed = await registerAndSubscribe(userId);
   }
-  return permission;
+  return { permission, subscribed };
 }
 
 /** 讀取目前通知權限狀態（granted / denied / default / unsupported）。 */
@@ -77,9 +86,9 @@ export function useNotificationPermission() {
   }, []);
 
   const request = useCallback(async () => {
-    const p = await enablePushNotifications(userId);
-    setPermission(p);
-    return p;
+    const r = await enablePushNotifications(userId);
+    setPermission(r.permission);
+    return r; // { permission, subscribed }
   }, [userId]);
 
   return { permission, request };
