@@ -9,6 +9,7 @@ import { NotificationWatcher } from '@/components/NotificationWatcher';
 import { PushManager } from '@/components/PushManager';
 import { NotificationBanner } from '@/components/NotificationBanner';
 import { SyncErrorToast } from '@/components/SyncErrorToast';
+import { VersionWatcher } from '@/components/VersionWatcher';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { Suspense } from 'react';
@@ -146,6 +147,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <NotificationWatcher />
       <PushManager />
       <SyncErrorToast />
+      <VersionWatcher />
     </div>
   );
 }
