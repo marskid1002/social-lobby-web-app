@@ -135,45 +135,34 @@ function stripDataUrlItems(patch: Record<string, unknown>): void {
   }
 }
 
-// 依 session 檢查 patch 寫入權限，回傳違規原因或 null（通過）
+// 依 session 過濾 patch 的寫入權限：丟掉「不屬於本人/無權寫」的項目，其餘照存。
+// 不整批 403 拒絕——否則一顆外來項（例如啟動時把同步下來的別人資料一起推回）會害整批同步失敗。
 // reqCreator：requestId -> creatorId（供驗證「該局發起人」可操作其回應）
-function checkWriteAuthz(patch: Record<string, unknown[]>, s: SessionPayload, reqCreator: Record<string, string>): string | null {
+function sanitizeWriteAuthz(patch: Record<string, unknown>, s: SessionPayload, reqCreator: Record<string, string>): void {
   const me = s.userId;
   const isManager = s.role === 'manager';
-  const arr = (k: string) => (Array.isArray(patch[k]) ? (patch[k] as Record<string, unknown>[]) : []);
+  const keep = (k: string, pred: (it: Record<string, unknown>) => boolean) => {
+    if (Array.isArray(patch[k])) patch[k] = (patch[k] as Record<string, unknown>[]).filter(pred);
+  };
 
   // 只有本人能以自己身份建立
-  for (const r of arr('requests')) if (r.creatorId !== me) return 'requests.creatorId 必須為本人';
-  for (const m of arr('chatMessages')) if (m.senderId !== me) return 'chatMessages.senderId 必須為本人';
-  for (const u of arr('registeredUsers')) if (u.id !== me) return 'registeredUsers 只能寫入本人';
-  for (const b of arr('blocks')) if (b.blockerId !== me) return 'blocks 僅能由本人建立/移除';
-  for (const e of arr('escorts')) {
-    if (!isManager) return 'escorts 僅限幹部';
-    if (e.managerId !== me) return 'escorts 僅能管理本人建立的人員';
-  }
-
+  keep('requests', (r) => r.creatorId === me);
+  keep('chatMessages', (m) => m.senderId === me);
+  keep('registeredUsers', (u) => u.id === me);
+  keep('blocks', (b) => b.blockerId === me);
+  keep('escorts', (e) => isManager && e.managerId === me);
   // 邀請：本人須為 from/to 一方
-  for (const i of arr('invitations')) if (i.fromUserId !== me && i.toUserId !== me) return 'invitations 僅限本人參與者';
-
+  keep('invitations', (i) => i.fromUserId === me || i.toUserId === me);
   // 回應：幹部（派工）／本人（加入）／該局發起人（接受、婉拒）
-  for (const r of arr('responses')) {
-    const ok = isManager || r.userId === me || reqCreator[r.requestId as string] === me;
-    if (!ok) return 'responses 僅限幹部/本人/該局發起人';
-  }
-
+  keep('responses', (r) => isManager || r.userId === me || reqCreator[r.requestId as string] === me);
   // 通知：幹部／本人為觸發者(actor)或收件人(userId)
-  for (const u of arr('updates')) {
-    const ok = isManager || u.actorId === me || u.userId === me;
-    if (!ok) return 'updates 僅限幹部/相關本人';
-  }
-
-  // 小姐狀態/照片/相簿：僅限幹部
+  keep('updates', (u) => isManager || u.actorId === me || u.userId === me);
+  // 小姐狀態/照片/相簿：僅限幹部（非幹部一律清空）
   if (!isManager) {
-    for (const k of ['presence', 'photoOverrides', 'photoGalleries'] as const) {
-      if (arr(k).length) return `${k} 僅限幹部`;
+    for (const k of ['presence', 'photoOverrides', 'photoGalleries']) {
+      if (Array.isArray(patch[k])) patch[k] = [];
     }
   }
-  return null;
 }
 
 export async function GET(req: NextRequest) {
@@ -218,10 +207,7 @@ export async function POST(req: NextRequest) {
       const reqs = await getCollection('requests');
       reqCreator = Object.fromEntries(reqs.map((r) => [r.id, (r as { creatorId?: string }).creatorId ?? '']));
     }
-    const violation = checkWriteAuthz(patch, session, reqCreator);
-    if (violation) {
-      return NextResponse.json({ error: `forbidden write: ${violation}` }, { status: 403 });
-    }
+    sanitizeWriteAuthz(patch, session, reqCreator); // 丟掉未授權的項目（不整批 403），避免一顆外來項讓整批同步失敗
 
     const merged = await mergeShared(patch);
     return NextResponse.json(scopeForSession(merged, session));
