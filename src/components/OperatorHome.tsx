@@ -62,27 +62,36 @@ export function OperatorHome() {
   function pickAvatar() { uploadModeRef.current = 'avatar'; photoInputRef.current?.click(); }
   function pickGallery() { uploadModeRef.current = 'gallery'; photoInputRef.current?.click(); }
 
-  async function uploadImage(girlId: string, file: File): Promise<string | null> {
+  // 失敗時 throw 帶原因的錯誤（HTTP 狀態、伺服器訊息、是否縮圖成功、約略大小），方便診斷
+  async function uploadImage(girlId: string, file: File): Promise<string> {
     // 先縮圖轉 JPEG（相容手機大圖 / HEIC）；縮圖失敗才退回原始檔
     let dataUrl: string;
+    let downscaled = true;
     try {
       dataUrl = await downscaleToJpegDataUrl(file);
     } catch {
+      downscaled = false;
       dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
+        reader.onerror = () => reject(new Error('read failed'));
         reader.readAsDataURL(file);
       });
     }
+    const approxKb = Math.round((dataUrl.length * 3) / 4 / 1024); // base64 → 位元組估算
     const res = await fetch('/api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: girlId, dataUrl }),
     });
-    if (!res.ok) return null; // 讓呼叫端顯示「上傳失敗」
+    if (!res.ok) {
+      let detail = String(res.status);
+      try { const j = await res.json(); if (j?.error) detail += ` ${j.error}`; } catch {}
+      throw new Error(`上傳失敗(${detail})${downscaled ? '' : '·縮圖失敗用原檔'}·約${approxKb}KB`);
+    }
     const data = await res.json();
-    return data.url ?? null;
+    if (!data?.url) throw new Error('上傳失敗：伺服器未回傳網址');
+    return data.url as string;
   }
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -94,17 +103,15 @@ export function OperatorHome() {
     setUploading(true);
     try {
       const url = await uploadImage(girlId, file);
-      if (url) {
-        if (mode === 'avatar') { setPhotoOverride(girlId, url); setToast('✅ 已更新大頭照'); }
-        else { addGalleryPhoto(girlId, url); setToast('✅ 已加入相簿'); }
-      } else {
-        setToast('⚠️ 上傳失敗');
-      }
-    } catch {
-      setToast('⚠️ 上傳失敗');
+      if (mode === 'avatar') { setPhotoOverride(girlId, url); setToast('✅ 已更新大頭照'); }
+      else { addGalleryPhoto(girlId, url); setToast('✅ 已加入相簿'); }
+      setTimeout(() => setToast(''), 2500);
+    } catch (err) {
+      // 顯示真正原因，且停留久一點方便回報
+      setToast(`⚠️ ${err instanceof Error ? err.message : '上傳失敗'}`);
+      setTimeout(() => setToast(''), 8000);
     } finally {
       setUploading(false);
-      setTimeout(() => setToast(''), 2500);
     }
   }
 
@@ -360,7 +367,7 @@ export function OperatorHome() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-lg z-50 whitespace-nowrap">
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-lg z-50 max-w-[90vw] text-center break-words">
           {toast}
         </div>
       )}
