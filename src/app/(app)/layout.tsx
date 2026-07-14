@@ -8,6 +8,7 @@ import { DualIdentityBadge } from '@/components/DualIdentityBadge';
 import { NotificationWatcher } from '@/components/NotificationWatcher';
 import { PushManager } from '@/components/PushManager';
 import { NotificationBanner } from '@/components/NotificationBanner';
+import { SyncErrorToast } from '@/components/SyncErrorToast';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { Suspense } from 'react';
@@ -144,6 +145,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <DualIdentityBadge />
       <NotificationWatcher />
       <PushManager />
+      <SyncErrorToast />
     </div>
   );
 }

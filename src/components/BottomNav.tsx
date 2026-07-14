@@ -20,6 +20,8 @@ export function BottomNav() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const { state, currentUser, unreadCount } = useAppState();
   const isEscort = currentUser?.role === 'escort';
+  const isGuest = currentUser?.tier === 'guest'; // 訪客唯讀：不顯示發局，避免按了假成功（伺服器會 403）
+  const hideFab = isEscort || isGuest;
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');
@@ -33,7 +35,7 @@ export function BottomNav() {
         <div className="flex items-end justify-around px-2 pt-2 pb-1">
           {NAV_ITEMS.map((item, i) => {
             if (!item) {
-              if (isEscort) {
+              if (hideFab) {
                 return <div key="fab" className="w-14" />;
               }
               return (
