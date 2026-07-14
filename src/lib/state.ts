@@ -297,8 +297,21 @@ function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt =
     if (Array.isArray(patch.blocks)) patch.blocks = (patch.blocks as { blockerId?: string }[]).filter((b) => b.blockerId === me);
     if (Array.isArray(patch.registeredUsers)) patch.registeredUsers = (patch.registeredUsers as { id?: string }[]).filter((u) => u.id === me);
     if (Array.isArray(patch.escorts)) patch.escorts = (patch.escorts as { managerId?: string }[]).filter((e) => e.managerId === me);
+    // 丟掉含 data: 內嵌圖片的項目（Blob 上傳失敗殘留的 dataURL）；否則整批會被伺服器擋，
+    // 連帶 presence/escorts/requests… 全部同步失敗（一顆老鼠屎壞一鍋粥）。
+    for (const k of Object.keys(patch) as SharedKey[]) {
+      const arr = patch[k];
+      if (Array.isArray(arr)) {
+        const cleaned = arr.filter((it) => {
+          try { return !JSON.stringify(it).includes('data:image'); } catch { return true; }
+        });
+        if (cleaned.length !== arr.length) patch[k] = cleaned;
+      }
+    }
     trackUnconfirmed(patch, true);
   }
+  // 過濾後若已無任何項目可送，直接結束（避免空推）
+  if (!Object.values(patch).some((v) => Array.isArray(v) && (v as unknown[]).length)) return;
   const keys = Object.keys(patch).join(',');
   isPushing = true;
   fetch('/api/sync', {

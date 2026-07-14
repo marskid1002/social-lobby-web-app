@@ -120,12 +120,18 @@ function sanitizePatch(patch: Record<string, unknown>, s: SessionPayload): void 
   }
 }
 
-// 阻擋把 data: URL（base64 圖片）寫進共享狀態，避免膨脹
-function hasDataUrl(patch: Record<string, unknown>): boolean {
-  try {
-    return JSON.stringify(patch).includes('data:image');
-  } catch {
-    return false;
+// 移除任何含 data: 內嵌圖片的項目（避免膨脹）。只丟違規項、不整批拒絕：
+// 否則一顆殘留的 dataURL（例如舊版 Blob 上傳失敗留下的）會讓整批 patch 被擋，
+// 連帶 presence/escorts/requests… 全部同步失敗（一顆老鼠屎壞一鍋粥）。
+function stripDataUrlItems(patch: Record<string, unknown>): void {
+  for (const k of Object.keys(patch)) {
+    const v = patch[k];
+    if (Array.isArray(v)) {
+      const cleaned = v.filter((it) => {
+        try { return !JSON.stringify(it).includes('data:image'); } catch { return true; }
+      });
+      if (cleaned.length !== v.length) patch[k] = cleaned;
+    }
   }
 }
 
@@ -204,9 +210,7 @@ export async function POST(req: NextRequest) {
     }
 
     const patch = body?.patch ?? {};
-    if (hasDataUrl(patch)) {
-      return NextResponse.json({ error: 'inline image not allowed' }, { status: 400 });
-    }
+    stripDataUrlItems(patch); // 丟掉殘留的 dataURL 項目（不整批拒絕），避免一顆壞照片讓整批同步失敗
     sanitizePatch(patch, session); // 權限/等級以伺服器 session 為準，擋自升 tier/role
     // 若寫入含 responses，先取回 requests 建立 creator 對照表以驗證授權
     let reqCreator: Record<string, string> = {};
