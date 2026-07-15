@@ -340,6 +340,14 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 ) : null;
               })}
             </div>
+            {isCreator && (
+              <button
+                onClick={() => router.push('/inbox')}
+                className="mt-3 w-full py-2.5 rounded-xl bg-brand-sky/15 text-brand-sky text-sm font-bold active:scale-[0.98] transition-transform"
+              >
+                💬 前往收件匣開始聊天
+              </button>
+            )}
           </div>
         )}
       </div>

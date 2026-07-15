@@ -52,13 +52,16 @@ export default function InboxPage() {
 
   for (const inv of relevantInvites) {
     if (inv.requestId !== null) {
-      if (seenRequestIds.has(inv.requestId)) continue;
-      seenRequestIds.add(inv.requestId);
+      // 對話另一方 = invitation 中不是自己的那位
+      const otherUserId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
+      // 以「局 + 對話對象」去重：同一局若有多位代談對象（多位派工被接受），各自保留一張卡與聊天入口，
+      // 不要只用 requestId 去重（會把第二位之後的聊天整個藏起來 → 找不到聊天）。
+      const dedupeKey = `${inv.requestId}::${otherUserId}`;
+      if (seenRequestIds.has(dedupeKey)) continue;
+      seenRequestIds.add(dedupeKey);
 
       // isGroup 僅以 invitation.groupThreadId 判定（幹部代談一律 1:1）
       const isGroup = !!inv.groupThreadId;
-      // 對話另一方 = invitation 中不是自己的那位
-      const otherUserId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
       const threadId = isGroup ? inv.groupThreadId! : getThreadId(state.currentUserId, otherUserId);
 
       // All joiners for this request
@@ -70,7 +73,7 @@ export default function InboxPage() {
         .filter(Boolean) as typeof state.users;
 
       matchCards.push({
-        key: inv.requestId,
+        key: inv.id,
         requestId: inv.requestId,
         threadId,
         isGroup,
