@@ -90,12 +90,15 @@ export async function deleteSharedItem(key: SharedKey, id: string): Promise<void
   else delete mem[key][id];
 }
 
-export async function clearShared(): Promise<void> {
+// 清除共享資料；傳入 keys 只清指定集合（例如只清局/對話，保留小姐/照片/帳號），不傳則全清。
+export async function clearShared(keys?: string[]): Promise<void> {
   const redis = getRedis();
+  const targets = keys && keys.length ? SHARED_KEYS.filter((k) => keys.includes(k)) : SHARED_KEYS;
+  if (!targets.length) return;
   if (redis) {
-    await redis.del(...SHARED_KEYS.map((k) => hashKey(k)));
+    await redis.del(...targets.map((k) => hashKey(k)));
   } else {
-    for (const key of SHARED_KEYS) mem[key] = {};
+    for (const key of targets) mem[key] = {};
   }
 }
 

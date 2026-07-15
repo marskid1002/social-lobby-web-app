@@ -189,8 +189,10 @@ export async function POST(req: NextRequest) {
       if (!process.env.ADMIN_SECRET || body.secret !== process.env.ADMIN_SECRET) {
         return NextResponse.json({ error: 'forbidden' }, { status: 403 });
       }
-      await clearShared();
-      return NextResponse.json({ ok: true, cleared: true });
+      // body.collections 指定只清哪些集合（例如只清局/對話）；未指定則全清
+      const cols = Array.isArray(body.collections) ? (body.collections as string[]) : undefined;
+      await clearShared(cols);
+      return NextResponse.json({ ok: true, cleared: cols ?? 'all' });
     }
 
     // 訪客唯讀，不可寫入
