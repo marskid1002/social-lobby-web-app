@@ -754,7 +754,7 @@ export function useAppState() {
     if (isPrivate) {
       setTimeout(() => {
         const senderId = getState().currentUserId;
-        const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
+        const chatExpiresAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(); // 聊天視窗 30 天（demo：避免跨天測試就過期鎖住）
         const acceptedUpdate: UpdateEvent = {
           id: `ue-${Date.now()}`,
           userId: senderId,
@@ -787,7 +787,7 @@ export function useAppState() {
               status: accept ? 'accepted' : 'declined',
               respondedAt: new Date().toISOString(),
               chatExpiresAt: accept
-                ? new Date(Date.now() + 8 * 3_600_000).toISOString()
+                ? new Date(Date.now() + 30 * 24 * 3_600_000).toISOString()
                 : undefined,
             }
           : i
@@ -958,7 +958,7 @@ export function useAppState() {
       // #5 派工無上限：不再以 peopleCount 擋接受、也不自動關閉需求
 
       const now = new Date().toISOString();
-      const chatExpiresAt = new Date(Date.now() + 8 * 3_600_000).toISOString();
+      const chatExpiresAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(); // 聊天視窗 30 天（demo：避免跨天測試就過期鎖住）
 
       // #7 幹部代談：若此加入是幹部派工，聊天對象為該幹部（1:1），否則為女伴本人
       const chatPartnerId = target.dispatcherId ?? target.userId;
