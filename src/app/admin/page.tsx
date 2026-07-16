@@ -86,6 +86,23 @@ export default function AdminPage() {
     await act(target.key, 'delete');
   }
 
+  async function clearBoards() {
+    if (typeof window !== 'undefined' &&
+      !window.confirm('確定清除所有「局 / 邀請 / 通知 / 對話」？\n（會保留小姐、照片、帳號）此動作無法復原。')) return;
+    setBusy('clear-shared');
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'clear-shared' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { showToast(data.error ?? '清除失敗'); return; }
+      showToast('已清除所有局與對話');
+      await load();
+    } catch { showToast('連線失敗'); } finally { setBusy(''); }
+  }
+
   const cls = 'text-xs font-semibold px-2.5 py-1 rounded-full border';
 
   return (
@@ -165,6 +182,16 @@ export default function AdminPage() {
                 </div>
               </>
             )}
+
+            {/* 資料維護 */}
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2 mt-6">資料維護</p>
+            <div className="bg-white rounded-2xl border border-brand-lavender p-3">
+              <p className="text-sm font-semibold text-brand-ink mb-1">清除所有局與對話</p>
+              <p className="text-xs text-zinc-400 mb-3">清掉所有邀請的局、回應、通知與聊天訊息；保留小姐、照片、帳號。用於測試重來。</p>
+              <button disabled={!!busy} onClick={clearBoards} className={`${cls} border-red-300 text-red-500`}>
+                {busy === 'clear-shared' ? '清除中…' : '清除所有局與對話'}
+              </button>
+            </div>
           </>
         )}
       </div>

@@ -3,7 +3,7 @@ import { getSessionFromRequest } from '@/lib/session';
 import {
   listAccounts, adminResetPassword, setAccountDisabled, deleteAccount,
 } from '@/lib/auth-store';
-import { deleteUserData } from '@/lib/sync-store';
+import { deleteUserData, clearShared } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { listReports, setReportResolved } from '@/lib/report-store';
 
@@ -45,6 +45,12 @@ export async function POST(req: NextRequest) {
       if (!body.reportId) return NextResponse.json({ error: '缺少檢舉編號' }, { status: 400 });
       const ok = await setReportResolved(String(body.reportId), action === 'resolve-report');
       return NextResponse.json({ ok });
+    }
+
+    // 清除所有「局 / 回應 / 邀請 / 通知 / 對話」（保留小姐、照片、帳號），供測試重來（不需 account）
+    if (action === 'clear-shared') {
+      await clearShared(['requests', 'responses', 'invitations', 'updates', 'chatMessages']);
+      return NextResponse.json({ ok: true });
     }
 
     if (!account) return NextResponse.json({ error: '缺少帳號' }, { status: 400 });
