@@ -155,5 +155,6 @@ export interface ChatMessage {
   threadId: string;   // composed as `${userId1}-${userId2}` sorted
   senderId: string;
   text: string;
+  imageUrl?: string;  // 照片訊息：Blob 圖片網址（有圖時 text 可為空）
   createdAt: string;
 }

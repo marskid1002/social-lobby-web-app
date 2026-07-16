@@ -1141,13 +1141,14 @@ export function useAppState() {
     listeners.forEach((l) => l());
   }, []);
 
-  const sendChatMessage = useCallback((threadId: string, text: string, overrideSenderId?: string) => {
+  const sendChatMessage = useCallback((threadId: string, text: string, overrideSenderId?: string, imageUrl?: string) => {
     const senderId = overrideSenderId ?? getState().currentUserId;
     const newMsg: ChatMessage = {
       id: `cm-${Date.now()}`,
       threadId,
       senderId,
       text,
+      ...(imageUrl ? { imageUrl } : {}),
       createdAt: new Date().toISOString(),
     };
     setState((prev) => ({
@@ -1174,10 +1175,11 @@ export function useAppState() {
     recipients = [...new Set(recipients)].filter((id) => id !== senderId);
     if (recipients.length) {
       const sender = s.users.find((u) => u.id === senderId);
+      const preview = imageUrl ? '傳來一張照片 📷' : (text.length > 40 ? text.slice(0, 40) + '…' : text);
       sendPushNotification(
         recipients,
         `${sender?.nickname ?? '對方'} 傳來訊息`,
-        text.length > 40 ? text.slice(0, 40) + '…' : text,
+        preview,
         `/chat/${threadId}`
       );
     }

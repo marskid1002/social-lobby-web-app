@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Clock, CheckCircle, Users } from 'lucide-react';
+import { ArrowLeft, Send, Clock, CheckCircle, Users, Image as ImageIcon } from 'lucide-react';
 import { useAppState, otherIdFromThread } from '@/lib/state';
+import { uploadChatImage } from '@/lib/image';
 import type { ChatMessage } from '@/lib/mock';
 
 interface ChatPageProps {
@@ -131,6 +132,10 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [viewAs, setViewAs] = useState<'user' | 'xiaomei'>('user');
   const [xiaomeiConfirmSuccess, setXiaomeiConfirmSuccess] = useState(false);
   const [groupConfirmSuccess, setGroupConfirmSuccess] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null); // 點圖放大
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState('');
 
   useEffect(() => {
     const next = filterMessages(state.chatMessages.filter((m) => m.threadId === threadId));
@@ -161,6 +166,25 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  }
+
+  async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 允許重選同一張
+    if (!file || isChatLocked || photoBusy) return;
+    setPhotoBusy(true);
+    setPhotoError('');
+    try {
+      const url = await uploadChatImage(file);
+      setHasSentMessage(true);
+      const newMsg = sendChatMessage(threadId, '', undefined, url);
+      setLocalMessages((prev) => [...prev, newMsg]);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : '照片上傳失敗');
+      setTimeout(() => setPhotoError(''), 6000);
+    } finally {
+      setPhotoBusy(false);
+    }
   }
 
   function handleXiaomeiSend() {
@@ -329,7 +353,14 @@ export default function ChatPage({ params }: ChatPageProps) {
                         : 'bg-white border border-brand-lavender text-brand-ink rounded-bl-md'
                     }`}
                   >
-                    {msg.text}
+                    {msg.imageUrl ? (
+                      <img
+                        src={msg.imageUrl}
+                        alt="照片"
+                        onClick={() => setLightbox(msg.imageUrl!)}
+                        className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
+                      />
+                    ) : msg.text}
                   </div>
                   <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
                 </div>
@@ -471,7 +502,14 @@ export default function ChatPage({ params }: ChatPageProps) {
                         : 'bg-white border border-pink-100 text-brand-ink rounded-bl-md'
                     }`}
                   >
-                    {msg.text}
+                    {msg.imageUrl ? (
+                      <img
+                        src={msg.imageUrl}
+                        alt="照片"
+                        onClick={() => setLightbox(msg.imageUrl!)}
+                        className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
+                      />
+                    ) : msg.text}
                   </div>
                   <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
                 </div>
@@ -558,7 +596,14 @@ export default function ChatPage({ params }: ChatPageProps) {
                         : 'bg-white border border-brand-lavender text-brand-ink rounded-bl-md'
                     }`}
                   >
-                    {msg.text}
+                    {msg.imageUrl ? (
+                      <img
+                        src={msg.imageUrl}
+                        alt="照片"
+                        onClick={() => setLightbox(msg.imageUrl!)}
+                        className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
+                      />
+                    ) : msg.text}
                   </div>
                   <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
                 </div>
@@ -700,33 +745,61 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-4 bg-white/90 backdrop-blur-md border-t border-brand-lavender">
-        {isChatLocked ? (
-          <div className="flex-1 flex items-center justify-center py-2">
-            <p className="text-sm text-zinc-400">聊天視窗已關閉</p>
-          </div>
-        ) : (
-          <>
-            <input
-              type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="輸入訊息…"
-              aria-label="輸入訊息"
-              className="flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!inputText.trim()}
-              aria-label="發送"
-              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-brand-sky text-brand-ink disabled:opacity-40 active:scale-95 transition-all shadow-sm"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </>
+      <div className="shrink-0 bg-white/90 backdrop-blur-md border-t border-brand-lavender">
+        {photoError && (
+          <p className="px-4 pt-2 text-xs text-red-500 text-center break-words">⚠️ {photoError}</p>
         )}
+        <div className="flex items-center gap-2 px-4 pt-3 pb-4">
+          {isChatLocked ? (
+            <div className="flex-1 flex items-center justify-center py-2">
+              <p className="text-sm text-zinc-400">聊天視窗已關閉</p>
+            </div>
+          ) : (
+            <>
+              <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photoBusy}
+                aria-label="傳送照片"
+                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-brand-snow border border-brand-lavender text-brand-sky disabled:opacity-40 active:scale-95 transition-all"
+              >
+                <ImageIcon className="w-4 h-4" />
+              </button>
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={photoBusy ? '照片上傳中…' : '輸入訊息…'}
+                aria-label="輸入訊息"
+                className="flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
+              />
+              <button
+                onClick={handleSend}
+                disabled={!inputText.trim()}
+                aria-label="發送"
+                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-brand-sky text-brand-ink disabled:opacity-40 active:scale-95 transition-all shadow-sm"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* 照片放大檢視 */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[90] bg-black/85 flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="照片" className="max-w-full max-h-full rounded-2xl object-contain" />
+          <button
+            onClick={() => setLightbox(null)}
+            aria-label="關閉"
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center"
+          >
+            <ArrowLeft className="w-5 h-5 rotate-45" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

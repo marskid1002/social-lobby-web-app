@@ -12,10 +12,10 @@ function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; contentType: string
 
 export async function POST(req: NextRequest) {
   try {
-    // 僅限登入的幹部（管理小姐照片）
+    // 需登入；訪客唯讀不可上傳。幹部管理小姐照片、一般客戶在聊天室傳照片都會用到，故放寬給非訪客。
     const session = await getSessionFromRequest(req);
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    if (session.role !== 'manager') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    if (session.role === 'guest') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
     const body = await req.json();
 
@@ -23,8 +23,9 @@ export async function POST(req: NextRequest) {
     // Blob 是否可用：OIDC 連結會注入 BLOB_STORE_ID；本地或明確 token 則有 BLOB_READ_WRITE_TOKEN
     const blobAvailable = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 
-    // 刪除既有 Blob（best-effort，只刪 vercel blob URL）
+    // 刪除既有 Blob（best-effort，只刪 vercel blob URL）；刪除仍限幹部，避免客戶亂刪
     if (body?.action === 'delete') {
+      if (session.role !== 'manager') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
       const url: string | undefined = body.url;
       if (url && /blob\.vercel-storage\.com/.test(url) && blobAvailable) {
         const { del } = await import('@vercel/blob');
