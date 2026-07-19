@@ -43,7 +43,8 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
   const currentUser = state.users.find((u) => u.id === state.currentUserId);
   const tier = currentUser?.tier ?? 'free';
   const isVip = tier === 'vip';
-  const canComment = tier === 'premium' || tier === 'vip';
+  // 開放留言給登入客戶（standard 以上）；訪客(guest)/free 仍不可留言
+  const canComment = tier !== 'guest' && tier !== 'free';
 
   const [commentText, setCommentText] = useState('');
   const [dailyCount, setDailyCount] = useState(() => getDailyCount(currentUser?.id ?? ''));
@@ -288,7 +289,7 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
         ) : (
           <div className="flex items-center gap-2 py-1">
             <PenLine className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
-            <p className="text-sm text-zinc-400">升級至進階會員即可留言</p>
+            <p className="text-sm text-zinc-400">登入後即可留言</p>
           </div>
         )}
       </div>

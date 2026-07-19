@@ -115,8 +115,9 @@ function sanitizePatch(patch: Record<string, unknown>, s: SessionPayload): void 
   }
   const es = patch.escorts;
   if (Array.isArray(es)) {
-    // 幹部自建的小姐：managerId 一律以 session 為準，避免掛到別人名下
-    patch.escorts = es.map((e) => ({ ...(e as Record<string, unknown>), managerId: me }));
+    // 只接受「本來就屬於本人」的小姐（managerId===me），其餘丟棄；不覆寫 managerId，
+    // 避免有人把別人的小姐送上來被蓋成自己名下（過戶漏洞）。新建的小姐 client 已帶 managerId=me。
+    patch.escorts = es.filter((e) => (e as Record<string, unknown>).managerId === me);
   }
 }
 
