@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/session';
 import {
-  listAccounts, adminResetPassword, setAccountDisabled, deleteAccount,
+  listAccounts, adminResetPassword, adminResetCustomerPassword, setAccountDisabled, deleteAccount, getAccount,
 } from '@/lib/auth-store';
 import { deleteUserData, clearShared } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
@@ -56,6 +56,14 @@ export async function POST(req: NextRequest) {
     if (!account) return NextResponse.json({ error: '缺少帳號' }, { status: 400 });
 
     if (action === 'reset') {
+      const acc = await getAccount(account);
+      if (acc?.role === 'user') {
+        // 客戶：直接重設成臨時新密碼並回傳給管理員轉告（避免清成 null 被鎖死）
+        const tempPassword = await adminResetCustomerPassword(account);
+        if (!tempPassword) return NextResponse.json({ error: '重設失敗' }, { status: 400 });
+        return NextResponse.json({ ok: true, tempPassword });
+      }
+      // 幹部/管理員：清空密碼，改由啟用碼重新設定
       const ok = await adminResetPassword(account);
       return NextResponse.json({ ok });
     }

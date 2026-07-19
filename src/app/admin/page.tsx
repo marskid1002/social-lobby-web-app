@@ -35,6 +35,7 @@ export default function AdminPage() {
   const [toast, setToast] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const [confirmText, setConfirmText] = useState('');
+  const [tempPw, setTempPw] = useState<{ key: string; pw: string } | null>(null);
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(''), 2500); };
 
@@ -60,7 +61,8 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { showToast(data.error ?? '操作失敗'); return; }
-      showToast('已完成');
+      if (data.tempPassword) setTempPw({ key: account, pw: data.tempPassword }); // 客戶重設 → 顯示臨時密碼
+      else showToast('已完成');
       await load();
     } catch { showToast('連線失敗'); } finally { setBusy(''); }
   }
@@ -210,6 +212,25 @@ export default function AdminPage() {
               <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2.5 rounded-2xl bg-brand-snow text-zinc-500 font-semibold text-sm">取消</button>
               <button onClick={confirmDelete} disabled={confirmText !== deleteTarget.key} className="flex-1 py-2.5 rounded-2xl bg-red-500 text-white font-semibold text-sm disabled:opacity-40">永久刪除</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 客戶臨時密碼（重設後顯示，管理員轉告客戶）*/}
+      {tempPw && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setTempPw(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-brand-ink mb-1">已重設密碼</h3>
+            <p className="text-sm text-zinc-500 mb-3">帳號 <b>{tempPw.key}</b> 的臨時新密碼如下，請轉告客戶用它登入（即為新密碼）：</p>
+            <div className="flex items-center gap-2 mb-4">
+              <code className="flex-1 text-center text-lg font-bold tracking-wider bg-brand-ice rounded-xl py-3 text-brand-ink select-all">{tempPw.pw}</code>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(tempPw.pw); showToast('已複製'); }}
+                className="shrink-0 px-3 py-3 rounded-xl bg-brand-sky text-brand-ink text-sm font-bold active:scale-95"
+              >複製</button>
+            </div>
+            <button onClick={() => setTempPw(null)} className="w-full py-2.5 rounded-2xl bg-brand-snow text-zinc-600 font-semibold text-sm">關閉</button>
           </div>
         </div>
       )}

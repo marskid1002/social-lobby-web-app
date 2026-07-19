@@ -132,7 +132,7 @@ export async function setInitialPassword(key: string, password: string): Promise
   return acc;
 }
 
-// 管理員重設密碼（清空，讓該帳號下次登入重新設定）
+// 管理員重設密碼（清空，讓該帳號下次登入重新設定）——用於幹部/管理員（有啟用碼重設流程）
 export async function adminResetPassword(key: string): Promise<boolean> {
   const accounts = await readAccounts();
   const acc = accounts[normalizeKey(key)];
@@ -141,6 +141,23 @@ export async function adminResetPassword(key: string): Promise<boolean> {
   acc.salt = '';
   await writeAccounts(accounts);
   return true;
+}
+
+// 管理員為客戶重設成一組「臨時新密碼」並回傳（客戶沒有啟用碼重設流程，若清成 null 會被鎖死；
+// 故直接設一組可用的新密碼，由管理員轉告客戶登入）。
+export async function adminResetCustomerPassword(key: string): Promise<string | null> {
+  const accounts = await readAccounts();
+  const acc = accounts[normalizeKey(key)];
+  if (!acc) return null;
+  // 8 碼英數臨時密碼，避開易混淆字元（0/o/1/l/i）
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = crypto.randomBytes(8);
+  let pw = '';
+  for (let i = 0; i < 8; i++) pw += chars[bytes[i] % chars.length];
+  acc.salt = crypto.randomBytes(16).toString('hex');
+  acc.hash = hashPassword(pw, acc.salt);
+  await writeAccounts(accounts);
+  return pw;
 }
 
 export function verifyPassword(account: Account, password: string): boolean {
