@@ -182,22 +182,15 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             {isFollowing ? <UserCheck className="w-4 h-4" strokeWidth={1.75} /> : <UserPlus className="w-4 h-4" strokeWidth={1.75} />}
             {isFollowing ? '已關注' : '關注'}
           </button>
-          {canSendPrivateInvite ? (
+          {canSendPrivateInvite && (
             <button
               onClick={() => setInviteOpen(true)}
               className="flex-1 py-3 rounded-2xl font-semibold text-sm bg-brand-sky text-brand-ink active:scale-[0.98] transition-all shadow-card"
             >
               發訊息
             </button>
-          ) : id !== state.currentUserId && (
-            <button
-              disabled
-              title="升級至 VIP 即可直接發訊息"
-              className="flex-1 py-3 rounded-2xl font-semibold text-sm bg-brand-lavender/50 text-zinc-400 cursor-not-allowed"
-            >
-              🔒 發訊息
-            </button>
           )}
+          {/* 非 VIP 的「🔒 發訊息（升級）」鎖按鈕暫時隱藏（付費功能尚未開放）*/}
         </div>
 
         {user.interests.length > 0 && (

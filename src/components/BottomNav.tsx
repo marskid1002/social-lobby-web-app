@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Home, Sparkles, Bell, ShoppingBag, Plus } from 'lucide-react';
+import { Home, Sparkles, Bell, User, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { PostRequestSheet } from './PostRequestSheet';
 import { useAppState } from '@/lib/state';
@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { href: '/plaza',         icon: Sparkles,    label: '廣場' },
   null, // FAB
   { href: '/inbox',         icon: Bell,        label: '通知' },
-  { href: '/store',         icon: ShoppingBag, label: '商城' },
+  { href: '/me',            icon: User,        label: '我的' },
 ];
 
 export function BottomNav() {

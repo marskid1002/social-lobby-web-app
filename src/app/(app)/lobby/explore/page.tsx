@@ -232,7 +232,6 @@ function ExploreContent() {
   const isGuest = tier === 'guest';
   const limit = SECTION_B_LIMIT[tier] ?? 0;
   const visibleFemaleIds = limit === Infinity ? femaleUserIds : femaleUserIds.slice(0, limit);
-  const hasMoreFemales = femaleUserIds.length > visibleFemaleIds.length;
   // free：整段模糊；guest：全部顯示但超過 limit 的單張馬賽克；其餘：只顯示可見數
   const sectionBRenderIds = (tier === 'free' || isGuest) ? femaleUserIds : visibleFemaleIds;
 
@@ -318,17 +317,7 @@ function ExploreContent() {
           </div>
         )}
 
-        {hasMoreFemales && !isVip && currentUser?.tier !== 'free' && (
-          <div className="px-4 py-5 text-center border-t border-zinc-100">
-            <p className="text-sm text-zinc-500 mb-3">還有更多今晚在線的用戶</p>
-            <button
-              disabled
-              className="px-5 py-2.5 rounded-xl bg-brand-snow border border-brand-lavender text-sm font-semibold text-zinc-400 cursor-not-allowed"
-            >
-              升級擴展你的社交圈
-            </button>
-          </div>
-        )}
+        {/* 升級擴展 CTA 暫時隱藏（付費功能尚未開放）*/}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pencil, X, Plus, ShoppingBag } from 'lucide-react';
+import { Pencil, X, Plus } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import { formatDistanceToNow } from 'date-fns';
@@ -105,14 +105,7 @@ export default function MyProfilePage() {
           <span className="text-2xl font-bold text-brand-ink">∞</span>
         </div>
 
-        {/* Store entry */}
-        <button
-          onClick={() => router.push('/store')}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-amber-400/10 border border-amber-400/40 text-amber-600 font-semibold text-sm mb-4 active:scale-[0.98] transition-all"
-        >
-          <ShoppingBag className="w-4 h-4" strokeWidth={1.75} />
-          點數商城 · 升級方案
-        </button>
+        {/* 收費/商城入口暫時隱藏（付費功能尚未開放）*/}
 
         {/* Interests */}
         {currentUser.interests.length > 0 && (
