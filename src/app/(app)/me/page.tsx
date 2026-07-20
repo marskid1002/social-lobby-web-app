@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pencil, X, Plus } from 'lucide-react';
+import { Pencil, X, Plus, Camera } from 'lucide-react';
 import { useAppState } from '@/lib/state';
+import { uploadChatImage } from '@/lib/image';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -18,9 +19,11 @@ const TIER_STYLES: Record<string, { label: string; bg: string; color: string }> 
 };
 
 export default function MyProfilePage() {
-  const { state, currentUser, updateUser } = useAppState();
+  const { state, currentUser, updateUser, setPhotoOverride } = useAppState();
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [nickname, setNickname] = useState(currentUser?.nickname ?? '');
   const [area, setArea] = useState(currentUser?.defaultArea ?? '信義區');
   const [bio, setBio] = useState(currentUser?.bio ?? '');
@@ -45,6 +48,27 @@ export default function MyProfilePage() {
     setTimeout(() => setToast(''), 2000);
   }
 
+  async function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || avatarBusy || !currentUser) return;
+    setAvatarBusy(true);
+    try {
+      const url = await uploadChatImage(file);
+      // 幹部/管理員是種子用戶，直接改 avatarUrl 會被還原邏輯蓋回 → 走 photoOverride（優先級最高、也同步）；
+      // 客戶(c-)非種子，用 updateUser 即可（會同步進 registeredUsers）。
+      if (currentUser.role === 'manager') setPhotoOverride(currentUser.id, url);
+      else updateUser({ avatarUrl: url });
+      setToast('已更新頭像');
+      setTimeout(() => setToast(''), 2000);
+    } catch (err) {
+      setToast(`⚠️ ${err instanceof Error ? err.message : '上傳失敗'}`);
+      setTimeout(() => setToast(''), 5000);
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
   function addInterest() {
     if (newInterest.trim() && !interests.includes(newInterest.trim())) {
       setInterests([...interests, newInterest.trim()]);
@@ -67,11 +91,22 @@ export default function MyProfilePage() {
 
       <div className="relative -mt-8 bg-white rounded-t-[40px] px-5 pb-8">
         <div className="flex justify-center -mt-14 mb-3">
-          <img
-            src={currentUser.avatarUrl}
-            alt={currentUser.nickname}
-            className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-card"
-          />
+          <div className="relative">
+            <img
+              src={currentUser.avatarUrl}
+              alt={currentUser.nickname}
+              className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-card"
+            />
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
+            <button
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarBusy}
+              aria-label="更換頭像"
+              className="absolute bottom-1 right-1 w-8 h-8 rounded-full bg-brand-sky text-brand-ink flex items-center justify-center shadow-md ring-2 ring-white active:scale-95 disabled:opacity-60"
+            >
+              {avatarBusy ? <span className="text-xs">…</span> : <Camera className="w-4 h-4" strokeWidth={1.75} />}
+            </button>
+          </div>
         </div>
 
         <div className="text-center mb-4">
