@@ -69,7 +69,7 @@ export function MomentCard({ post, author }: Props) {
           aria-label="查看留言"
         >
           <MessageCircle className="w-4 h-4" strokeWidth={1.75} />
-          {post.commentCount}
+          {state.plazaComments.filter((c) => c.postId === post.id).length}
         </button>
       </div>
     </div>

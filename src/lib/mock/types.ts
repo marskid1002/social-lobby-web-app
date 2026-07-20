@@ -138,6 +138,16 @@ export interface MomentPost {
   createdAt: string; // ISO
 }
 
+// 廣場留言（跨裝置同步）；parentId 有值代表是某則留言的回覆
+export interface PlazaComment {
+  id: string;
+  postId: string;
+  userId: string;
+  text: string;
+  parentId?: string;
+  createdAt: string; // ISO
+}
+
 export interface DirectMessage {
   id: string;
   fromUserId: string;

@@ -73,11 +73,14 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
   async function handleReport() {
     setMenuOpen(false);
+    // 詢問檢舉原因（提供給管理員審核）；取消則不送出
+    const reason = typeof window !== 'undefined' ? window.prompt('請簡述檢舉原因（會提供給管理員審核）：') : '';
+    if (reason === null) return;
     try {
       const res = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetId: id, targetName: user?.nickname, reason: '' }),
+        body: JSON.stringify({ targetId: id, targetName: user?.nickname, reason: reason.trim() }),
       });
       showToast(res.ok ? '已檢舉，我們會盡快處理' : '檢舉失敗');
     } catch { showToast('連線失敗'); }

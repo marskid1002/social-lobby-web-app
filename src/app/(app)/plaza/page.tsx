@@ -1,16 +1,24 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { useAppState } from '@/lib/state';
 import { MomentCard } from '@/components/MomentCard';
-import { Lock, PenLine, UserCog } from 'lucide-react';
+import { PenLine, UserCog } from 'lucide-react';
 
 const MANAGER_ROSTER_IDS = ['u-002', 'u-005', 'u-009', 'u-015'];
 
 export default function PlazaPage() {
-  const { state, currentUser, switchUser } = useAppState();
+  const { state, currentUser, switchUser, createMomentPost } = useAppState();
   const router = useRouter();
   const tier = currentUser?.tier ?? 'free';
+  const [draft, setDraft] = useState('');
+
+  function handlePost() {
+    if (!draft.trim()) return;
+    createMomentPost(draft);
+    setDraft('');
+  }
 
   // Manager: read-only feed + roster quick-switch to post as a girl
   if (currentUser?.role === 'manager') {
@@ -88,11 +96,35 @@ export default function PlazaPage() {
       )}
 
     <div className={`px-4 pt-4 pb-24 ${tier === 'free' ? 'filter blur-[4px] pointer-events-none select-none' : ''}`}>
-      {/* 發文功能尚未落地（送出不會儲存），上線前先以誠實提示取代可輸入的編輯器，避免誤導付費用戶 */}
-      <div className="flex items-center gap-2 bg-brand-snow rounded-2xl border border-brand-lavender px-4 py-3 mb-4">
-        <PenLine className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
-        <p className="text-sm text-zinc-400">廣場發文功能整備中，敬請期待</p>
-      </div>
+      {/* 發文編輯器（登入客戶可發；訪客提示登入）*/}
+      {currentUser && currentUser.tier !== 'guest' ? (
+        <div className="bg-white rounded-2xl border border-brand-lavender p-3 mb-4">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="分享一則動態…"
+            rows={2}
+            maxLength={300}
+            className="w-full resize-none text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none bg-transparent"
+            aria-label="發文內容"
+          />
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-[11px] text-zinc-300">{draft.length}/300</span>
+            <button
+              onClick={handlePost}
+              disabled={!draft.trim()}
+              className="px-4 py-1.5 rounded-full bg-brand-sky text-brand-ink text-sm font-bold disabled:opacity-40 active:scale-95 transition-all"
+            >
+              發文
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 bg-brand-snow rounded-2xl border border-brand-lavender px-4 py-3 mb-4">
+          <PenLine className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
+          <p className="text-sm text-zinc-400">登入後即可發文</p>
+        </div>
+      )}
 
       {/* Feed */}
       <div className="flex flex-col gap-3">

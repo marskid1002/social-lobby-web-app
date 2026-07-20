@@ -39,10 +39,14 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
     registeredUsers: (all.registeredUsers ?? []).filter((u) => ok(asRec(u).id)),
     blocks: relatedBlocks, // 含 active:false，讓對方端能收斂解除封鎖
     escorts: (all.escorts ?? []).filter((e) => ok(asRec(e).id)), // 幹部自建的小姐（大家可見，供瀏覽/派工）
+    // 廣場貼文/留言：公開內容，大家可見（過濾掉封鎖對象的）
+    momentPosts: (all.momentPosts ?? []).filter((p) => ok(asRec(p).authorId)),
+    plazaComments: (all.plazaComments ?? []).filter((c) => ok(asRec(c).userId)),
   } as Partial<SharedState>;
   const empty: SharedState = {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
     presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [], escorts: [],
+    momentPosts: [], plazaComments: [],
   };
 
   if (s.role === 'guest') return { ...empty, ...pub } as SharedState;
@@ -162,6 +166,9 @@ function sanitizeWriteAuthz(patch: Record<string, unknown>, s: SessionPayload, r
   keep('responses', (r) => isManager || r.userId === me || reqCreator[r.requestId as string] === me);
   // 通知：幹部／本人為觸發者(actor)或收件人(userId)
   keep('updates', (u) => isManager || u.actorId === me || u.userId === me);
+  // 廣場：只能發自己的貼文/留言
+  keep('momentPosts', (p) => p.authorId === me);
+  keep('plazaComments', (c) => c.userId === me);
   // 小姐狀態/照片/相簿：僅限幹部（非幹部一律清空）
   if (!isManager) {
     for (const k of ['presence', 'photoOverrides', 'photoGalleries']) {

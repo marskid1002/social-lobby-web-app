@@ -9,12 +9,6 @@ import { useAppState } from '@/lib/state';
 
 const PREMIUM_DAILY_LIMIT = 5;
 
-type SeedReply = { userId: string; text: string; minsAgo: number };
-type SeedComment = { userId: string; text: string; minsAgo: number; replies?: SeedReply[] };
-
-// 廣場留言種子已清空（正式站不放任何假資料）
-const MOCK_COMMENTS: Record<string, SeedComment[]> = {};
-
 function getDailyCommentKey(userId: string) {
   const today = new Date().toISOString().split('T')[0];
   return `sl_comment_count_${userId}_${today}`;
@@ -31,12 +25,10 @@ function incrementDailyCount(userId: string): number {
   return next;
 }
 
-type LocalEntry = { userId: string; text: string };
-
 export default function PostThreadPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = use(params);
   const router = useRouter();
-  const { state, likePost } = useAppState();
+  const { state, likePost, addPlazaComment } = useAppState();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const post = state.momentPosts.find((p) => p.id === postId);
@@ -48,11 +40,7 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
 
   const [commentText, setCommentText] = useState('');
   const [dailyCount, setDailyCount] = useState(() => getDailyCount(currentUser?.id ?? ''));
-  // localComments: new top-level comments keyed by generated id
-  const [localComments, setLocalComments] = useState<{ key: string; userId: string; text: string }[]>([]);
-  // localReplies: replies added to any comment, keyed by comment key
-  const [localReplies, setLocalReplies] = useState<Record<string, LocalEntry[]>>({});
-  // replyingTo: comment key + author nickname
+  // replyingTo: comment id + author nickname
   const [replyingTo, setReplyingTo] = useState<{ key: string; nickname: string } | null>(null);
 
   const hitLimit = !isVip && dailyCount >= PREMIUM_DAILY_LIMIT;
@@ -72,23 +60,23 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
   const isLiked = state.likedPostIds.includes(post.id);
   const canInteract = tier !== 'free';
 
-  const seedComments = (MOCK_COMMENTS[postId] ?? []).map((c, i) => ({ key: `s${i}`, ...c }));
-  const allComments = [
-    ...seedComments.map((c) => ({
-      ...c,
-      replies: [
-        ...(c.replies ?? []).map((r) => ({ ...r })),
-        ...(localReplies[c.key] ?? []).map((r) => ({ ...r, minsAgo: 0 })),
-      ],
-    })),
-    ...localComments.map((c) => ({
-      key: c.key,
+  // 留言來源改為跨裝置同步的 state.plazaComments（保持與渲染相同的形狀：key/userId/text/minsAgo/replies）
+  const postComments = state.plazaComments.filter((c) => c.postId === postId);
+  const nowMs = Date.now();
+  const minsAgoOf = (iso: string) => Math.max(0, Math.floor((nowMs - new Date(iso).getTime()) / 60_000));
+  const allComments = postComments
+    .filter((c) => !c.parentId)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    .map((c) => ({
+      key: c.id,
       userId: c.userId,
       text: c.text,
-      minsAgo: 0,
-      replies: (localReplies[c.key] ?? []).map((r) => ({ ...r, minsAgo: 0 })),
-    })),
-  ];
+      minsAgo: minsAgoOf(c.createdAt),
+      replies: postComments
+        .filter((r) => r.parentId === c.id)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .map((r) => ({ userId: r.userId, text: r.text, minsAgo: minsAgoOf(r.createdAt) })),
+    }));
 
   const totalCommentCount = allComments.length + allComments.reduce((sum, c) => sum + c.replies.length, 0);
 
@@ -104,18 +92,8 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
 
   function handleSubmit() {
     if (!commentText.trim() || !currentUser || hitLimit) return;
-    const text = commentText.trim();
-
-    if (replyingTo) {
-      setLocalReplies((prev) => ({
-        ...prev,
-        [replyingTo.key]: [...(prev[replyingTo.key] ?? []), { userId: currentUser.id, text }],
-      }));
-      setReplyingTo(null);
-    } else {
-      setLocalComments((prev) => [...prev, { key: `l${Date.now()}`, userId: currentUser.id, text }]);
-    }
-
+    addPlazaComment(postId, commentText.trim(), replyingTo?.key); // 跨裝置同步（回覆帶 parentId=留言 id）
+    setReplyingTo(null);
     const next = incrementDailyCount(currentUser.id);
     setDailyCount(next);
     setCommentText('');

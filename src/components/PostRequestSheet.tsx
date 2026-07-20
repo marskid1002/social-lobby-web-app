@@ -34,6 +34,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
 
   function handleSubmit() {
     if (!type) return;
+    if (currentUser?.tier === 'guest') return; // 訪客不可發局（伺服器也會擋）
     postRequest({ area, requestType: type, peopleCount: count, note });
     setToast(true);
     setTimeout(() => {
@@ -47,6 +48,21 @@ export function PostRequestSheet({ open, onClose }: Props) {
   }
 
   if (!open) return null;
+
+  // 訪客直接打網址開這頁也不能發局：顯示提示、不給表單（避免假成功）
+  if (currentUser?.tier === 'guest') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+        <div className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-6 pb-10 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
+          <p className="text-base font-bold text-brand-ink mb-1">訪客無法發局</p>
+          <p className="text-sm text-zinc-400 mb-5">登入或註冊後即可發布邀請。</p>
+          <button onClick={onClose} className="w-full py-3 rounded-2xl bg-brand-sky text-brand-ink font-bold text-sm active:scale-95 transition-transform">知道了</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>

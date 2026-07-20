@@ -13,11 +13,13 @@ const hashKey = (col: string) => kvKey(`sl:h:v1:${col}`); // 每集合一個 has
 
 export type SharedKey =
   | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
-  | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers' | 'blocks' | 'escorts';
+  | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers' | 'blocks' | 'escorts'
+  | 'momentPosts' | 'plazaComments';
 
 export const SHARED_KEYS: SharedKey[] = [
   'requests', 'responses', 'invitations', 'updates', 'chatMessages',
   'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts',
+  'momentPosts', 'plazaComments',
 ];
 
 type Item = { id: string; [k: string]: unknown };
@@ -27,6 +29,7 @@ function emptyShared(): SharedState {
   return {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
     presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [], escorts: [],
+    momentPosts: [], plazaComments: [],
   };
 }
 
@@ -34,6 +37,7 @@ function emptyShared(): SharedState {
 const mem: Record<SharedKey, Record<string, Item>> = {
   requests: {}, responses: {}, invitations: {}, updates: {}, chatMessages: {},
   presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {}, blocks: {}, escorts: {},
+  momentPosts: {}, plazaComments: {},
 };
 
 function parseItem(v: unknown): Item | null {

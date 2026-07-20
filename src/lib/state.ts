@@ -13,7 +13,7 @@ import {
   seedTeaserMessages,
   momentPosts as seedMomentPosts,
 } from '@/lib/mock';
-import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, MeetRecord, MomentPost } from '@/lib/mock';
+import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, MeetRecord, MomentPost, PlazaComment } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
 import { sendPushNotification } from '@/lib/notify';
 
@@ -57,6 +57,7 @@ export interface AppState {
   teaserMessages: TeaserMessage[];
   inboxUnread: boolean;      // true when a new accepted invite is waiting in inbox
   momentPosts: MomentPost[];
+  plazaComments: PlazaComment[];
   likedPostIds: string[];
   secondaryUserId: string | null; // 第二登入身份（雙身份 demo 用）
   rosters: { id: string; girlIds: string[] }[]; // 各幹部的女伴名單（id = 幹部 userId）
@@ -99,6 +100,7 @@ function getSeedState(): AppState {
     teaserMessages: CLEAN_START ? [] : seedTeaserMessages,
     inboxUnread: false,
     momentPosts: CLEAN_START ? [] : seedMomentPosts, // 正式站不放假貼文
+    plazaComments: [],
     likedPostIds: [],
     secondaryUserId: null,
     // 各幹部預設女伴名單（屬設定，不受 CLEAN_START 清除影響）
@@ -161,7 +163,7 @@ const listeners = new Set<() => void>();
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
 // presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts'] as const;
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts', 'momentPosts', 'plazaComments'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
 
 // 把註冊的新客戶併入 users（跨裝置：其他人才看得到發局者等資訊）
@@ -297,6 +299,8 @@ function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt =
     if (Array.isArray(patch.blocks)) patch.blocks = (patch.blocks as { blockerId?: string }[]).filter((b) => b.blockerId === me);
     if (Array.isArray(patch.registeredUsers)) patch.registeredUsers = (patch.registeredUsers as { id?: string }[]).filter((u) => u.id === me);
     if (Array.isArray(patch.escorts)) patch.escorts = (patch.escorts as { managerId?: string }[]).filter((e) => e.managerId === me);
+    if (Array.isArray(patch.momentPosts)) patch.momentPosts = (patch.momentPosts as { authorId?: string }[]).filter((p) => p.authorId === me);
+    if (Array.isArray(patch.plazaComments)) patch.plazaComments = (patch.plazaComments as { userId?: string }[]).filter((c) => c.userId === me);
     // 丟掉含 data: 內嵌圖片的項目（Blob 上傳失敗殘留的 dataURL）；否則整批會被伺服器擋，
     // 連帶 presence/escorts/requests… 全部同步失敗（一顆老鼠屎壞一鍋粥）。
     for (const k of Object.keys(patch) as SharedKey[]) {
@@ -1365,6 +1369,41 @@ export function useAppState() {
     });
   }, []);
 
+  // 廣場發文（跨裝置同步）
+  const createMomentPost = useCallback((content: string, imageUrl?: string) => {
+    const text = content.trim();
+    if (!text && !imageUrl) return undefined;
+    const me = getState().currentUserId;
+    const post: MomentPost = {
+      id: `mp-${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+      authorId: me,
+      content: text,
+      ...(imageUrl ? { imageUrl } : {}),
+      likeCount: 0,
+      commentCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    setState((prev) => ({ ...prev, momentPosts: [post, ...prev.momentPosts] }));
+    return post;
+  }, []);
+
+  // 廣場留言（跨裝置同步）；parentId 有值 = 回覆某則留言
+  const addPlazaComment = useCallback((postId: string, text: string, parentId?: string) => {
+    const t = text.trim();
+    if (!t) return undefined;
+    const me = getState().currentUserId;
+    const comment: PlazaComment = {
+      id: `pc-${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+      postId,
+      userId: me,
+      text: t,
+      ...(parentId ? { parentId } : {}),
+      createdAt: new Date().toISOString(),
+    };
+    setState((prev) => ({ ...prev, plazaComments: [...prev.plazaComments, comment] }));
+    return comment;
+  }, []);
+
   return {
     state,
     currentUser,
@@ -1398,6 +1437,8 @@ export function useAppState() {
     confirmGroupAttendance,
     clearInboxUnread,
     likePost,
+    createMomentPost,
+    addPlazaComment,
     setSecondaryUser,
     setRoster,
     setUserPresence,
