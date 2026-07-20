@@ -65,8 +65,11 @@ export default function ChatPage({ params }: ChatPageProps) {
   };
 
   const threadId = id;
-  const isGroup = id.startsWith('g-');
-  const requestId = isGroup ? id.slice(2) : null;
+  // 只有 g- 後面真的對應到一個局(request/response)才算群組聊天；
+  // 否則（例如參與者 id 恰好以 g- 開頭的自建小姐）當一般 1:1，避免走錯分支導致聊天壞掉。
+  const gReqId = id.startsWith('g-') ? id.slice(2) : null;
+  const isGroup = !!gReqId && (state.requests.some((r) => r.id === gReqId) || state.responses.some((r) => r.requestId === gReqId));
+  const requestId = isGroup ? gReqId : null;
 
   // ── Group chat logic ──────────────────────────────────────────────────────
   const groupRequest = requestId ? state.requests.find((r) => r.id === requestId) : null;

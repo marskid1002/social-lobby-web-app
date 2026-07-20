@@ -77,11 +77,15 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
     if (tid.startsWith('g-')) {
       const reqId = tid.slice(2);
       const req = requests.find((r) => r.id === reqId);
-      if (req && asRec(req).creatorId === me) return true;
-      return responses.some((r) => {
-        const y = asRec(r);
-        return y.requestId === reqId && y.userId === me && y.responseStatus === 'joining';
-      });
+      // 只有 g- 後面真的對應到一個局才算群組；否則（例如參與者 id 恰好以 g- 開頭的自建小姐）落到 1:1 判斷
+      const isRealGroup = !!req || responses.some((r) => asRec(r).requestId === reqId);
+      if (isRealGroup) {
+        if (req && asRec(req).creatorId === me) return true;
+        return responses.some((r) => {
+          const y = asRec(r);
+          return y.requestId === reqId && y.userId === me && y.responseStatus === 'joining';
+        });
+      }
     }
     return tid.includes(me);
   });

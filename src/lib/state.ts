@@ -360,8 +360,9 @@ export function otherIdFromThread(threadId: string, me: string): string {
   if (!me || !threadId) return '';
   if (threadId.startsWith(me + '-')) return threadId.slice(me.length + 1);
   if (threadId.endsWith('-' + me)) return threadId.slice(0, threadId.length - me.length - 1);
-  const m = threadId.match(/u-\d+/g) ?? []; // fallback：舊 u-\d+ 格式
-  return m.find((x) => x !== me) ?? m[0] ?? '';
+  // me 不是這個 thread 的參與者（例如幹部切成小姐身份、開一個客戶↔幹部的代談串）→ 不亂猜，回空，
+  // 避免舊的 /u-\d+/ fallback 誤把「幹部自己」當成對話對象、造成聊天鎖死/對象顯示錯。
+  return '';
 }
 
 function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>) {
@@ -610,7 +611,8 @@ export function useAppState() {
     if (!name) return;
     const me = getState().currentUserId;
     const now = new Date().toISOString();
-    const id = `g-${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
+    // 前綴用 esc-（不可用 g-：會與群組聊天室 threadId 慣例 g-<requestId> 撞名，害 1:1 聊天訊息被誤判過濾）
+    const id = `esc-${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
     setState((prev) => {
       const newUser: User = {
         id, lineUserId: id, nickname: name,
@@ -1159,14 +1161,14 @@ export function useAppState() {
     // 推播給聊天室的「其他參與者」（排除送出者）
     const s = getState();
     let recipients: string[] = [];
-    if (threadId.startsWith('g-')) {
-      // 群組：發起人 + 所有 joining 的女伴
-      const reqId = threadId.slice(2);
-      const req = s.requests.find((r) => r.id === reqId);
+    const gReqId = threadId.startsWith('g-') ? threadId.slice(2) : null;
+    const gReq = gReqId ? s.requests.find((r) => r.id === gReqId) : null;
+    // 只有 g- 後面真的對應到一個局（request/response）才算群組；否則（例如 id 恰好以 g- 開頭的自建小姐）當 1:1
+    if (gReqId && (gReq || s.responses.some((r) => r.requestId === gReqId))) {
       const joinerIds = s.responses
-        .filter((r) => r.requestId === reqId && r.responseStatus === 'joining')
+        .filter((r) => r.requestId === gReqId && r.responseStatus === 'joining')
         .map((r) => r.userId);
-      recipients = [...(req ? [req.creatorId] : []), ...joinerIds];
+      recipients = [...(gReq ? [gReq.creatorId] : []), ...joinerIds];
     } else {
       // 1:1：threadId 是兩個 user id 排序組成；用邊界比對取另一方（支援 c-<uuid> 客戶）
       const other = otherIdFromThread(threadId, senderId);
