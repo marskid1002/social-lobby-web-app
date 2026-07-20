@@ -43,7 +43,10 @@ export function PullToRefresh() {
 
     const onStart = (e: TouchEvent) => {
       if (busy || e.touches.length !== 1) return;
-      active = atTop(e.target);
+      // 正在打字（輸入框聚焦、鍵盤開著）就不啟用下拉，避免不小心重載丟掉草稿
+      const el = document.activeElement as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      active = !typing && atTop(e.target);
       startY = e.touches[0].clientY;
       pulling = false;
       dist = 0;

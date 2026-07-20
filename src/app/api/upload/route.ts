@@ -39,6 +39,10 @@ export async function POST(req: NextRequest) {
     if (!userId || !dataUrl) {
       return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
     }
+    // 圖片大小上限（約 2MB 解碼後）：擋過大檔/濫用；前端已先縮圖，正常照片遠低於此
+    if (typeof dataUrl === 'string' && dataUrl.length > 2_800_000) {
+      return NextResponse.json({ error: '圖片太大，請小於約 2MB' }, { status: 413 });
+    }
 
     // Blob 不可用：正式站直接報錯（dataURL 會被 /api/sync 擋下，塞了也存不進去）；本地開發才回 dataURL 供測試
     if (!blobAvailable) {

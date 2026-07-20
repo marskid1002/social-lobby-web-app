@@ -49,7 +49,10 @@ export function VersionWatcher() {
     async function check(autoReload: boolean) {
       const sha = await serverSha();
       if (cancelled || !sha || sha === 'dev' || sha === BUILD) return;
-      if (autoReload) reloadOnce(sha);
+      // 使用者正在打字（輸入框/文字區）就不自動重載，避免打斷/丟草稿 → 改跳橫幅讓他自己點
+      const el = document.activeElement as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      if (autoReload && !typing) reloadOnce(sha);
       else setStale(true);
     }
 

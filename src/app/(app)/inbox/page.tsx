@@ -246,7 +246,13 @@ export default function InboxPage() {
                   <p className="text-xs text-brand-ink/50 mt-0.5">
                     {card.isGroup
                       ? `${card.joinerUsers.length} 位女伴加入 · 群組聊天已開啟`
-                      : '聊天視窗已開啟 · 8 小時後關閉'}
+                      : (() => {
+                          const ms = card.chatExpiresAt ? new Date(card.chatExpiresAt).getTime() - Date.now() : 0;
+                          if (ms <= 0) return '聊天視窗已關閉';
+                          const days = Math.floor(ms / 86400000);
+                          const hrs = Math.floor((ms % 86400000) / 3600000);
+                          return days > 0 ? `聊天視窗開啟中 · 還有 ${days} 天` : `聊天視窗開啟中 · 還有 ${hrs} 小時`;
+                        })()}
                   </p>
                 </div>
               </div>
