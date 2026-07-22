@@ -24,6 +24,9 @@ type Report = {
   resolved: boolean;
 };
 
+type ConvMsg = { senderId: string; text: string; imageUrl?: string; createdAt: string };
+type Conversation = { threadId: string; participants: string[]; messages: ConvMsg[]; lastAt: string };
+
 const ROLE_LABEL: Record<string, string> = { admin: '管理員', manager: '幹部', user: '客戶' };
 
 export default function AdminPage() {
@@ -36,6 +39,8 @@ export default function AdminPage() {
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const [confirmText, setConfirmText] = useState('');
   const [tempPw, setTempPw] = useState<{ key: string; pw: string } | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [openThread, setOpenThread] = useState<string | null>(null);
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(''), 2500); };
 
@@ -47,6 +52,7 @@ export default function AdminPage() {
     const data = await res.json();
     setAccounts(data.accounts ?? []);
     setReports(data.reports ?? []);
+    setConversations(data.conversations ?? []);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -106,6 +112,8 @@ export default function AdminPage() {
   }
 
   const cls = 'text-xs font-semibold px-2.5 py-1 rounded-full border';
+  const nameOf = (uid: string) => accounts?.find((a) => a.userId === uid)?.nickname ?? uid;
+  const fmtTime = (iso: string) => (iso ? new Date(iso).toLocaleString('zh-Hant-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '');
 
   return (
     <div className="min-h-screen bg-brand-snow">
@@ -183,6 +191,54 @@ export default function AdminPage() {
                   })}
                 </div>
               </>
+            )}
+
+            {/* 所有對話（管理審查用）*/}
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2 mt-6">
+              所有對話（{conversations.length}）
+            </p>
+            {conversations.length === 0 ? (
+              <p className="text-xs text-zinc-400 mb-2">目前沒有對話紀錄。</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {conversations.map((c) => {
+                  const isOpen = openThread === c.threadId;
+                  const title = c.participants.map(nameOf).join(' ↔ ') || '對話';
+                  const last = c.messages[c.messages.length - 1];
+                  return (
+                    <div key={c.threadId} className="bg-white rounded-2xl border border-brand-lavender overflow-hidden">
+                      <button onClick={() => setOpenThread(isOpen ? null : c.threadId)} className="w-full text-left px-3 py-2.5 active:bg-brand-snow">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-brand-ink flex-1 truncate">{title}</span>
+                          <span className="text-[11px] text-zinc-400 shrink-0">{c.messages.length} 則</span>
+                        </div>
+                        {last && (
+                          <p className="text-xs text-zinc-400 truncate mt-0.5">
+                            {nameOf(last.senderId)}：{last.imageUrl ? '[照片]' : last.text}
+                          </p>
+                        )}
+                      </button>
+                      {isOpen && (
+                        <div className="border-t border-brand-lavender px-3 py-2 flex flex-col gap-2 max-h-80 overflow-y-auto">
+                          {c.messages.map((m, i) => (
+                            <div key={i} className="text-xs">
+                              <span className="font-semibold text-brand-ink">{nameOf(m.senderId)}</span>
+                              <span className="text-zinc-300 ml-2">{fmtTime(m.createdAt)}</span>
+                              {m.imageUrl ? (
+                                <a href={m.imageUrl} target="_blank" rel="noreferrer" className="block mt-1">
+                                  <img src={m.imageUrl} alt="照片" className="max-w-[160px] max-h-40 rounded-lg object-cover" />
+                                </a>
+                              ) : (
+                                <p className="text-zinc-600 mt-0.5 break-words">{m.text}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
 
             {/* 資料維護 */}

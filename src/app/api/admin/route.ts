@@ -3,7 +3,7 @@ import { getSessionFromRequest } from '@/lib/session';
 import {
   listAccounts, adminResetPassword, adminResetCustomerPassword, setAccountDisabled, deleteAccount, getAccount,
 } from '@/lib/auth-store';
-import { deleteUserData, clearShared } from '@/lib/sync-store';
+import { deleteUserData, clearShared, getCollection } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { listReports, setReportResolved } from '@/lib/report-store';
 
@@ -23,14 +23,39 @@ function safeAccount(a: { key: string; role: string; tier: string; userId: strin
   };
 }
 
-// GET：後台總覽（帳號清單 + 檢舉）
+// GET：後台總覽（帳號清單 + 檢舉 + 所有對話）
 export async function GET(req: NextRequest) {
   if (!(await requireAdmin(req))) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  const [accounts, reports] = await Promise.all([
+  const [accounts, reports, chatMessages] = await Promise.all([
     listAccounts().then((list) => list.map(safeAccount)),
     listReports(),
+    getCollection('chatMessages'),
   ]);
-  return NextResponse.json({ accounts, reports });
+
+  // 依 threadId 分組所有對話（管理審查用；已在服務條款揭露管理員得檢視訊息）
+  type Msg = { senderId: string; text: string; imageUrl?: string; createdAt: string };
+  const byThread: Record<string, Msg[]> = {};
+  for (const m of chatMessages) {
+    const x = m as { threadId?: string; senderId?: string; text?: string; imageUrl?: string; createdAt?: string };
+    const tid = x.threadId ?? '';
+    if (!tid) continue;
+    (byThread[tid] ??= []).push({
+      senderId: x.senderId ?? '', text: x.text ?? '', imageUrl: x.imageUrl, createdAt: x.createdAt ?? '',
+    });
+  }
+  const conversations = Object.entries(byThread)
+    .map(([threadId, messages]) => {
+      messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      return {
+        threadId,
+        participants: Array.from(new Set(messages.map((m) => m.senderId))),
+        messages,
+        lastAt: messages[messages.length - 1]?.createdAt ?? '',
+      };
+    })
+    .sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+
+  return NextResponse.json({ accounts, reports, conversations });
 }
 
 // POST：管理動作
