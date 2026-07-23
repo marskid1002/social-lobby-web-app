@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShared, mergeShared, clearShared, getCollection, type SharedState } from '@/lib/sync-store';
+import { getShared, mergeShared, clearShared, getCollection, getResetMarks, type SharedState } from '@/lib/sync-store';
 import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -182,7 +182,8 @@ export async function GET(req: NextRequest) {
     const session = await getSessionFromRequest(req);
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     const shared = await getShared();
-    return NextResponse.json(scopeForSession(shared, session), { headers: { 'Cache-Control': 'no-store' } });
+    const resetAt = await getResetMarks();
+    return NextResponse.json({ ...scopeForSession(shared, session), resetAt }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     console.error('[sync GET]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });
@@ -224,7 +225,8 @@ export async function POST(req: NextRequest) {
     sanitizeWriteAuthz(patch, session, reqCreator); // 丟掉未授權的項目（不整批 403），避免一顆外來項讓整批同步失敗
 
     const merged = await mergeShared(patch);
-    return NextResponse.json(scopeForSession(merged, session));
+    const resetAt = await getResetMarks();
+    return NextResponse.json({ ...scopeForSession(merged, session), resetAt });
   } catch (e) {
     console.error('[sync POST]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });

@@ -10,6 +10,7 @@ import { getRedis, kvKey, warnIfRedisMissingInProd } from './kv';
 warnIfRedisMissingInProd(); // 生產環境缺 Redis → 冷啟動時大聲警告（資料不會持久化）
 
 const hashKey = (col: string) => kvKey(`sl:h:v1:${col}`); // 每集合一個 hash（含環境前綴）
+const RESET_KEY = kvKey('sl:reset:v1'); // hash：{ collection: 清除時間戳(ms) }，供用戶端丟棄舊本機殘留
 
 export type SharedKey =
   | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
@@ -39,6 +40,7 @@ const mem: Record<SharedKey, Record<string, Item>> = {
   presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {}, blocks: {}, escorts: {},
   momentPosts: {}, plazaComments: {},
 };
+const memReset: Record<string, number> = {}; // 記憶體 fallback 的清除時間戳
 
 function parseItem(v: unknown): Item | null {
   if (v == null) return null;
@@ -99,11 +101,30 @@ export async function clearShared(keys?: string[]): Promise<void> {
   const redis = getRedis();
   const targets = keys && keys.length ? SHARED_KEYS.filter((k) => keys.includes(k)) : SHARED_KEYS;
   if (!targets.length) return;
+  // 記錄各集合的清除時間戳：用戶端會據此丟棄早於此時間的本機殘留，避免 union/回推把已清資料復活
+  const now = Date.now();
+  const marks: Record<string, number> = {};
+  for (const k of targets) marks[k] = now;
   if (redis) {
     await redis.del(...targets.map((k) => hashKey(k)));
+    await redis.hset(RESET_KEY, marks);
   } else {
     for (const key of targets) mem[key] = {};
+    Object.assign(memReset, marks);
   }
+}
+
+// 取得各集合的「清除時間戳」。用戶端據此丟棄早於此時間的本機殘留（讓管理員清空能真正生效）。
+export async function getResetMarks(): Promise<Record<string, number>> {
+  const redis = getRedis();
+  if (redis) {
+    const h = (await redis.hgetall(RESET_KEY)) as Record<string, unknown> | null;
+    if (!h) return {};
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(h)) out[k] = Number(v) || 0;
+    return out;
+  }
+  return { ...memReset };
 }
 
 /** 級聯刪除某使用者的所有共享資料（帳號真刪除時用）。 */

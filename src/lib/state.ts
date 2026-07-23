@@ -265,6 +265,15 @@ let isPushing = false;
 // 尚未確認送達 server 的本機項目（避免 poll 以 server 舊版覆蓋樂觀更新造成靜默遺失，#10）
 const unconfirmed: Partial<Record<SharedKey, Map<string, { id: string }>>> = {};
 
+// 各共享集合的「清除時間戳」（來自 /api/sync 的 resetAt）。用來丟棄早於此時間的本機殘留，
+// 讓管理員「清空」真正生效——否則 unionById 會保留本機、initPatch 會回推，導致已清資料復活。
+let resetMarks: Record<string, number> = {};
+function droppedBeforeReset(key: SharedKey, arr: { id: string }[]): { id: string }[] {
+  const cutoff = resetMarks[key];
+  if (!cutoff) return arr;
+  return arr.filter((x) => new Date((x as { createdAt?: string }).createdAt ?? 0).getTime() > cutoff);
+}
+
 function trackUnconfirmed(patch: Partial<Record<SharedKey, unknown[]>>, add: boolean) {
   for (const key of Object.keys(patch) as SharedKey[]) {
     const arr = patch[key];
@@ -310,6 +319,15 @@ function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt =
           try { return !JSON.stringify(it).includes('data:image'); } catch { return true; }
         });
         if (cleaned.length !== arr.length) patch[k] = cleaned;
+      }
+    }
+    // 丟掉早於「清除時間戳」的項目，避免把管理員已清除的舊資料回推復活
+    for (const k of Object.keys(patch) as SharedKey[]) {
+      const arr = patch[k];
+      if (Array.isArray(arr) && resetMarks[k]) {
+        patch[k] = (arr as { createdAt?: string }[]).filter(
+          (it) => new Date(it.createdAt ?? 0).getTime() > resetMarks[k]
+        ) as unknown[];
       }
     }
     trackUnconfirmed(patch, true);
@@ -377,20 +395,27 @@ export function otherIdFromThread(threadId: string, me: string): string {
 
 function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>) {
   if (!globalState) globalState = loadState();
+  // 更新清除時間戳（管理員清空後，server 會回帶各集合的清除時間）
+  const incomingReset = (shared as { resetAt?: Record<string, number> }).resetAt;
+  if (incomingReset) resetMarks = { ...resetMarks, ...incomingReset };
   let changed = false;
   const next = { ...globalState } as AppState;
   for (const key of SHARED_KEYS) {
     const serverArr = shared[key];
     if (!serverArr) continue;
-    let merged = unionById(
-      (globalState[key] as unknown as { id: string }[]) ?? [],
-      serverArr
-    );
-    // 疊回尚未確認送達 server 的本機項目：server 版本不得覆蓋（#10）
+    // 丟棄早於「清除時間戳」的本機殘留，避免 union 把已清資料保留下來
+    const localArr = droppedBeforeReset(key, (globalState[key] as unknown as { id: string }[]) ?? []);
+    let merged = unionById(localArr, serverArr);
+    // 疊回尚未確認送達 server 的本機項目：server 版本不得覆蓋（#10）；但別把清除前的舊項目塞回
     const uc = unconfirmed[key];
     if (uc && uc.size) {
+      const cutoff = resetMarks[key];
       const map = new Map(merged.map((x) => [x.id, x]));
-      for (const [id, item] of uc) map.set(id, item);
+      for (const [id, item] of uc) {
+        const t = new Date((item as { createdAt?: string }).createdAt ?? 0).getTime();
+        if (cutoff && t <= cutoff) { uc.delete(id); continue; }
+        map.set(id, item);
+      }
       merged = [...map.values()];
     }
     // 排序：通知/局新到舊，聊天訊息舊到新
@@ -426,15 +451,17 @@ async function pollShared() {
 function startSync() {
   if (syncStarted || typeof window === 'undefined') return;
   syncStarted = true;
-  // 啟動時：先把本機既有的共享資料推上 server（種子或既有 demo 資料），再拉回合併
-  const s = getState();
-  const initPatch: Partial<Record<SharedKey, unknown[]>> = {};
-  for (const key of SHARED_KEYS) {
-    const arr = s[key] as unknown[];
-    if (arr && arr.length) initPatch[key] = arr;
-  }
-  if (Object.keys(initPatch).length) pushSharedPatch(initPatch);
-  pollShared();
+  // 啟動時：先拉一次（取得 resetAt 並丟棄已被清除的本機殘留），再把「剩餘」本機共享資料推上 server，
+  // 避免把管理員已清除的舊資料又回推復活。
+  pollShared().then(() => {
+    const s = getState();
+    const initPatch: Partial<Record<SharedKey, unknown[]>> = {};
+    for (const key of SHARED_KEYS) {
+      const arr = s[key] as unknown[];
+      if (arr && arr.length) initPatch[key] = arr;
+    }
+    if (Object.keys(initPatch).length) pushSharedPatch(initPatch);
+  });
   setInterval(pollShared, SYNC_POLL_MS);
 }
 
