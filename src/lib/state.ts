@@ -517,7 +517,17 @@ export function useAppState() {
 
   const state = getState();
 
-  const currentUser = state.users.find((u) => u.id === state.currentUserId) ?? state.users[0];
+  // 找不到對應 user 時，不要 fallback 成 users[0]（會冒用別人身份、洩漏別人資料）；
+  // 改回一個以目前 id 為基礎的中性占位物件（永不冒用他人），僅在完全沒有 currentUserId 時才用 users[0]。
+  const currentUser = state.users.find((u) => u.id === state.currentUserId)
+    ?? (state.currentUserId
+      ? ({
+          id: state.currentUserId, lineUserId: state.currentUserId, nickname: '',
+          avatarUrl: '', cardImageUrl: '', bio: '', defaultArea: '信義區', interests: [],
+          tier: 'standard', role: 'user', credits: 0, monthlyRequestsLeft: 0,
+          lineOAFollowed: false, createdAt: '2024-01-01T00:00:00.000Z',
+        } as User)
+      : state.users[0]);
 
   const isOnline = state.onlineUserIds.includes(state.currentUserId);
 
