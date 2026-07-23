@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getAccount, createCustomer, verifyPassword, setInitialPassword,
-  adminResetPassword, normalizeKey, normalizePhone,
+  adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone,
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
+import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-store';
+import { sendOtpSms } from '@/lib/sms';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,7 +59,40 @@ export async function POST(req: NextRequest) {
 
     const ip = clientIp(req);
 
-    // 客戶註冊：手機 + 暱稱 + 密碼
+    // 發送簡訊驗證碼（註冊 / 忘記密碼共用）
+    if (action === 'send-otp') {
+      const purpose: OtpPurpose = body.purpose === 'reset' ? 'reset' : 'register';
+      const phone = normalizePhone(body.phone ?? '');
+      if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
+
+      // 防簡訊轟炸/燒錢：同 IP 每小時 20 次、同號 60 秒冷卻、同號每日 5 次
+      const rlIp = await rateLimit('otp-ip', ip, 20, 60 * 60);
+      if (!rlIp.ok) return NextResponse.json({ error: `嘗試過於頻繁，請 ${rlIp.retryAfter} 秒後再試` }, { status: 429 });
+      const rlCd = await rateLimit('otp-cd', phone, 1, 60);
+      if (!rlCd.ok) return NextResponse.json({ error: `請 ${rlCd.retryAfter} 秒後再取得驗證碼` }, { status: 429 });
+      const rlDay = await rateLimit('otp-day', phone, 5, 24 * 60 * 60);
+      if (!rlDay.ok) return NextResponse.json({ error: '今日取得驗證碼次數已達上限' }, { status: 429 });
+
+      const existing = await getAccount(phone);
+      if (purpose === 'register' && existing) {
+        return NextResponse.json({ error: '此手機已註冊，請直接登入或使用忘記密碼' }, { status: 409 });
+      }
+      // 忘記密碼：對「查無此號/非客戶」也回 ok（不洩漏是否註冊），僅客戶帳號才真的發碼
+      const shouldSend = purpose === 'register' ? true : Boolean(existing && existing.role === 'user');
+
+      const code = generateCode();
+      if (shouldSend) {
+        const sent = await sendOtpSms(phone, code, purpose);
+        if (!sent) return NextResponse.json({ error: '簡訊發送失敗，請稍後再試' }, { status: 500 });
+        await saveOtp(purpose, phone, code);
+      }
+      const res: { ok: true; devCode?: string } = { ok: true };
+      // 本地/非生產且真的發碼：把碼回傳前端方便測試（生產絕不回傳）
+      if (!isProd() && shouldSend) res.devCode = code;
+      return NextResponse.json(res);
+    }
+
+    // 客戶註冊：手機 + 暱稱 + 密碼 + 簡訊驗證碼
     if (action === 'register') {
       // 限流：同 IP 每小時最多 10 次註冊，抵擋洗註冊
       const rl = await rateLimit('register', ip, 10, 60 * 60);
@@ -68,8 +103,27 @@ export async function POST(req: NextRequest) {
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
       if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
       if (await getAccount(phone)) return NextResponse.json({ error: '此手機已註冊，請直接登入' }, { status: 409 });
+      // 驗證簡訊碼（通過即消耗），最後才建立帳號
+      const otp = await verifyOtp('register', phone, String(body.code ?? ''));
+      if (!otp.ok) return NextResponse.json({ error: otp.reason ?? '驗證碼錯誤' }, { status: 400 });
       const acc = await createCustomer(phone, pw, body.nickname);
       return withSession({ id: acc.userId, role: 'user', tier: acc.tier, nickname: acc.nickname });
+    }
+
+    // 忘記密碼：手機 + 簡訊驗證碼 + 新密碼（僅限客戶）
+    if (action === 'reset-password') {
+      const rl = await rateLimit('reset-pw', ip, 10, 60 * 60);
+      if (!rl.ok) return NextResponse.json({ error: `嘗試過於頻繁，請 ${rl.retryAfter} 秒後再試` }, { status: 429 });
+
+      const phone = normalizePhone(body.phone ?? '');
+      const pw = String(body.password ?? '');
+      if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
+      if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
+      const otp = await verifyOtp('reset', phone, String(body.code ?? ''));
+      if (!otp.ok) return NextResponse.json({ error: otp.reason ?? '驗證碼錯誤' }, { status: 400 });
+      const ok = await setCustomerPassword(phone, pw);
+      if (!ok) return NextResponse.json({ error: '此帳號無法用簡訊重設密碼' }, { status: 400 });
+      return NextResponse.json({ ok: true });
     }
 
     // 登入：帳號（手機 or A00x）+ 密碼

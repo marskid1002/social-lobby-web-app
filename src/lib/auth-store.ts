@@ -56,8 +56,12 @@ async function writeAccounts(data: AccountsMap) {
   if (redis) {
     await redis.set(ACCOUNTS_KEY, data);
   } else {
+    // 本地 fallback：readAccounts 會直接回傳 memAccounts 參考，呼叫端常以
+    // read→改→write 同一物件回寫，故 data 可能就是 memAccounts 本身。
+    // 先淺拷貝快照再清空，避免「清空 memAccounts 時連 data 一起被清空」的別名問題。
+    const snapshot = { ...data };
     for (const k of Object.keys(memAccounts)) delete memAccounts[k];
-    Object.assign(memAccounts, data);
+    Object.assign(memAccounts, snapshot);
   }
 }
 
@@ -158,6 +162,17 @@ export async function adminResetCustomerPassword(key: string): Promise<string | 
   acc.hash = hashPassword(pw, acc.salt);
   await writeAccounts(accounts);
   return pw;
+}
+
+// 客戶用簡訊驗證碼重設密碼（僅限客戶帳號；幹部/管理員請走啟用碼重設）。
+export async function setCustomerPassword(key: string, password: string): Promise<boolean> {
+  const accounts = await readAccounts();
+  const acc = accounts[normalizeKey(key)];
+  if (!acc || acc.role !== 'user') return false;
+  acc.salt = crypto.randomBytes(16).toString('hex');
+  acc.hash = hashPassword(password, acc.salt);
+  await writeAccounts(accounts);
+  return true;
 }
 
 export function verifyPassword(account: Account, password: string): boolean {
