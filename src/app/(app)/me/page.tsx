@@ -188,16 +188,17 @@ export default function MyProfilePage() {
           );
         })()}
 
-        {/* Media grid */}
-        {/* TODO: wire up user_media once we decide on MVP scope */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="aspect-square rounded-2xl bg-brand-pink/30 flex items-center justify-center">
-            <Plus className="w-6 h-6 text-brand-ink/40" strokeWidth={1.75} />
+        {/* Media grid（未接線的佔位；幹部不顯示——幹部不會被客戶瀏覽，個人相簿無意義）*/}
+        {currentUser.role !== 'manager' && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="aspect-square rounded-2xl bg-brand-pink/30 flex items-center justify-center">
+              <Plus className="w-6 h-6 text-brand-ink/40" strokeWidth={1.75} />
+            </div>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="aspect-square rounded-2xl bg-brand-lavender/40" />
+            ))}
           </div>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="aspect-square rounded-2xl bg-brand-lavender/40" />
-          ))}
-        </div>
+        )}
       </div>
 
       {/* Edit sheet */}
