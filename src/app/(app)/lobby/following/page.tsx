@@ -1,17 +1,18 @@
 'use client';
 
-import { useAppState } from '@/lib/state';
+import { useAppState, escortPeerIds } from '@/lib/state';
 import { LobbyGrid } from '@/components/LobbyGrid';
 
 export default function FollowingPage() {
   const { state, currentUser } = useAppState();
 
+  const escortIds = escortPeerIds(state); // 只顯示幹部自建的真實小姐
   const followingIds = state.follows
     .filter((f) => f.followerId === currentUser?.id)
     .map((f) => f.followingId);
 
   const followingOnline = state.users.filter(
-    (u) => followingIds.includes(u.id) && state.onlineUserIds.includes(u.id)
+    (u) => followingIds.includes(u.id) && escortIds.has(u.id) && state.onlineUserIds.includes(u.id)
   );
 
   function getStatus(userId: string) {

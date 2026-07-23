@@ -1,15 +1,17 @@
 'use client';
 
-import { useAppState } from '@/lib/state';
+import { useAppState, escortPeerIds } from '@/lib/state';
 import { LobbyGrid } from '@/components/LobbyGrid';
 
 export default function NearbyPage() {
   const { state, currentUser } = useAppState();
 
   const myArea = currentUser?.defaultArea;
+  const escortIds = escortPeerIds(state); // 只顯示幹部自建的真實小姐
 
   const nearbyUsers = state.users.filter((u) => {
     if (u.id === currentUser?.id) return false;
+    if (!escortIds.has(u.id)) return false;
     if (!state.onlineUserIds.includes(u.id)) return false;
     const status = state.onlineStatuses.find((s) => s.userId === u.id);
     return status?.area === myArea;

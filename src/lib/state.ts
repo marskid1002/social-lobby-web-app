@@ -360,6 +360,12 @@ export function blockedPeerIds(state: AppState): Set<string> {
   return set;
 }
 
+// 幹部自建的小姐 id 集合（只含 escorts 集合裡、未移除的）。
+// 客戶大廳/附近/關注只顯示這些「真實小姐」，過濾掉 demo 種子的假人物（role user/escort）。
+export function escortPeerIds(state: AppState): Set<string> {
+  return new Set((state.escorts ?? []).filter((e) => !e.removed).map((e) => e.id));
+}
+
 export function otherIdFromThread(threadId: string, me: string): string {
   if (!me || !threadId) return '';
   if (threadId.startsWith(me + '-')) return threadId.slice(me.length + 1);
