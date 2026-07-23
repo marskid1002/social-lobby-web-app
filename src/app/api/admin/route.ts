@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     // 清除所有「局 / 回應 / 邀請 / 通知 / 對話」（保留小姐、照片、帳號），供測試重來（不需 account）
     if (action === 'clear-shared') {
-      await clearShared(['requests', 'responses', 'invitations', 'updates', 'chatMessages']);
+      await clearShared(['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'momentPosts', 'plazaComments']);
       return NextResponse.json({ ok: true });
     }
 

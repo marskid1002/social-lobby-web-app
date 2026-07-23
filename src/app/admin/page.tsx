@@ -96,7 +96,7 @@ export default function AdminPage() {
 
   async function clearBoards() {
     if (typeof window !== 'undefined' &&
-      !window.confirm('確定清除所有「局 / 邀請 / 通知 / 對話」？\n（會保留小姐、照片、帳號）此動作無法復原。')) return;
+      !window.confirm('確定清除所有「局 / 邀請 / 通知 / 對話 / 廣場貼文與留言」？\n（會保留小姐、照片、帳號）此動作無法復原。')) return;
     setBusy('clear-shared');
     try {
       const res = await fetch('/api/admin', {
@@ -106,7 +106,7 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { showToast(data.error ?? '清除失敗'); return; }
-      showToast('已清除所有局與對話');
+      showToast('已清除所有局、對話與廣場');
       await load();
     } catch { showToast('連線失敗'); } finally { setBusy(''); }
   }
@@ -278,10 +278,10 @@ export default function AdminPage() {
             {/* 資料維護 */}
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2 mt-6">資料維護</p>
             <div className="bg-white rounded-2xl border border-brand-lavender p-3">
-              <p className="text-sm font-semibold text-brand-ink mb-1">清除所有局與對話</p>
-              <p className="text-xs text-zinc-400 mb-3">清掉所有邀請的局、回應、通知與聊天訊息；保留小姐、照片、帳號。用於測試重來。</p>
+              <p className="text-sm font-semibold text-brand-ink mb-1">清除所有局、對話與廣場</p>
+              <p className="text-xs text-zinc-400 mb-3">清掉所有局、回應、通知、聊天訊息與廣場貼文/留言；保留小姐、照片、帳號。用於測試重來。</p>
               <button disabled={!!busy} onClick={clearBoards} className={`${cls} border-red-300 text-red-500`}>
-                {busy === 'clear-shared' ? '清除中…' : '清除所有局與對話'}
+                {busy === 'clear-shared' ? '清除中…' : '清除所有局、對話與廣場'}
               </button>
               <div className="border-t border-brand-lavender my-3" />
               <p className="text-sm font-semibold text-brand-ink mb-1">清空所有幹部密碼</p>

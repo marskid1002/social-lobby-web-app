@@ -99,6 +99,14 @@ export default function ChatPage({ params }: ChatPageProps) {
   const otherUserId = !isGroup ? otherIdFromThread(id, currentUser?.id ?? '') : '';
   const otherUser = state.users.find((u) => u.id === otherUserId);
   const isOtherOnline = state.onlineUserIds.includes(otherUserId);
+  // 代談：這個聊天室「關於哪位小姐」（由 req 局＋此對話的派工幹部推出；沒有 req 就不顯示）
+  const escortNames = req
+    ? [...new Set(state.responses
+        .filter((r) => r.requestId === req && r.dispatcherId && (r.dispatcherId === currentUser?.id || r.dispatcherId === otherUserId))
+        .map((r) => state.users.find((u) => u.id === r.userId)?.nickname)
+        .filter(Boolean))]
+    : [];
+  const escortLabel = escortNames.length ? `關於 ${escortNames[0]}${escortNames.length > 1 ? ` 等 ${escortNames.length} 位` : ''}` : '';
 
   const activeInvite = !isGroup
     ? state.invitations.find(
@@ -669,6 +677,9 @@ export default function ChatPage({ params }: ChatPageProps) {
           <span className="font-semibold text-sm text-brand-ink truncate leading-tight">
             {otherUser?.nickname ?? otherUserId}
           </span>
+          {escortLabel && (
+            <span className="text-xs text-brand-sky font-semibold leading-tight truncate">{escortLabel}</span>
+          )}
           <span className="text-xs text-zinc-400 leading-tight">
             {isOtherOnline ? '目前在線' : '離線'}
           </span>

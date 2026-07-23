@@ -190,6 +190,14 @@ export default function InboxPage() {
         const request = card.requestId ? state.requests.find((r) => r.id === card.requestId) : null;
         const otherUser = state.users.find((u) => u.id === card.otherUserId);
         const creatorUser = request ? state.users.find((u) => u.id === request.creatorId) : null;
+        // 代談：這張卡「關於哪位小姐」（由該局＋此對話幹部所派工的回應推出）
+        const escortNames = card.requestId
+          ? [...new Set(state.responses
+              .filter((r) => r.requestId === card.requestId && r.dispatcherId && (r.dispatcherId === state.currentUserId || r.dispatcherId === card.otherUserId))
+              .map((r) => state.users.find((u) => u.id === r.userId)?.nickname)
+              .filter(Boolean))]
+          : [];
+        const escortLabel = escortNames.length ? `關於 ${escortNames[0]}${escortNames.length > 1 ? ` 等 ${escortNames.length} 位` : ''}` : '';
 
         function handleConfirm() {
           confirmMeetup(card.inviteId, card.otherUserId);
@@ -238,6 +246,11 @@ export default function InboxPage() {
                         ? `你加入了 ${creatorUser?.nickname ?? '某人'} 的活動`
                         : `${otherUser?.nickname} 的私人邀請`}
                   </p>
+                  {escortLabel && (
+                    <span className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/70 text-brand-ink mt-0.5">
+                      {escortLabel}
+                    </span>
+                  )}
                   {request && (
                     <p className="text-xs text-brand-ink/60 mt-0.5 truncate">
                       {request.area} · {request.note.slice(0, 28)}…
