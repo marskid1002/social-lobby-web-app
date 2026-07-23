@@ -128,6 +128,23 @@ export default function AdminPage() {
     } catch { showToast('連線失敗'); } finally { setBusy(''); }
   }
 
+  async function deleteAllCustomers() {
+    if (typeof window !== 'undefined' &&
+      !window.confirm('確定刪除「所有客戶帳號」？\n會刪掉所有手機註冊的客戶帳號，連同他們的局/對話/推播訂閱一起清除。\n幹部與管理員不受影響。此動作無法復原。')) return;
+    setBusy('delete-all-customers');
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-all-customers' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { showToast(data.error ?? '刪除失敗'); return; }
+      showToast(`已刪除 ${data.count ?? 0} 個客戶帳號`);
+      await load();
+    } catch { showToast('連線失敗'); } finally { setBusy(''); }
+  }
+
   const cls = 'text-xs font-semibold px-2.5 py-1 rounded-full border';
   const nameOf = (uid: string) => accounts?.find((a) => a.userId === uid)?.nickname ?? uid;
   const fmtTime = (iso: string) => (iso ? new Date(iso).toLocaleString('zh-Hant-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '');
@@ -271,6 +288,12 @@ export default function AdminPage() {
               <p className="text-xs text-zinc-400 mb-3">把所有幹部（A001~A015）密碼清空；清空後每位幹部需用「帳號 + 啟用碼」重新設定新密碼。正式發放帳號前用。</p>
               <button disabled={!!busy} onClick={clearManagerPasswords} className={`${cls} border-red-300 text-red-500`}>
                 {busy === 'reset-all-managers' ? '清空中…' : '清空所有幹部密碼'}
+              </button>
+              <div className="border-t border-brand-lavender my-3" />
+              <p className="text-sm font-semibold text-brand-ink mb-1">清空所有客戶帳號</p>
+              <p className="text-xs text-zinc-400 mb-3">刪除所有手機註冊的客戶帳號，連同其局/對話/推播訂閱一起清除。幹部與管理員不受影響。正式上線前清測試帳號用。</p>
+              <button disabled={!!busy} onClick={deleteAllCustomers} className={`${cls} border-red-400 text-red-600 font-bold`}>
+                {busy === 'delete-all-customers' ? '刪除中…' : '清空所有客戶帳號'}
               </button>
             </div>
           </>

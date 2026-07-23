@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/session';
 import {
-  listAccounts, adminResetPassword, adminResetCustomerPassword, resetAllManagerPasswords, setAccountDisabled, deleteAccount, getAccount,
+  listAccounts, adminResetPassword, adminResetCustomerPassword, resetAllManagerPasswords, deleteAllCustomers, setAccountDisabled, deleteAccount, getAccount,
 } from '@/lib/auth-store';
 import { deleteUserData, clearShared, getCollection } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
@@ -82,6 +82,16 @@ export async function POST(req: NextRequest) {
     if (action === 'reset-all-managers') {
       const count = await resetAllManagerPasswords();
       return NextResponse.json({ ok: true, count });
+    }
+
+    // 刪除所有客戶帳號（手機註冊的 role='user'）＋級聯清其資料與推播訂閱——正式上線前清測試帳號（不需 account）
+    if (action === 'delete-all-customers') {
+      const removed = await deleteAllCustomers();
+      for (const r of removed) {
+        await deleteUserData(r.userId);
+        await removeSubscriptionsForUser(r.userId);
+      }
+      return NextResponse.json({ ok: true, count: removed.length });
     }
 
     if (!account) return NextResponse.json({ error: '缺少帳號' }, { status: 400 });

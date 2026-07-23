@@ -159,6 +159,21 @@ export async function resetAllManagerPasswords(): Promise<number> {
   return count;
 }
 
+// 刪除「所有客戶帳號」（role==='user'）。回傳被刪帳號（含 userId 供級聯清資料）。
+// 用於正式上線前，把測試期間註冊的手機帳號一次清乾淨。不影響幹部/管理員。
+export async function deleteAllCustomers(): Promise<{ key: string; userId: string }[]> {
+  const accounts = await readAccounts();
+  const removed: { key: string; userId: string }[] = [];
+  for (const [k, acc] of Object.entries(accounts)) {
+    if (acc.role === 'user') {
+      removed.push({ key: k, userId: acc.userId });
+      delete accounts[k];
+    }
+  }
+  await writeAccounts(accounts);
+  return removed;
+}
+
 // 管理員重設密碼（清空，讓該帳號下次登入重新設定）——用於幹部/管理員（有啟用碼重設流程）
 export async function adminResetPassword(key: string): Promise<boolean> {
   const accounts = await readAccounts();
