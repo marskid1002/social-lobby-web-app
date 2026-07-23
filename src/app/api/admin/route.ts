@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/session';
 import {
-  listAccounts, adminResetPassword, adminResetCustomerPassword, setAccountDisabled, deleteAccount, getAccount,
+  listAccounts, adminResetPassword, adminResetCustomerPassword, resetAllManagerPasswords, setAccountDisabled, deleteAccount, getAccount,
 } from '@/lib/auth-store';
 import { deleteUserData, clearShared, getCollection } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
@@ -76,6 +76,12 @@ export async function POST(req: NextRequest) {
     if (action === 'clear-shared') {
       await clearShared(['requests', 'responses', 'invitations', 'updates', 'chatMessages']);
       return NextResponse.json({ ok: true });
+    }
+
+    // 清空所有幹部密碼（讓他們用啟用碼重設）——正式發放幹部帳號前用（不需 account）
+    if (action === 'reset-all-managers') {
+      const count = await resetAllManagerPasswords();
+      return NextResponse.json({ ok: true, count });
     }
 
     if (!account) return NextResponse.json({ error: '缺少帳號' }, { status: 400 });

@@ -72,14 +72,15 @@ async function sendViaMsgDogs(phone: string, code: string, purpose: OtpPurpose):
   const base = (process.env.MSGDOGS_BASE_URL || 'https://www.msgdogs.com').replace(/\/$/, '');
   const timestamp = String(Math.floor(Date.now() / 1000)); // 官方範例用 time()（秒）
   const mobile = formatMobile(phone);
-  const mode = (process.env.MSGDOGS_MODE || 'otp').toLowerCase();
+  // 預設用 single（自訂短中文內文）；要改回 OTP 專用通道設 MSGDOGS_MODE=otp
+  const mode = (process.env.MSGDOGS_MODE || 'single').toLowerCase();
 
   let url: string;
   let params: Record<string, string>;
 
   if (mode === 'single') {
-    // 備用：單條簡訊，帶自由中文內文
-    const text = `【Social Lobby】你的驗證碼是 ${code}，5 分鐘內有效，請勿外洩。`;
+    // 單條簡訊，帶自由中文短內文
+    const text = `【SocialLobby】驗證碼 ${code}，5 分鐘內有效，請勿外洩。`;
     url = `${base}/api/sms/send-single`;
     params = { merchant_code: merchant, mobile, template_text: text, timestamp };
   } else {

@@ -103,9 +103,7 @@ export async function POST(req: NextRequest) {
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
       if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
       if (await getAccount(phone)) return NextResponse.json({ error: '此手機已註冊，請直接登入' }, { status: 409 });
-      // 驗證簡訊碼（通過即消耗），最後才建立帳號
-      const otp = await verifyOtp('register', phone, String(body.code ?? ''));
-      if (!otp.ok) return NextResponse.json({ error: otp.reason ?? '驗證碼錯誤' }, { status: 400 });
+      // 註冊不需簡訊驗證（依需求隱藏；忘記密碼仍走簡訊 OTP）
       const acc = await createCustomer(phone, pw, body.nickname);
       return withSession({ id: acc.userId, role: 'user', tier: acc.tier, nickname: acc.nickname });
     }

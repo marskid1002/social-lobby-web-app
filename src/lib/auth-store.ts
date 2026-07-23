@@ -41,6 +41,12 @@ const MANAGER_MAP: { code: string; userId: string; nickname: string }[] = [
   { code: 'A008', userId: 'u-029', nickname: '鄭經理' },
   { code: 'A009', userId: 'u-030', nickname: '謝經理' },
   { code: 'A010', userId: 'u-031', nickname: '許經理' },
+  // 測試用幹部帳號（A011~A015）；對應 mock/users.ts 的 u-501~u-505（role: manager）
+  { code: 'A011', userId: 'u-501', nickname: '測試幹部1' },
+  { code: 'A012', userId: 'u-502', nickname: '測試幹部2' },
+  { code: 'A013', userId: 'u-503', nickname: '測試幹部3' },
+  { code: 'A014', userId: 'u-504', nickname: '測試幹部4' },
+  { code: 'A015', userId: 'u-505', nickname: '測試幹部5' },
 ];
 
 const memAccounts: AccountsMap = {};
@@ -134,6 +140,23 @@ export async function setInitialPassword(key: string, password: string): Promise
   acc.hash = hashPassword(password, acc.salt);
   await writeAccounts(accounts);
   return acc;
+}
+
+// 清空「所有幹部」密碼（role==='manager'），讓他們用啟用碼重新設定。回傳被清空的帳號數。
+// 用於正式發放幹部帳號前，把先前測試設過的密碼一次清乾淨。
+export async function resetAllManagerPasswords(): Promise<number> {
+  const accounts = await readAccounts();
+  await ensureManagerAccounts(accounts);
+  let count = 0;
+  for (const acc of Object.values(accounts)) {
+    if (acc.role === 'manager') {
+      acc.hash = null;
+      acc.salt = '';
+      count++;
+    }
+  }
+  await writeAccounts(accounts);
+  return count;
 }
 
 // 管理員重設密碼（清空，讓該帳號下次登入重新設定）——用於幹部/管理員（有啟用碼重設流程）

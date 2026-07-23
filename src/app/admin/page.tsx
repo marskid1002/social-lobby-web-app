@@ -111,6 +111,23 @@ export default function AdminPage() {
     } catch { showToast('連線失敗'); } finally { setBusy(''); }
   }
 
+  async function clearManagerPasswords() {
+    if (typeof window !== 'undefined' &&
+      !window.confirm('確定清空「所有幹部」密碼？\n清空後每位幹部需用「帳號 + 啟用碼」重新設定新密碼。此動作無法復原。')) return;
+    setBusy('reset-all-managers');
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset-all-managers' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) { showToast(data.error ?? '清空失敗'); return; }
+      showToast(`已清空 ${data.count ?? 0} 個幹部密碼`);
+      await load();
+    } catch { showToast('連線失敗'); } finally { setBusy(''); }
+  }
+
   const cls = 'text-xs font-semibold px-2.5 py-1 rounded-full border';
   const nameOf = (uid: string) => accounts?.find((a) => a.userId === uid)?.nickname ?? uid;
   const fmtTime = (iso: string) => (iso ? new Date(iso).toLocaleString('zh-Hant-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '');
@@ -248,6 +265,12 @@ export default function AdminPage() {
               <p className="text-xs text-zinc-400 mb-3">清掉所有邀請的局、回應、通知與聊天訊息；保留小姐、照片、帳號。用於測試重來。</p>
               <button disabled={!!busy} onClick={clearBoards} className={`${cls} border-red-300 text-red-500`}>
                 {busy === 'clear-shared' ? '清除中…' : '清除所有局與對話'}
+              </button>
+              <div className="border-t border-brand-lavender my-3" />
+              <p className="text-sm font-semibold text-brand-ink mb-1">清空所有幹部密碼</p>
+              <p className="text-xs text-zinc-400 mb-3">把所有幹部（A001~A015）密碼清空；清空後每位幹部需用「帳號 + 啟用碼」重新設定新密碼。正式發放帳號前用。</p>
+              <button disabled={!!busy} onClick={clearManagerPasswords} className={`${cls} border-red-300 text-red-500`}>
+                {busy === 'reset-all-managers' ? '清空中…' : '清空所有幹部密碼'}
               </button>
             </div>
           </>
