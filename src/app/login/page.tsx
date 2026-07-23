@@ -86,12 +86,13 @@ export default function LoginPage() {
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    if (code.trim().length < 4) { setError('請先輸入簡訊驗證碼'); return; }
     setBusy(true);
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'register', phone, password, nickname }),
+        body: JSON.stringify({ action: 'register', phone, password, nickname, code }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { setError(data.error ?? '註冊失敗'); return; }
@@ -210,7 +211,7 @@ export default function LoginPage() {
 
             {mode === 'register' && (
               <form onSubmit={handleRegister} className="flex flex-col gap-2.5">
-                <input type="tel" inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="手機號碼" className={inputCls} aria-label="手機號碼" />
+                {otpRow('register')}
                 <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="暱稱" className={inputCls} aria-label="暱稱" />
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼（至少 6 碼）" className={inputCls} aria-label="密碼" />
                 {info && <p className="text-xs text-green-600 font-semibold">{info}</p>}

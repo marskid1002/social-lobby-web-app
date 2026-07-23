@@ -5,7 +5,7 @@ import {
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
-import { generateCode, saveOtp, verifyOtp } from '@/lib/otp-store';
+import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-store';
 import { sendOtpSms } from '@/lib/sms';
 import crypto from 'crypto';
 
@@ -71,8 +71,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok });
     }
 
-    // 發送簡訊驗證碼（僅「忘記密碼」使用；註冊已不需驗證碼，故不再支援 register，避免被拿來免費發簡訊/探測門號）
+    // 發送簡訊驗證碼（註冊 / 忘記密碼共用）
     if (action === 'send-otp') {
+      const purpose: OtpPurpose = body.purpose === 'register' ? 'register' : 'reset';
       const phone = normalizePhone(body.phone ?? '');
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
 
@@ -84,14 +85,18 @@ export async function POST(req: NextRequest) {
       const rlDay = await rateLimit('otp-day', phone, 5, 24 * 60 * 60);
       if (!rlDay.ok) return NextResponse.json({ error: '今日取得驗證碼次數已達上限' }, { status: 429 });
 
-      // 對「查無此號/非客戶」也一律回 ok（不洩漏是否註冊），僅客戶帳號才真的發碼
       const existing = await getAccount(phone);
-      const shouldSend = Boolean(existing && existing.role === 'user');
+      // 註冊：手機已註冊就擋（提示改用登入/忘記密碼）
+      if (purpose === 'register' && existing) {
+        return NextResponse.json({ error: '此手機已註冊，請直接登入或使用忘記密碼' }, { status: 409 });
+      }
+      // 註冊一律發碼；忘記密碼對「查無此號/非客戶」回 ok 但不發（不洩漏是否註冊）
+      const shouldSend = purpose === 'register' ? true : Boolean(existing && existing.role === 'user');
       const code = generateCode();
       if (shouldSend) {
-        const sent = await sendOtpSms(phone, code, 'reset');
+        const sent = await sendOtpSms(phone, code, purpose);
         if (!sent) return NextResponse.json({ error: '簡訊發送失敗，請稍後再試' }, { status: 500 });
-        await saveOtp('reset', phone, code);
+        await saveOtp(purpose, phone, code);
       }
       const res: { ok: true; devCode?: string } = { ok: true };
       // 本地/非生產且真的發碼：把碼回傳前端方便測試（生產絕不回傳）
@@ -110,7 +115,9 @@ export async function POST(req: NextRequest) {
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
       if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
       if (await getAccount(phone)) return NextResponse.json({ error: '此手機已註冊，請直接登入' }, { status: 409 });
-      // 註冊不需簡訊驗證（依需求隱藏；忘記密碼仍走簡訊 OTP）
+      // 驗證簡訊碼（通過即消耗），最後才建立帳號
+      const otp = await verifyOtp('register', phone, String(body.code ?? ''));
+      if (!otp.ok) return NextResponse.json({ error: otp.reason ?? '驗證碼錯誤' }, { status: 400 });
       const acc = await createCustomer(phone, pw, body.nickname);
       return withSession({ id: acc.userId, role: 'user', tier: acc.tier, nickname: acc.nickname });
     }
