@@ -65,6 +65,9 @@ export default function ChatPage({ params }: ChatPageProps) {
   };
 
   const threadId = id;
+  // 代談用：從網址 ?req= 取「這是哪一個局」的對話。用來把「同幹部同客戶、不同局」的對話分開。
+  // 沒有 req（例如私人邀請或舊連結）時不套用此過濾，維持原本行為（向後相容）。
+  const req = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('req') : null;
   // 只有 g- 後面真的對應到一個局(request/response)才算群組聊天；
   // 否則（例如參與者 id 恰好以 g- 開頭的自建小姐）當一般 1:1，避免走錯分支導致聊天壞掉。
   const gReqId = id.startsWith('g-') ? id.slice(2) : null;
@@ -102,6 +105,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         (inv) =>
           inv.status === 'accepted' &&
           !inv.meetupConfirmed &&
+          (!req || inv.requestId === req) &&
           ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
             (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
       )
@@ -111,6 +115,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     ? state.invitations.find(
         (inv) =>
           inv.meetupConfirmed &&
+          (!req || inv.requestId === req) &&
           ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
             (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
       )
@@ -126,7 +131,10 @@ export default function ChatPage({ params }: ChatPageProps) {
   const filterMessages = (msgs: ChatMessage[]) =>
     sessionStart ? msgs.filter((m) => m.createdAt >= sessionStart) : msgs;
 
-  const threadMessages = filterMessages(state.chatMessages.filter((m) => m.threadId === threadId));
+  // req 存在時只顯示該局的訊息；但「沒有標記局的舊訊息」仍顯示（向後相容，避免舊聊天記錄消失）
+  const threadMessages = filterMessages(
+    state.chatMessages.filter((m) => m.threadId === threadId && (!req || m.requestId === req || !m.requestId))
+  );
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>(threadMessages);
   const [inputText, setInputText] = useState('');
   const [hasSentMessage, setHasSentMessage] = useState(false);
@@ -141,13 +149,15 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [photoError, setPhotoError] = useState('');
 
   useEffect(() => {
-    const next = filterMessages(state.chatMessages.filter((m) => m.threadId === threadId));
+    const next = filterMessages(
+      state.chatMessages.filter((m) => m.threadId === threadId && (!req || m.requestId === req || !m.requestId))
+    );
     // 只有在內容真的改變時才更新，避免每次輪詢都重建陣列造成畫面跳動
     setLocalMessages((prev) => {
       if (prev.length === next.length && prev.every((m, i) => m.id === next[i]?.id)) return prev;
       return next;
     });
-  }, [state.chatMessages, threadId, sessionStart]);
+  }, [state.chatMessages, threadId, sessionStart, req]);
 
   // 只在「訊息數量增加」（有新訊息）時才捲到底，避免輪詢時把使用者拉回底部
   const prevMsgCountRef = useRef(0);
@@ -162,7 +172,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     const text = inputText.trim();
     if (!text || isChatLocked) return;
     setHasSentMessage(true);
-    const newMsg = sendChatMessage(threadId, text);
+    const newMsg = sendChatMessage(threadId, text, undefined, undefined, req ?? undefined);
     setLocalMessages((prev) => [...prev, newMsg]);
     setInputText('');
   }
@@ -180,7 +190,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     try {
       const url = await uploadChatImage(file);
       setHasSentMessage(true);
-      const newMsg = sendChatMessage(threadId, '', undefined, url);
+      const newMsg = sendChatMessage(threadId, '', undefined, url, req ?? undefined);
       setLocalMessages((prev) => [...prev, newMsg]);
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : '照片上傳失敗');
@@ -193,7 +203,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   function handleXiaomeiSend() {
     const text = xiaomeiInput.trim();
     if (!text) return;
-    const newMsg = sendChatMessage(threadId, text, otherUserId);
+    const newMsg = sendChatMessage(threadId, text, otherUserId, undefined, req ?? undefined);
     setLocalMessages((prev) => [...prev, newMsg]);
     setXiaomeiInput('');
   }

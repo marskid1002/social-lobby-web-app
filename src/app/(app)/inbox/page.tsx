@@ -259,7 +259,7 @@ export default function InboxPage() {
 
               <div className="flex gap-2">
                 <button
-                  onClick={() => router.push(`/chat/${card.threadId}`)}
+                  onClick={() => router.push(`/chat/${card.threadId}${card.requestId ? `?req=${card.requestId}` : ''}`)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-white/70 backdrop-blur text-brand-ink font-bold text-sm active:scale-[0.98] transition-all shadow-sm"
                 >
                   <MessageCircle className="w-4 h-4" strokeWidth={2} />

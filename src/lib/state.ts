@@ -1197,7 +1197,7 @@ export function useAppState() {
     listeners.forEach((l) => l());
   }, []);
 
-  const sendChatMessage = useCallback((threadId: string, text: string, overrideSenderId?: string, imageUrl?: string) => {
+  const sendChatMessage = useCallback((threadId: string, text: string, overrideSenderId?: string, imageUrl?: string, requestId?: string) => {
     const senderId = overrideSenderId ?? getState().currentUserId;
     const newMsg: ChatMessage = {
       id: `cm-${Date.now()}`,
@@ -1205,6 +1205,7 @@ export function useAppState() {
       senderId,
       text,
       ...(imageUrl ? { imageUrl } : {}),
+      ...(requestId ? { requestId } : {}),
       createdAt: new Date().toISOString(),
     };
     setState((prev) => ({
@@ -1236,7 +1237,7 @@ export function useAppState() {
         recipients,
         `${sender?.nickname ?? '對方'} 傳來訊息`,
         preview,
-        `/chat/${threadId}`
+        `/chat/${threadId}${requestId ? `?req=${requestId}` : ''}`
       );
     }
     return newMsg;

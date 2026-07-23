@@ -166,5 +166,6 @@ export interface ChatMessage {
   senderId: string;
   text: string;
   imageUrl?: string;  // 照片訊息：Blob 圖片網址（有圖時 text 可為空）
+  requestId?: string; // 代談：綁定的局 id，用來把「同幹部同客戶、不同局」的對話分開（次要過濾，不改 threadId）
   createdAt: string;
 }
