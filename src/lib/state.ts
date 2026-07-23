@@ -271,7 +271,12 @@ let resetMarks: Record<string, number> = {};
 function droppedBeforeReset(key: SharedKey, arr: { id: string }[]): { id: string }[] {
   const cutoff = resetMarks[key];
   if (!cutoff) return arr;
-  return arr.filter((x) => new Date((x as { createdAt?: string }).createdAt ?? 0).getTime() > cutoff);
+  // 只對「有 createdAt 的集合」套用清除時間戳；presence/photoOverrides/photoGalleries 等無 createdAt
+  // 的集合不受影響（否則會被當成時間 0 而永久無法同步）。
+  return arr.filter((x) => {
+    const c = (x as { createdAt?: string }).createdAt;
+    return !c || new Date(c).getTime() > cutoff;
+  });
 }
 
 function trackUnconfirmed(patch: Partial<Record<SharedKey, unknown[]>>, add: boolean) {
@@ -322,11 +327,13 @@ function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt =
       }
     }
     // 丟掉早於「清除時間戳」的項目，避免把管理員已清除的舊資料回推復活
+    // （只對有 createdAt 的集合套用；無 createdAt 的集合如 presence/photo 不受影響）
     for (const k of Object.keys(patch) as SharedKey[]) {
       const arr = patch[k];
-      if (Array.isArray(arr) && resetMarks[k]) {
+      const cutoff = resetMarks[k];
+      if (Array.isArray(arr) && cutoff) {
         patch[k] = (arr as { createdAt?: string }[]).filter(
-          (it) => new Date(it.createdAt ?? 0).getTime() > resetMarks[k]
+          (it) => !it.createdAt || new Date(it.createdAt).getTime() > cutoff
         ) as unknown[];
       }
     }
@@ -412,8 +419,8 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
       const cutoff = resetMarks[key];
       const map = new Map(merged.map((x) => [x.id, x]));
       for (const [id, item] of uc) {
-        const t = new Date((item as { createdAt?: string }).createdAt ?? 0).getTime();
-        if (cutoff && t <= cutoff) { uc.delete(id); continue; }
+        const c = (item as { createdAt?: string }).createdAt;
+        if (cutoff && c && new Date(c).getTime() <= cutoff) { uc.delete(id); continue; }
         map.set(id, item);
       }
       merged = [...map.values()];

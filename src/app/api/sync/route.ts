@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getShared, mergeShared, clearShared, getCollection, getResetMarks, type SharedState } from '@/lib/sync-store';
 import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
+import { getAccountByUserId } from '@/lib/auth-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -212,6 +213,10 @@ export async function POST(req: NextRequest) {
     if (session.role === 'guest') {
       return NextResponse.json({ error: 'guest is read-only' }, { status: 403 });
     }
+
+    // 帳號已被停用者，即時擋下寫入（session 為 30 天 JWT，登入後才被停用者也要擋）
+    const acct = await getAccountByUserId(session.userId);
+    if (acct?.disabled) return NextResponse.json({ error: '此帳號已被停用' }, { status: 403 });
 
     const patch = body?.patch ?? {};
     stripDataUrlItems(patch); // 丟掉殘留的 dataURL 項目（不整批拒絕），避免一顆壞照片讓整批同步失敗

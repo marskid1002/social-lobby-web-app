@@ -58,7 +58,8 @@ export default function PostThreadPage({ params }: { params: Promise<{ postId: s
   if (!author) return null;
 
   const isLiked = state.likedPostIds.includes(post.id);
-  const canInteract = tier !== 'free';
+  // 可互動（按讚）：訪客與 free 皆不可（訪客唯讀，與留言/發文限制一致）
+  const canInteract = tier !== 'free' && tier !== 'guest';
 
   // 留言來源改為跨裝置同步的 state.plazaComments（保持與渲染相同的形狀：key/userId/text/minsAgo/replies）
   const postComments = state.plazaComments.filter((c) => c.postId === postId);

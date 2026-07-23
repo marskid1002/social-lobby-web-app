@@ -5,8 +5,9 @@ import {
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
-import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-store';
+import { generateCode, saveOtp, verifyOtp } from '@/lib/otp-store';
 import { sendOtpSms } from '@/lib/sms';
+import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,14 @@ const PW_MAX = 128; // 上限避免 scryptSync 被超長密碼拖成 CPU DoS
 
 function isProd(): boolean {
   return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
+
+// 機密字串 constant-time 比較（避免 timing side-channel，與密碼/OTP 比對風格一致）
+function secretEqual(a: string, b: string | undefined): boolean {
+  if (!b) return false;
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
 
 // GET：回傳目前 session 身份（供前端校正 currentUserId）
@@ -48,20 +57,22 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
+    const ip = clientIp(req);
+
     // 管理員重設幹部密碼（需 ADMIN_SECRET）
     if (action === 'admin-reset') {
-      if (!process.env.ADMIN_SECRET || body.secret !== process.env.ADMIN_SECRET) {
+      // 限流：同 IP 每小時 10 次，避免無限次線上暴力猜 ADMIN_SECRET
+      const rl = await rateLimit('admin-reset', ip, 10, 60 * 60);
+      if (!rl.ok) return NextResponse.json({ error: 'forbidden' }, { status: 429 });
+      if (!secretEqual(String(body.secret ?? ''), process.env.ADMIN_SECRET)) {
         return NextResponse.json({ error: 'forbidden' }, { status: 403 });
       }
       const ok = await adminResetPassword(body.account);
       return NextResponse.json({ ok });
     }
 
-    const ip = clientIp(req);
-
-    // 發送簡訊驗證碼（註冊 / 忘記密碼共用）
+    // 發送簡訊驗證碼（僅「忘記密碼」使用；註冊已不需驗證碼，故不再支援 register，避免被拿來免費發簡訊/探測門號）
     if (action === 'send-otp') {
-      const purpose: OtpPurpose = body.purpose === 'reset' ? 'reset' : 'register';
       const phone = normalizePhone(body.phone ?? '');
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
 
@@ -73,18 +84,14 @@ export async function POST(req: NextRequest) {
       const rlDay = await rateLimit('otp-day', phone, 5, 24 * 60 * 60);
       if (!rlDay.ok) return NextResponse.json({ error: '今日取得驗證碼次數已達上限' }, { status: 429 });
 
+      // 對「查無此號/非客戶」也一律回 ok（不洩漏是否註冊），僅客戶帳號才真的發碼
       const existing = await getAccount(phone);
-      if (purpose === 'register' && existing) {
-        return NextResponse.json({ error: '此手機已註冊，請直接登入或使用忘記密碼' }, { status: 409 });
-      }
-      // 忘記密碼：對「查無此號/非客戶」也回 ok（不洩漏是否註冊），僅客戶帳號才真的發碼
-      const shouldSend = purpose === 'register' ? true : Boolean(existing && existing.role === 'user');
-
+      const shouldSend = Boolean(existing && existing.role === 'user');
       const code = generateCode();
       if (shouldSend) {
-        const sent = await sendOtpSms(phone, code, purpose);
+        const sent = await sendOtpSms(phone, code, 'reset');
         if (!sent) return NextResponse.json({ error: '簡訊發送失敗，請稍後再試' }, { status: 500 });
-        await saveOtp(purpose, phone, code);
+        await saveOtp('reset', phone, code);
       }
       const res: { ok: true; devCode?: string } = { ok: true };
       // 本地/非生產且真的發碼：把碼回傳前端方便測試（生產絕不回傳）
@@ -118,7 +125,8 @@ export async function POST(req: NextRequest) {
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
       if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
       const otp = await verifyOtp('reset', phone, String(body.code ?? ''));
-      if (!otp.ok) return NextResponse.json({ error: otp.reason ?? '驗證碼錯誤' }, { status: 400 });
+      // 統一錯誤訊息（不透露「碼不存在 vs 碼錯誤」，避免據此列舉手機是否為客戶）
+      if (!otp.ok) return NextResponse.json({ error: '驗證碼錯誤或已過期' }, { status: 400 });
       const ok = await setCustomerPassword(phone, pw);
       if (!ok) return NextResponse.json({ error: '此帳號無法用簡訊重設密碼' }, { status: 400 });
       return NextResponse.json({ ok: true });
@@ -143,7 +151,7 @@ export async function POST(req: NextRequest) {
 
       // 管理員(A000)首次登入 → 需 ADMIN_SECRET 啟用（只有你手上有），再自設密碼
       if (acc.role === 'admin' && acc.hash === null) {
-        if (!process.env.ADMIN_SECRET || String(body.activationCode ?? '') !== process.env.ADMIN_SECRET) {
+        if (!secretEqual(String(body.activationCode ?? ''), process.env.ADMIN_SECRET)) {
           return NextResponse.json({ error: '請輸入管理員啟用碼', needActivation: true }, { status: 403 });
         }
         if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `首次登入請設定 ${PW_MIN}~${PW_MAX} 碼密碼` }, { status: 400 });
@@ -156,11 +164,11 @@ export async function POST(req: NextRequest) {
       if (acc.role === 'manager' && acc.hash === null) {
         const required = process.env.MANAGER_ACTIVATION_CODE;
         if (required) {
-          if (String(body.activationCode ?? '') !== required) {
+          if (!secretEqual(String(body.activationCode ?? ''), required)) {
             return NextResponse.json({ error: '請輸入幹部啟用碼', needActivation: true }, { status: 403 });
           }
-        } else if (isProd()) {
-          // 生產環境未設定啟用碼 → 拒絕首次設密（fail-safe，避免無防護的搶註）
+        } else if (isProd() || process.env.VERCEL) {
+          // 未設定啟用碼：生產或任何 Vercel 部署一律拒絕首次設密（fail-safe，避免環境判定失準造成搶註）
           return NextResponse.json({ error: '幹部啟用尚未開放，請聯絡管理員' }, { status: 403 });
         }
         if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `首次登入請設定 ${PW_MIN}~${PW_MAX} 碼密碼` }, { status: 400 });

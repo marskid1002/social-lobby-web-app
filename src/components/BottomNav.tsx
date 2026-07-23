@@ -25,7 +25,7 @@ export function BottomNav() {
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');
-    if (href === '/inbox') return pathname === '/inbox' || pathname === '/updates';
+    if (href === '/inbox') return pathname === '/inbox';
     return pathname.startsWith(href);
   }
 

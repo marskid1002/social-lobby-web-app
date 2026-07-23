@@ -112,6 +112,14 @@ export async function getAccount(key: string): Promise<Account | null> {
   return accounts[normalizeKey(key)] ?? null;
 }
 
+// 以 app 內 userId（非登入 key）反查帳號；供 API 驗證「此 session 對應的帳號是否已被停用」。
+export async function getAccountByUserId(userId: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  if (await ensureManagerAccounts(accounts)) await writeAccounts(accounts);
+  for (const acc of Object.values(accounts)) if (acc.userId === userId) return acc;
+  return null;
+}
+
 // 客戶註冊（手機 + 暱稱 + 密碼），userId 為隨機不可反推值
 export async function createCustomer(phone: string, password: string, nickname: string): Promise<Account> {
   const accounts = await readAccounts();

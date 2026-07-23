@@ -98,6 +98,8 @@ export async function POST(req: NextRequest) {
 
     if (action === 'reset') {
       const acc = await getAccount(account);
+      // 不可重設管理員密碼（與 disable/delete 擋 admin 的行為一致；避免把 A000 清成無密碼）
+      if (acc?.role === 'admin') return NextResponse.json({ error: '不可重設管理員密碼' }, { status: 400 });
       if (acc?.role === 'user') {
         // 客戶：直接重設成臨時新密碼並回傳給管理員轉告（避免清成 null 被鎖死）
         const tempPassword = await adminResetCustomerPassword(account);

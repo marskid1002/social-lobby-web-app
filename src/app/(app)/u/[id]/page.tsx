@@ -26,7 +26,8 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const { id } = use(params);
   const router = useRouter();
   const { state, toggleFollow, blockUser, sendInvite } = useAppState();
-  const hasMet = state.meetRecords.some((r) => r.userId === id);
+  // 「已見面」徽章 7 天內有效（與 /me 的近期見面窗一致，避免永久顯示）
+  const hasMet = state.meetRecords.some((r) => r.userId === id && new Date(r.expiresAt).getTime() > Date.now());
   const [toast, setToast] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
