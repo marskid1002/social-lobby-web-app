@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShared, mergeShared, clearShared, getCollection, getResetMarks, type SharedState } from '@/lib/sync-store';
+import { getShared, mergeShared, clearShared, getCollection, getResetMarks, SHARED_KEYS, type SharedState } from '@/lib/sync-store';
 import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 import { getAccountByUserId } from '@/lib/auth-store';
 
@@ -13,7 +13,7 @@ function canSeeGalleries(s: SessionPayload): boolean {
   return s.role !== 'guest';
 }
 
-function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
+export function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
   const me = s.userId;
   const asRec = (x: unknown) => x as Record<string, unknown>;
 
@@ -76,9 +76,13 @@ function scopeForSession(all: SharedState, s: SessionPayload): SharedState {
   const updates = (all.updates ?? []).filter((u) => asRec(u).userId === me && ok(asRec(u).actorId));
 
   const chatMessages = (all.chatMessages ?? []).filter((m) => {
+    // 防污染資料造成整個 GET 拋例外：非物件、senderId 非字串、threadId 非字串/空 → 一律不下發
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
     const x = asRec(m);
+    if (typeof x.senderId !== 'string') return false; // senderId 型別錯 → 不下發
     if (!ok(x.senderId)) return false; // 封鎖對象的訊息不下發
-    const tid = x.threadId as string;
+    const tid = typeof x.threadId === 'string' ? x.threadId : ''; // 非字串 threadId → 視為空
+    if (!tid) return false; // 空 threadId → 不下發（避免 startsWith/includes 在 null/undefined 上拋例外）
     if (tid.startsWith('g-')) {
       const reqId = tid.slice(2);
       const req = requests.find((r) => r.id === reqId);
@@ -178,6 +182,67 @@ function sanitizeWriteAuthz(patch: Record<string, unknown>, s: SessionPayload, r
   }
 }
 
+// ── C：寫入 shape 驗證 ────────────────────────────────────────────────────
+// 目的：擋掉惡意/損壞的同步資料（例如 threadId:null 的 chatMessage），避免它們寫入後
+// 讓所有人的 /api/sync GET/POST 在 scopeForSession 時對 null 呼叫字串方法而整批 500（DoS）。
+// 策略：請求層結構錯誤 → 400；集合非陣列/超量 → 400；單筆項目格式錯 → 丟棄該筆（不整批拒絕，
+// 沿用本檔既有「壞一顆丟一顆、不壞整鍋」的設計）。只有 SharedState 已定義的集合會被保留。
+const MAX_KEYS_IN_REQUEST = 50;         // 單次請求最多幾個 key（含未知；防洗 key）
+// 單一集合筆數上限：此為「payload/DoS 安全天花板」，不是業務上限。
+// 重點：驗證發生在授權過濾(sanitizeWriteAuthz)之前，而前端 full-snapshot 同步（startSync 的 initPatch）
+// 會把「本機所有項目」整包送上來——對 manager 而言包含全站 requests/responses，且其中很多是
+// 「剛從 server 同步下來的他人項目」（稍後才會被授權過濾丟掉）。因此上限必須遠高於合法快照大小，
+// 否則會在授權前就把合法的本人物件連同外來項一起整批擋成 400。
+// 取 20000：遠超過上線初期任何集合的真實筆數，且與平台請求 body 大小限制（Vercel ~4.5MB，
+// 單筆項目約數百 bytes ≈ 上萬筆才會觸及）大致同量級——只擋病態/惡意的超大 payload。
+// 註：這是暫時的安全天花板；若未來資料量真的逼近此值，正解是改為增量同步(delta sync)，本次不做。
+const MAX_ITEMS_PER_COLLECTION = 20000;
+const MAX_ID_LEN = 128;                 // id / requestId 長度上限
+const MAX_THREADID_LEN = 256;           // threadId 長度上限
+const MAX_TEXT_LEN = 4000;              // 聊天內文長度上限
+const MAX_URL_LEN = 2048;               // imageUrl 長度上限
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+const isNonEmptyStr = (v: unknown, max: number): boolean =>
+  typeof v === 'string' && v.length > 0 && v.length <= max;
+
+// chatMessages 逐筆嚴格驗證：threadId/senderId/createdAt 必為合法非空字串，否則整筆丟棄
+function isValidChatMessage(it: unknown): boolean {
+  if (!isPlainObject(it)) return false;
+  if (!isNonEmptyStr(it.id, MAX_ID_LEN)) return false;
+  if (!isNonEmptyStr(it.threadId, MAX_THREADID_LEN)) return false;
+  if (!isNonEmptyStr(it.senderId, MAX_ID_LEN)) return false;
+  if (!isNonEmptyStr(it.createdAt, 64) || Number.isNaN(Date.parse(it.createdAt as string))) return false;
+  if (typeof it.text !== 'string' || it.text.length > MAX_TEXT_LEN) return false; // text 可為空字串，但須為字串且有長度上限
+  if (it.imageUrl !== undefined && (typeof it.imageUrl !== 'string' || it.imageUrl.length > MAX_URL_LEN)) return false;
+  if (it.requestId !== undefined && (typeof it.requestId !== 'string' || it.requestId.length > MAX_ID_LEN)) return false;
+  return true;
+}
+
+export type ShapeResult =
+  | { ok: true; patch: Record<string, unknown[]> }
+  | { ok: false; error: string };
+
+// 驗證並清洗 body.patch。回傳只含合法集合鍵與合法項目的新 patch；結構性錯誤回 ok:false。
+export function validatePatchShape(rawPatch: unknown): ShapeResult {
+  if (!isPlainObject(rawPatch)) return { ok: false, error: 'patch must be a non-null, non-array object' };
+  const keys = Object.keys(rawPatch);
+  if (keys.length > MAX_KEYS_IN_REQUEST) return { ok: false, error: 'too many keys in patch' };
+
+  const clean: Record<string, unknown[]> = {};
+  for (const key of keys) {
+    if (!(SHARED_KEYS as readonly string[]).includes(key)) continue; // 未知集合鍵：忽略、不存
+    const val = rawPatch[key];
+    if (!Array.isArray(val)) return { ok: false, error: `collection ${key} must be an array` };
+    if (val.length > MAX_ITEMS_PER_COLLECTION) return { ok: false, error: `collection ${key} exceeds item limit` };
+    clean[key] = key === 'chatMessages'
+      ? val.filter(isValidChatMessage)
+      : val.filter((it) => isPlainObject(it) && isNonEmptyStr(it.id, MAX_ID_LEN));
+  }
+  return { ok: true, patch: clean };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getSessionFromRequest(req);
@@ -218,7 +283,10 @@ export async function POST(req: NextRequest) {
     const acct = await getAccountByUserId(session.userId);
     if (acct?.disabled) return NextResponse.json({ error: '此帳號已被停用' }, { status: 403 });
 
-    const patch = body?.patch ?? {};
+    // C：先做 shape 驗證（擋惡意/損壞資料造成同步整批 500）；通過後才進後續清洗流程
+    const shape = validatePatchShape(body?.patch ?? {});
+    if (!shape.ok) return NextResponse.json({ error: shape.error }, { status: 400 });
+    const patch: Record<string, unknown> = shape.patch;
     stripDataUrlItems(patch); // 丟掉殘留的 dataURL 項目（不整批拒絕），避免一顆壞照片讓整批同步失敗
     sanitizePatch(patch, session); // 權限/等級以伺服器 session 為準，擋自升 tier/role
     // 若寫入含 responses，先取回 requests 建立 creator 對照表以驗證授權
