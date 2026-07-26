@@ -20,10 +20,13 @@ function useCountdown(expiresAt: string | undefined) {
     function tick() {
       const diff = new Date(expiresAt!).getTime() - Date.now();
       if (diff <= 0) { setRemaining('00:00:00'); setExpired(true); return; }
-      const h = Math.floor(diff / 3_600_000);
+      const totalHours = Math.floor(diff / 3_600_000);
+      const days = Math.floor(totalHours / 24);
+      const h = totalHours % 24;
       const m = Math.floor((diff % 3_600_000) / 60_000);
       const s = Math.floor((diff % 60_000) / 1_000);
-      setRemaining(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+      const clock = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      setRemaining(days > 0 ? `${days}天 ${clock}` : clock);
       setExpired(false);
     }
     tick();
@@ -252,7 +255,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     const confirmedCount = groupInvites.filter((i) => i.meetupConfirmed).length;
 
     return (
-      <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
           <button
@@ -345,7 +348,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">群組聊天已開啟，說聲 hi 吧！</p>
@@ -392,7 +395,10 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
 
         {/* Input */}
-        <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-4 bg-white/90 backdrop-blur-md border-t border-brand-lavender">
+        <div
+          className="shrink-0 flex items-center gap-2 px-4 pt-3 bg-white/90 backdrop-blur-md border-t border-brand-lavender"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
           {isChatLocked ? (
             <div className="flex-1 flex items-center justify-center py-2">
               <p className="text-sm text-zinc-400">{allConfirmed ? '所有人已確認見面，聊天已結案' : '聊天視窗已關閉'}</p>
@@ -406,13 +412,13 @@ export default function ChatPage({ params }: ChatPageProps) {
                 onKeyDown={handleKeyDown}
                 placeholder="輸入訊息…"
                 aria-label="輸入訊息"
-                className="flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
+                className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
                 onClick={handleSend}
                 disabled={!inputText.trim()}
                 aria-label="發送"
-                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-brand-sky text-brand-ink disabled:opacity-40 active:scale-95 transition-all shadow-sm"
+                className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-brand-sky text-brand-ink shadow-sm transition-all active:scale-95 disabled:opacity-40"
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -441,7 +447,7 @@ export default function ChatPage({ params }: ChatPageProps) {
 
     return (
       <div
-        className="flex flex-col h-screen overflow-hidden"
+        className="flex h-dvh min-h-0 flex-col overflow-hidden"
         style={{ background: 'linear-gradient(160deg, #fdf2f8 0%, #fce7f3 55%, #faf5ff 100%)' }}
       >
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/85 backdrop-blur-md border-b border-pink-100 shadow-sm shrink-0">
@@ -497,7 +503,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">還沒有訊息</p>
@@ -540,7 +546,10 @@ export default function ChatPage({ params }: ChatPageProps) {
           <div ref={bottomRef} />
         </div>
 
-        <div className="shrink-0 flex items-center gap-2 px-4 pt-3 pb-6 bg-white/85 backdrop-blur-md border-t border-pink-100">
+        <div
+          className="shrink-0 flex items-center gap-2 px-4 pt-3 bg-white/85 backdrop-blur-md border-t border-pink-100"
+          style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
+        >
           <input
             type="text"
             value={xiaomeiInput}
@@ -548,13 +557,13 @@ export default function ChatPage({ params }: ChatPageProps) {
             onKeyDown={handleXiaomeiKeyDown}
             placeholder={`${otherUser?.nickname ?? '對方'} 輸入訊息…`}
             aria-label="輸入訊息"
-            className="flex-1 bg-pink-50 border border-pink-200 rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-pink-300 transition-all"
+            className="h-11 min-w-0 flex-1 bg-pink-50 border border-pink-200 rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-pink-300 transition-all"
           />
           <button
             onClick={handleXiaomeiSend}
             disabled={!xiaomeiInput.trim()}
             aria-label="發送"
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-pink-300 text-brand-ink disabled:opacity-40 active:scale-95 transition-all shadow-sm"
+            className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-pink-300 text-brand-ink shadow-sm transition-all active:scale-95 disabled:opacity-40"
           >
             <Send className="w-4 h-4" />
           </button>
@@ -576,7 +585,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   // ── Already-met closed state (1:1) ────────────────────────────────────────
   if (confirmedInvite && !activeInvite) {
     return (
-      <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
           <button
             onClick={goBack}
@@ -597,7 +606,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.map((msg) => {
             const isMine = msg.senderId === currentUser?.id;
             return (
@@ -654,7 +663,7 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   // ── Normal 1:1 chat view ──────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen bg-gradient-ice overflow-hidden">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
       <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
         <button
           onClick={goBack}
@@ -720,7 +729,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {localMessages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-zinc-400">還沒有訊息，說聲 hi 吧！</p>
@@ -773,7 +782,10 @@ export default function ChatPage({ params }: ChatPageProps) {
         {photoError && (
           <p className="px-4 pt-2 text-xs text-red-500 text-center break-words">⚠️ {photoError}</p>
         )}
-        <div className="flex items-center gap-2 px-4 pt-3 pb-4">
+        <div
+          className="flex items-center gap-2 px-4 pt-3"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+        >
           {isChatLocked ? (
             <div className="flex-1 flex items-center justify-center py-2">
               <p className="text-sm text-zinc-400">聊天視窗已關閉</p>
@@ -785,7 +797,7 @@ export default function ChatPage({ params }: ChatPageProps) {
                 onClick={() => photoInputRef.current?.click()}
                 disabled={photoBusy}
                 aria-label="傳送照片"
-                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-brand-snow border border-brand-lavender text-brand-sky disabled:opacity-40 active:scale-95 transition-all"
+                className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full border border-brand-lavender bg-brand-snow text-brand-sky transition-all active:scale-95 disabled:opacity-40"
               >
                 <ImageIcon className="w-4 h-4" />
               </button>
@@ -796,13 +808,13 @@ export default function ChatPage({ params }: ChatPageProps) {
                 onKeyDown={handleKeyDown}
                 placeholder={photoBusy ? '照片上傳中…' : '輸入訊息…'}
                 aria-label="輸入訊息"
-                className="flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
+                className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
                 onClick={handleSend}
                 disabled={!inputText.trim()}
                 aria-label="發送"
-                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-brand-sky text-brand-ink disabled:opacity-40 active:scale-95 transition-all shadow-sm"
+                className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-brand-sky text-brand-ink shadow-sm transition-all active:scale-95 disabled:opacity-40"
               >
                 <Send className="w-4 h-4" />
               </button>
