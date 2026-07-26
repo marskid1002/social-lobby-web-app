@@ -56,6 +56,41 @@ const INVITE_EMOJIS: Record<string, string> = {
   '備註': '💬',
 };
 
+// 手機鍵盤／瀏覽器動態 UI 會改變「實際可見區域」。用 visualViewport 量測目前真正可見的高度與位移，
+// 讓聊天外框剛好貼齊可見區（composer 落在鍵盤上方）。跨 iOS／Android 用同一套：只讀取 visualViewport
+// 回報的高度，不用 UA 判斷、不猜測、不自行扣鍵盤高度——因此在 Android 已縮小 viewport 時不會二次扣除。
+// 沒有 visualViewport 時回傳 null，交由 CSS 的 h-dvh(100dvh) fallback。
+function useKeyboardViewport() {
+  const [vp, setVp] = useState<{ height: number; offsetTop: number } | null>(null);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    let raf = 0;
+    let last = { height: -1, offsetTop: -1 };
+    const measure = () => {
+      raf = 0;
+      const height = Math.round(vv.height);
+      const offsetTop = Math.round(vv.offsetTop);
+      if (height === last.height && offsetTop === last.offsetTop) return; // 只在實際改變時更新
+      last = { height, offsetTop };
+      setVp({ height, offsetTop });
+    };
+    const schedule = () => {
+      if (raf) return; // 用 rAF 合併鍵盤動畫期間的高頻 resize／scroll，避免抖動
+      raf = requestAnimationFrame(measure);
+    };
+    schedule(); // 初次量測
+    vv.addEventListener('resize', schedule);
+    vv.addEventListener('scroll', schedule);
+    return () => {
+      vv.removeEventListener('resize', schedule);
+      vv.removeEventListener('scroll', schedule);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+  return vp;
+}
+
 export default function ChatPage({ params }: ChatPageProps) {
   const { id } = use(params);
   const router = useRouter();
@@ -150,7 +185,28 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [inputText, setInputText] = useState('');
   const [hasSentMessage, setHasSentMessage] = useState(false);
   const [xiaomeiInput, setXiaomeiInput] = useState('');
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+  const lastScrolledElRef = useRef<HTMLDivElement | null>(null);
+  const programmaticScrollRef = useRef(false);
+  const vp = useKeyboardViewport();
+  // 聊天外框套用「可見區域」尺寸：有 visualViewport 時用其高度/位移貼齊可見區（composer 在鍵盤上方）；
+  // 沒有時 style 為 undefined，交給下方 className 的 h-dvh(100dvh) fallback。
+  const frameStyle: React.CSSProperties | undefined = vp
+    ? {
+        position: 'fixed',
+        top: vp.offsetTop,
+        left: 0,
+        right: 0,
+        height: vp.height,
+        // 水平置中對齊全站 max-w-[430px] 手機欄：position:fixed 的包含塊是 viewport（祖先只有 relative、
+        // 無 transform/filter，不會建立 fixed 包含塊），故用 margin:auto + maxWidth 對齊手機欄。
+        // 刻意不使用 transform 置中——transform 會使內部 position:fixed 的 lightbox/overlay 失準。
+        marginLeft: 'auto',
+        marginRight: 'auto',
+        maxWidth: 430,
+      }
+    : undefined;
   const [viewAs, setViewAs] = useState<'user' | 'xiaomei'>('user');
   const [xiaomeiConfirmSuccess, setXiaomeiConfirmSuccess] = useState(false);
   const [groupConfirmSuccess, setGroupConfirmSuccess] = useState(false);
@@ -170,19 +226,58 @@ export default function ChatPage({ params }: ChatPageProps) {
     });
   }, [state.chatMessages, threadId, sessionStart, req]);
 
-  // 只在「訊息數量增加」（有新訊息）時才捲到底，避免輪詢時把使用者拉回底部
+  // 只捲「訊息容器」本身（改 scrollTop，絕不捲 document／body／window，也不用 scrollIntoView）。
   const prevMsgCountRef = useRef(0);
+
+  // 程式化捲到容器底部；用 rAF 於下一影格清旗標，避免這次程式捲動觸發的 onScroll 誤改「貼底」狀態。
+  function scrollMessagesToBottom(el: HTMLDivElement) {
+    programmaticScrollRef.current = true;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => { programmaticScrollRef.current = false; });
+  }
+
+  // 使用者手動捲動時更新「是否貼齊底部」；貼齊才自動跟新訊息，往上讀舊訊息時不打斷。
+  function handleMessagesScroll() {
+    if (programmaticScrollRef.current) return; // 忽略程式化捲動造成的事件（見 scrollMessagesToBottom）
+    const el = messagesRef.current;
+    if (!el) return;
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  // 目前渲染的是哪個聊天分支（群組／小姐視角／已關閉／一般）。分支切換時（如 activeInvite→confirmedInvite）
+  // 也要重新評估定位，讓新掛載的訊息容器一樣定位到最新訊息。
+  const chatBranch = (isGroup && groupRequest) ? 'group'
+    : viewAs === 'xiaomei' ? 'xiaomei'
+    : (confirmedInvite && !activeInvite) ? 'closed'
+    : 'normal';
+
   useEffect(() => {
-    if (localMessages.length > prevMsgCountRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = messagesRef.current;
+    if (!el) return;
+    // 首次進入聊天室、或切換到不同分支的容器 → 立即定位到最新訊息並確保可見；
+    // 用立即 scrollTop（非 smooth），避免與鍵盤/視窗動畫競爭。
+    const isNewContainer = lastScrolledElRef.current !== el;
+    const grew = localMessages.length > prevMsgCountRef.current;
+    if (isNewContainer || (grew && stickToBottomRef.current)) {
+      scrollMessagesToBottom(el);
     }
+    lastScrolledElRef.current = el;
     prevMsgCountRef.current = localMessages.length;
-  }, [localMessages]);
+  }, [localMessages, chatBranch]);
+
+  // 鍵盤開合造成可見區域(vp)改變時：若使用者原本貼齊底部才維持貼底；讀舊訊息(未貼底)則完全不動，
+  // 不重設歷史閱讀位置、也不會把訊息區弄成整片空白。
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    scrollMessagesToBottom(el);
+  }, [vp]);
 
   function handleSend() {
     const text = inputText.trim();
     if (!text || isChatLocked) return;
     setHasSentMessage(true);
+    stickToBottomRef.current = true; // 自己送出必定跟到最新
     const newMsg = sendChatMessage(threadId, text, undefined, undefined, req ?? undefined);
     setLocalMessages((prev) => [...prev, newMsg]);
     setInputText('');
@@ -201,6 +296,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     try {
       const url = await uploadChatImage(file);
       setHasSentMessage(true);
+      stickToBottomRef.current = true; // 自己送出照片必定跟到最新
       const newMsg = sendChatMessage(threadId, '', undefined, url, req ?? undefined);
       setLocalMessages((prev) => [...prev, newMsg]);
     } catch (err) {
@@ -214,6 +310,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   function handleXiaomeiSend() {
     const text = xiaomeiInput.trim();
     if (!text) return;
+    stickToBottomRef.current = true; // 自己送出必定跟到最新
     const newMsg = sendChatMessage(threadId, text, otherUserId, undefined, req ?? undefined);
     setLocalMessages((prev) => [...prev, newMsg]);
     setXiaomeiInput('');
@@ -255,7 +352,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     const confirmedCount = groupInvites.filter((i) => i.meetupConfirmed).length;
 
     return (
-      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
+      <div style={frameStyle} className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
         {/* Header */}
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
           <button
@@ -348,7 +445,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         )}
 
         {/* Messages */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">群組聊天已開啟，說聲 hi 吧！</p>
@@ -391,7 +488,6 @@ export default function ChatPage({ params }: ChatPageProps) {
               </div>
             );
           })}
-          <div ref={bottomRef} />
         </div>
 
         {/* Input */}
@@ -412,7 +508,7 @@ export default function ChatPage({ params }: ChatPageProps) {
                 onKeyDown={handleKeyDown}
                 placeholder="輸入訊息…"
                 aria-label="輸入訊息"
-                className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
+                className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
                 onClick={handleSend}
@@ -448,7 +544,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     return (
       <div
         className="flex h-dvh min-h-0 flex-col overflow-hidden"
-        style={{ background: 'linear-gradient(160deg, #fdf2f8 0%, #fce7f3 55%, #faf5ff 100%)' }}
+        style={{ ...frameStyle, background: 'linear-gradient(160deg, #fdf2f8 0%, #fce7f3 55%, #faf5ff 100%)' }}
       >
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/85 backdrop-blur-md border-b border-pink-100 shadow-sm shrink-0">
           <button
@@ -503,7 +599,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">還沒有訊息</p>
@@ -543,7 +639,6 @@ export default function ChatPage({ params }: ChatPageProps) {
               </div>
             );
           })}
-          <div ref={bottomRef} />
         </div>
 
         <div
@@ -557,7 +652,7 @@ export default function ChatPage({ params }: ChatPageProps) {
             onKeyDown={handleXiaomeiKeyDown}
             placeholder={`${otherUser?.nickname ?? '對方'} 輸入訊息…`}
             aria-label="輸入訊息"
-            className="h-11 min-w-0 flex-1 bg-pink-50 border border-pink-200 rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-pink-300 transition-all"
+            className="h-11 min-w-0 flex-1 bg-pink-50 border border-pink-200 rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-pink-300 transition-all"
           />
           <button
             onClick={handleXiaomeiSend}
@@ -585,7 +680,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   // ── Already-met closed state (1:1) ────────────────────────────────────────
   if (confirmedInvite && !activeInvite) {
     return (
-      <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
+      <div style={frameStyle} className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
           <button
             onClick={goBack}
@@ -606,7 +701,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.map((msg) => {
             const isMine = msg.senderId === currentUser?.id;
             return (
@@ -663,7 +758,7 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   // ── Normal 1:1 chat view ──────────────────────────────────────────────────
   return (
-    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
+    <div style={frameStyle} className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
       <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
         <button
           onClick={goBack}
@@ -729,7 +824,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {localMessages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-zinc-400">還沒有訊息，說聲 hi 吧！</p>
@@ -761,7 +856,6 @@ export default function ChatPage({ params }: ChatPageProps) {
             </div>
           );
         })}
-        <div ref={bottomRef} />
       </div>
 
       {/* DEMO 專用：切換到對方視角，僅示範模式顯示，正式環境不出現 */}
@@ -808,7 +902,7 @@ export default function ChatPage({ params }: ChatPageProps) {
                 onKeyDown={handleKeyDown}
                 placeholder={photoBusy ? '照片上傳中…' : '輸入訊息…'}
                 aria-label="輸入訊息"
-                className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
+                className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
                 onClick={handleSend}
