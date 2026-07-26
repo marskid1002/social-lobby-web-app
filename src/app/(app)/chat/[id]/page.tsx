@@ -150,9 +150,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [inputText, setInputText] = useState('');
   const [hasSentMessage, setHasSentMessage] = useState(false);
   const [xiaomeiInput, setXiaomeiInput] = useState('');
-  const messagesRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
-  const lastScrolledElRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const [viewAs, setViewAs] = useState<'user' | 'xiaomei'>('user');
   const [xiaomeiConfirmSuccess, setXiaomeiConfirmSuccess] = useState(false);
   const [groupConfirmSuccess, setGroupConfirmSuccess] = useState(false);
@@ -172,53 +170,19 @@ export default function ChatPage({ params }: ChatPageProps) {
     });
   }, [state.chatMessages, threadId, sessionStart, req]);
 
-  // 聊天捲動只作用在「訊息容器」本身（用 scrollTop，不再用 scrollIntoView）。
-  // scrollIntoView 會連帶捲動 document/window——在 iOS 鍵盤彈出、動態視窗高度(h-dvh)變動時，
-  // 會把整頁（含 header 與訊息區）推出可視範圍、只剩輸入列。改成只調整容器 scrollTop 即可避免。
+  // 只在「訊息數量增加」（有新訊息）時才捲到底，避免輪詢時把使用者拉回底部
   const prevMsgCountRef = useRef(0);
-
-  // 依訊息容器 ref 判斷「使用者是否貼齊底部」；貼齊時才自動跟到新訊息，往上讀舊訊息時不打斷。
-  function handleMessagesScroll() {
-    const el = messagesRef.current;
-    if (!el) return;
-    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-  }
-
   useEffect(() => {
-    const el = messagesRef.current;
-    if (!el) return;
-    // 首次進入聊天室（或切換到不同分支的容器）→ 立即定位到最新訊息並確保可見；
-    // 用立即 scrollTop（非 smooth），避免與 iOS 鍵盤 resize 產生捲動競爭。
-    const isNewContainer = lastScrolledElRef.current !== el;
-    const grew = localMessages.length > prevMsgCountRef.current;
-    if (isNewContainer || (grew && stickToBottomRef.current)) {
-      el.scrollTop = el.scrollHeight;
+    if (localMessages.length > prevMsgCountRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-    lastScrolledElRef.current = el;
     prevMsgCountRef.current = localMessages.length;
-  }, [localMessages, viewAs]);
-
-  // iOS 鍵盤 / visualViewport 高度變動時，瀏覽器可能捲動整個 document；此聊天頁為 h-dvh 全屏、
-  // 只有訊息容器該捲動，因此把 window 釘在 scrollY 0，避免 header／訊息被推出可視範圍。
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const pin = () => { if (window.scrollY !== 0) window.scrollTo(0, 0); };
-    window.addEventListener('scroll', pin, { passive: true });
-    const vv = window.visualViewport;
-    vv?.addEventListener('resize', pin);
-    vv?.addEventListener('scroll', pin);
-    return () => {
-      window.removeEventListener('scroll', pin);
-      vv?.removeEventListener('resize', pin);
-      vv?.removeEventListener('scroll', pin);
-    };
-  }, []);
+  }, [localMessages]);
 
   function handleSend() {
     const text = inputText.trim();
     if (!text || isChatLocked) return;
     setHasSentMessage(true);
-    stickToBottomRef.current = true; // 自己送出必定跟到最新
     const newMsg = sendChatMessage(threadId, text, undefined, undefined, req ?? undefined);
     setLocalMessages((prev) => [...prev, newMsg]);
     setInputText('');
@@ -237,7 +201,6 @@ export default function ChatPage({ params }: ChatPageProps) {
     try {
       const url = await uploadChatImage(file);
       setHasSentMessage(true);
-      stickToBottomRef.current = true; // 自己送出照片必定跟到最新
       const newMsg = sendChatMessage(threadId, '', undefined, url, req ?? undefined);
       setLocalMessages((prev) => [...prev, newMsg]);
     } catch (err) {
@@ -251,7 +214,6 @@ export default function ChatPage({ params }: ChatPageProps) {
   function handleXiaomeiSend() {
     const text = xiaomeiInput.trim();
     if (!text) return;
-    stickToBottomRef.current = true; // 自己送出必定跟到最新
     const newMsg = sendChatMessage(threadId, text, otherUserId, undefined, req ?? undefined);
     setLocalMessages((prev) => [...prev, newMsg]);
     setXiaomeiInput('');
@@ -386,7 +348,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         )}
 
         {/* Messages */}
-        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">群組聊天已開啟，說聲 hi 吧！</p>
@@ -429,6 +391,7 @@ export default function ChatPage({ params }: ChatPageProps) {
               </div>
             );
           })}
+          <div ref={bottomRef} />
         </div>
 
         {/* Input */}
@@ -540,7 +503,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         )}
 
-        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">還沒有訊息</p>
@@ -580,6 +543,7 @@ export default function ChatPage({ params }: ChatPageProps) {
               </div>
             );
           })}
+          <div ref={bottomRef} />
         </div>
 
         <div
@@ -642,7 +606,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         </div>
 
-        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.map((msg) => {
             const isMine = msg.senderId === currentUser?.id;
             return (
@@ -765,7 +729,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {localMessages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-zinc-400">還沒有訊息，說聲 hi 吧！</p>
@@ -797,6 +761,7 @@ export default function ChatPage({ params }: ChatPageProps) {
             </div>
           );
         })}
+        <div ref={bottomRef} />
       </div>
 
       {/* DEMO 專用：切換到對方視角，僅示範模式顯示，正式環境不出現 */}
