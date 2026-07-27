@@ -84,6 +84,12 @@ export function normalizeKey(key: string): string {
   return /^A\d{3}$/i.test(k) ? k.toUpperCase() : normalizePhone(k);
 }
 
+// 測試用幹部帳號 A011~A020：首次登入啟用碼與正式幹部(A001~A010)分開，
+// 避免測試帳號共用正式的 MANAGER_ACTIVATION_CODE。
+export function isTestManagerKey(key: string): boolean {
+  return /^A0(1[1-9]|20)$/.test(normalizeKey(key));
+}
+
 // 確保管理員(A000)與 10 個幹部帳號存在（無密碼），首次呼叫時建立
 async function ensureManagerAccounts(accounts: AccountsMap): Promise<boolean> {
   let changed = false;

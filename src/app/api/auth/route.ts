@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getAccount, createCustomer, verifyPassword, setInitialPassword,
-  adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone,
+  adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone, isTestManagerKey,
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
@@ -13,6 +13,17 @@ export const dynamic = 'force-dynamic';
 
 const PW_MIN = 6;
 const PW_MAX = 128; // 上限避免 scryptSync 被超長密碼拖成 CPU DoS
+
+// 密碼複雜度規則（所有「設定密碼」流程共用）：長度 PW_MIN~PW_MAX，且需同時包含
+// 小寫、大寫、數字與符號（非英數字元）。通過回傳 null；否則回傳可直接顯示的錯誤訊息。
+export function passwordRuleError(pw: string): string | null {
+  if (pw.length < PW_MIN || pw.length > PW_MAX) return `密碼需 ${PW_MIN}~${PW_MAX} 碼`;
+  if (!/[a-z]/.test(pw)) return '密碼需包含小寫英文字母';
+  if (!/[A-Z]/.test(pw)) return '密碼需包含大寫英文字母';
+  if (!/[0-9]/.test(pw)) return '密碼需包含數字';
+  if (!/[^A-Za-z0-9]/.test(pw)) return '密碼需包含符號';
+  return null;
+}
 
 function isProd(): boolean {
   return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
@@ -119,7 +130,7 @@ export async function POST(req: NextRequest) {
       const phone = normalizePhone(body.phone ?? '');
       const pw = String(body.password ?? '');
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
-      if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
+      { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: e }, { status: 400 }); }
       if (await getAccount(phone)) return NextResponse.json({ error: '此手機已註冊，請直接登入' }, { status: 409 });
       // 驗證簡訊碼（通過即消耗），最後才建立帳號
       const otp = await verifyOtp('register', phone, String(body.code ?? ''));
@@ -136,7 +147,7 @@ export async function POST(req: NextRequest) {
       const phone = normalizePhone(body.phone ?? '');
       const pw = String(body.password ?? '');
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
-      if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `密碼需 ${PW_MIN}~${PW_MAX} 碼` }, { status: 400 });
+      { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: e }, { status: 400 }); }
       const otp = await verifyOtp('reset', phone, String(body.code ?? ''));
       // 統一錯誤訊息（不透露「碼不存在 vs 碼錯誤」，避免據此列舉手機是否為客戶）
       if (!otp.ok) return NextResponse.json({ error: '驗證碼錯誤或已過期' }, { status: 400 });
@@ -167,7 +178,7 @@ export async function POST(req: NextRequest) {
         if (!secretEqual(String(body.activationCode ?? ''), process.env.ADMIN_SECRET)) {
           return NextResponse.json({ error: '請輸入管理員啟用碼', needActivation: true }, { status: 403 });
         }
-        if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `首次登入請設定 ${PW_MIN}~${PW_MAX} 碼密碼` }, { status: 400 });
+        { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
         const activated = await setInitialPassword(key, pw);
         if (!activated) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
         return withSession({ id: activated.userId, role: 'admin', tier: activated.tier, nickname: activated.nickname });
@@ -175,7 +186,8 @@ export async function POST(req: NextRequest) {
 
       // 幹部首次登入 → 以此次密碼設定並寫死（需啟用碼，防止外人搶註可枚舉的 A00x 帳號）
       if (acc.role === 'manager' && acc.hash === null) {
-        const required = process.env.MANAGER_ACTIVATION_CODE;
+        // 測試幹部(A011~A020) 用獨立啟用碼 MANAGER_TEST_ACTIVATION_CODE；正式幹部(A001~A010) 維持 MANAGER_ACTIVATION_CODE
+        const required = isTestManagerKey(key) ? process.env.MANAGER_TEST_ACTIVATION_CODE : process.env.MANAGER_ACTIVATION_CODE;
         if (required) {
           if (!secretEqual(String(body.activationCode ?? ''), required)) {
             return NextResponse.json({ error: '請輸入幹部啟用碼', needActivation: true }, { status: 403 });
@@ -184,7 +196,7 @@ export async function POST(req: NextRequest) {
           // 未設定啟用碼：生產或任何 Vercel 部署一律拒絕首次設密（fail-safe，避免環境判定失準造成搶註）
           return NextResponse.json({ error: '幹部啟用尚未開放，請聯絡管理員' }, { status: 403 });
         }
-        if (pw.length < PW_MIN || pw.length > PW_MAX) return NextResponse.json({ error: `首次登入請設定 ${PW_MIN}~${PW_MAX} 碼密碼` }, { status: 400 });
+        { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
         const activated = await setInitialPassword(key, pw);
         if (!activated) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
         return withSession({ id: activated.userId, role: 'manager', tier: activated.tier, nickname: activated.nickname });
