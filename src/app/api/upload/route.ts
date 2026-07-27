@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { requireActiveSession } from '@/lib/active-session';
-import { parseAndValidateImageDataUrl, buildUploadPathname } from '@/lib/image-upload';
+import { parseAndValidateImageDataUrl, buildUploadPathname, parseBlobUrl, authorizeBlobDeletion } from '@/lib/image-upload';
+import { getCollection } from '@/lib/sync-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,14 +21,48 @@ export async function POST(req: NextRequest) {
     // Blob 是否可用：OIDC 連結會注入 BLOB_STORE_ID；本地或明確 token 則有 BLOB_READ_WRITE_TOKEN
     const blobAvailable = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
 
-    // 刪除既有 Blob（best-effort，只刪 vercel blob URL）；刪除仍限幹部，避免客戶亂刪
+    // 刪除既有 Blob。刪除仍限 manager（維持既有邊界，不擴權）；H2：所有權必須在 del() 之前完成。
     if (body?.action === 'delete') {
       if (session.role !== 'manager') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-      const url: string | undefined = body.url;
-      if (url && /blob\.vercel-storage\.com/.test(url) && blobAvailable) {
-        const { del } = await import('@vercel/blob');
-        await del(url).catch(() => {});
+      const url: unknown = body?.url;
+      if (typeof url !== 'string' || !url) return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
+      // 無 Blob store（本地/未設定）→ 無事可刪，維持既有冪等行為（不 del、不改共享狀態）
+      if (!blobAvailable) return NextResponse.json({ ok: true });
+
+      // 嚴格驗證 URL / host / pathname（不用 includes、不信任 client 任何欄位）
+      const parsedUrl = parseBlobUrl(url);
+      if (!parsedUrl.ok) return NextResponse.json({ error: 'invalid url' }, { status: 400 });
+
+      const { head, del } = await import('@vercel/blob');
+      // 以 provider head() 取得權威 pathname；找不到 → 冪等（無 del）；其他 provider 錯誤 → 一般化 500
+      let authoritativePathname: string | null;
+      try {
+        authoritativePathname = (await head(url)).pathname;
+      } catch (e) {
+        if ((e as { name?: string })?.name === 'BlobNotFoundError') authoritativePathname = null;
+        else { console.error('[upload] blob head failed'); return NextResponse.json({ error: 'server error' }, { status: 500 }); }
       }
+
+      // 舊格式所有權需 server 端 escorts / 照片紀錄（唯讀）；不信任 request body 的 managerId/escortId
+      const [escorts, photoOverrides, photoGalleries] = await Promise.all([
+        getCollection('escorts'),
+        getCollection('photoOverrides'),
+        getCollection('photoGalleries'),
+      ]);
+      const decision = authorizeBlobDeletion({
+        url,
+        authoritativePathname: authoritativePathname ?? parsedUrl.pathname, // 不存在時以 URL pathname 判斷所有權（仍 fail-closed）
+        urlPathname: parsedUrl.pathname,
+        sessionUserId: session.userId,
+        escorts: escorts as { id?: string; managerId?: string; removed?: boolean }[],
+        photoOverrides: photoOverrides as { id?: string; avatarUrl?: string }[],
+        photoGalleries: photoGalleries as { id?: string; urls?: string[] }[],
+      });
+      if (!decision.ok) return NextResponse.json({ error: 'forbidden' }, { status: decision.status });
+
+      // 通過所有權才可能 del；Blob 本就不存在則冪等成功、不 del
+      if (authoritativePathname === null) return NextResponse.json({ ok: true });
+      await del(url);
       return NextResponse.json({ ok: true });
     }
 

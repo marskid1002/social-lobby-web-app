@@ -100,3 +100,93 @@ export function safeKind(kind: unknown): UploadKind {
 export function buildUploadPathname(sessionUserId: string, kind: unknown, ext: string, uuid: string): string {
   return `uploads/${safeUserSegment(sessionUserId)}/${safeKind(kind)}/${uuid}.${ext}`;
 }
+
+// ── H2：Blob 刪除所有權 ───────────────────────────────────────────────────────
+
+// 只接受真正的 Vercel Blob public host：<storeId>.public.blob.vercel-storage.com（不得用寬鬆 includes）。
+const VERCEL_BLOB_HOST_RE = /^[a-z0-9][a-z0-9-]*\.public\.blob\.vercel-storage\.com$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// 嚴格解析並驗證 Blob URL；回傳 pathname（去前導斜線、未做 naive decode）。任何可疑輸入 → ok:false（呼叫端回 400）。
+export function parseBlobUrl(rawUrl: unknown): { ok: true; pathname: string } | { ok: false } {
+  if (typeof rawUrl !== 'string' || rawUrl.length === 0) return { ok: false };
+  // 先掃「原始字串」：new URL 會把 ../、./ 正規化掉（明文與 %2e 皆然），故必須在解析前攔截，
+  // 才能真正拒絕遍歷/編碼技巧；同時拒 encoded slash/backslash 與雙重編碼（%25）。
+  if (/%2e|%2f|%5c|%25/i.test(rawUrl)) return { ok: false };
+  if (rawUrl.includes('\\')) return { ok: false };
+  if (/(^|\/)\.\.?(\/|$)/.test(rawUrl)) return { ok: false }; // 明文 . 或 .. 路徑段
+  let u: URL;
+  try { u = new URL(rawUrl); } catch { return { ok: false }; }
+  if (u.protocol !== 'https:') return { ok: false };           // 只接受 HTTPS
+  if (u.username || u.password) return { ok: false };          // 拒 userinfo host 偽造
+  if (u.port) return { ok: false };
+  if (!VERCEL_BLOB_HOST_RE.test(u.hostname)) return { ok: false }; // 精確 host（拒 suffix 偽造/子網域碰撞）
+  const pathname = u.pathname.replace(/^\//, '');
+  if (!pathname) return { ok: false };
+  for (const seg of pathname.split('/')) {
+    if (seg === '' || seg === '.' || seg === '..') return { ok: false }; // 空/./.. segment（雙重保險）
+  }
+  return { ok: true, pathname };
+}
+
+// 新（H1）格式：uploads/<owner>/<kind>/<uuid>.<ext>；kind 須白名單、uuid 須 v4、ext 須 jpg/png/webp。
+export function matchNewPathname(pathname: string): { owner: string; kind: UploadKind; uuid: string; ext: string } | null {
+  const segs = pathname.split('/');
+  if (segs.length !== 4) return null;
+  const [root, owner, kind, file] = segs;
+  if (root !== 'uploads' || !owner) return null;
+  if (!(KIND_WHITELIST as readonly string[]).includes(kind)) return null;
+  const m = /^([0-9a-f-]+)\.(jpg|png|webp)$/.exec(file);
+  if (!m || !UUID_RE.test(m[1])) return null;
+  return { owner, kind: kind as UploadKind, uuid: m[1], ext: m[2] };
+}
+
+// 舊格式：avatars/<owner>-<timestamp>.<ext>（H1 之前，owner 為當時 client 傳入的 userId/girlId）。
+export function matchLegacyPathname(pathname: string): { owner: string; ext: string } | null {
+  const m = /^avatars\/(.+)-\d+\.(jpg|jpeg|png|webp)$/.exec(pathname);
+  if (!m || !m[1]) return null;
+  return { owner: m[1], ext: m[2] };
+}
+
+// 純函式：判斷此 manager（sessionUserId）是否可刪除該 Blob。del 前必呼叫；不呼叫任何 I/O。
+// - authoritativePathname：head() 回傳的權威 pathname；urlPathname：由 URL 解析出的 pathname。
+// - escorts/photoOverrides/photoGalleries：server 端既有資料（呼叫端讀入，不信任 client）。
+export function authorizeBlobDeletion(input: {
+  url: string;
+  authoritativePathname: string;
+  urlPathname: string;
+  sessionUserId: string;
+  escorts: { id?: string; managerId?: string; removed?: boolean }[];
+  photoOverrides: { id?: string; avatarUrl?: string }[];
+  photoGalleries: { id?: string; urls?: string[] }[];
+}): { ok: true } | { ok: false; status: 403 } {
+  const { url, authoritativePathname, urlPathname, sessionUserId } = input;
+  // provider 權威 pathname 與 URL pathname 不一致 → fail closed
+  if (authoritativePathname !== urlPathname) return { ok: false, status: 403 };
+  const path = authoritativePathname;
+  const meSeg = safeUserSegment(sessionUserId);
+
+  // 新格式：owner segment 必須「精確等於」safeUserSegment(session.userId)（不得子字串碰撞）
+  const nu = matchNewPathname(path);
+  if (nu) return nu.owner === meSeg ? { ok: true } : { ok: false, status: 403 };
+
+  // 舊格式：owner 精確等於 session.userId 或「本人管理的 escort id」，且 URL 須確實在該 owner 的照片紀錄
+  const lg = matchLegacyPathname(path);
+  if (lg) {
+    const managedEscortIds = new Set(
+      (input.escorts ?? [])
+        .filter((e) => e && e.managerId === sessionUserId && !e.removed && typeof e.id === 'string')
+        .map((e) => e.id as string),
+    );
+    const ownerIsMine = lg.owner === sessionUserId || managedEscortIds.has(lg.owner);
+    if (!ownerIsMine) return { ok: false, status: 403 };
+    const inOverride = (input.photoOverrides ?? []).some((p) => p && p.id === lg.owner && p.avatarUrl === url);
+    const inGallery = (input.photoGalleries ?? []).some(
+      (g) => g && g.id === lg.owner && Array.isArray(g.urls) && g.urls.includes(url),
+    );
+    return inOverride || inGallery ? { ok: true } : { ok: false, status: 403 };
+  }
+
+  // 未知格式 → 拒絕
+  return { ok: false, status: 403 };
+}

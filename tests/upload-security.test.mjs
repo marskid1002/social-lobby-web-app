@@ -274,14 +274,16 @@ test('33) production 無 Blob → 503', { skip }, async () => {
   });
 });
 
-test('34) delete action：manager 仍可、非 manager 仍 403（行為不變）', { skip }, async () => {
+test('34) delete action：manager 仍限定（H2：刪自己新格式 → 成功；非 manager → 403）', { skip }, async () => {
   await routeSandbox(BLOB_ON, async (ctx) => {
-    const del = await uploadPost(mgr('u-023'), { action: 'delete', url: 'https://x.blob.vercel-storage.com/a.png' });
+    // manager u-023 刪除「自己」新格式(H1) pathname 的 Blob → 成功、del 一次
+    const ownUrl = 'https://store1.public.blob.vercel-storage.com/uploads/u-023/image/11111111-2222-3333-4444-555555555555.jpg';
+    const del = await uploadPost(mgr('u-023'), { action: 'delete', url: ownUrl });
     assert.equal(del.status, 200); assert.equal(del.body.ok, true);
     assert.equal(ctx.dels().length, 1);
     // 非 manager（客戶）刪除 → 403，未增加/放寬權限
     const acc = await authStore.createCustomer('0988000002', 'pw123456', 'u');
-    const denied = await uploadPost({ userId: acc.userId, role: 'user', tier: 'standard' }, { action: 'delete', url: 'https://x.blob.vercel-storage.com/a.png' });
+    const denied = await uploadPost({ userId: acc.userId, role: 'user', tier: 'standard' }, { action: 'delete', url: ownUrl });
     assert.equal(denied.status, 403);
   });
 });
