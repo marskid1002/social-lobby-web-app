@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { requireActiveSession } from '@/lib/active-session';
+import { parseAndValidateImageDataUrl, buildUploadPathname } from '@/lib/image-upload';
 
 export const dynamic = 'force-dynamic';
-
-// dataUrl → Buffer
-function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; contentType: string } | null {
-  const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!m) return null;
-  return { contentType: m[1], buffer: Buffer.from(m[2], 'base64') };
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,44 +31,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // 上傳：body = { userId, dataUrl }
-    const { userId, dataUrl } = body;
-    if (!userId || !dataUrl) {
+    // 上傳：body = { userId?, dataUrl, kind? }
+    // 注意：client 傳的 userId 只為相容保留在 payload，server「不」用它決定 Blob 路徑或授權（H1）。
+    const dataUrl = body?.dataUrl;
+    const kind = typeof body?.kind === 'string' ? body.kind : undefined;
+    if (typeof dataUrl !== 'string' || !dataUrl) {
       return NextResponse.json({ error: 'invalid payload' }, { status: 400 });
     }
-    // 圖片大小上限（約 2MB 解碼後）：擋過大檔/濫用；前端已先縮圖，正常照片遠低於此
-    if (typeof dataUrl === 'string' && dataUrl.length > 2_800_000) {
-      return NextResponse.json({ error: '圖片太大，請小於約 2MB' }, { status: 413 });
-    }
 
-    // Blob 不可用：正式站直接報錯（dataURL 會被 /api/sync 擋下，塞了也存不進去）；本地開發才回 dataURL 供測試
+    // H1：嚴格驗證「格式 + MIME 白名單 + base64 canonical + decoded 大小 + magic bytes 一致」。
+    // 必須在任何 Blob put 或 dev fallback 回傳「之前」完成，避免非法內容繞過驗證。
+    const parsed = parseAndValidateImageDataUrl(dataUrl);
+    if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+
+    // Blob 不可用：正式站 fail-closed 503；本地開發才回 dataURL 供測試——但已通過上面完整驗證。
     if (!blobAvailable) {
       if (isProd) return NextResponse.json({ error: '圖片儲存尚未設定（請在 Vercel 連結 Blob）' }, { status: 503 });
       return NextResponse.json({ url: dataUrl, fallback: true });
     }
 
-    const parsed = dataUrlToBuffer(dataUrl);
-    if (!parsed) {
-      return NextResponse.json({ error: 'invalid image' }, { status: 400 });
-    }
-
-    const ext = parsed.contentType.split('/')[1] ?? 'jpg';
+    // pathname 由 server 產生：身分只用 session.userId（最小正規化）、kind 走白名單、檔名用 randomUUID、
+    // 副檔名用驗證後 MIME 的固定 mapping；contentType 也用驗證後 MIME。
+    const pathname = buildUploadPathname(session.userId, kind, parsed.ext, randomUUID());
     try {
       const { put } = await import('@vercel/blob');
-      const blob = await put(`avatars/${userId}-${Date.now()}.${ext}`, parsed.buffer, {
+      const blob = await put(pathname, parsed.buffer, {
         access: 'public',
-        contentType: parsed.contentType,
+        contentType: parsed.mime,
       });
       return NextResponse.json({ url: blob.url });
-    } catch (e) {
-      // Blob 上傳失敗（例如缺少 BLOB_READ_WRITE_TOKEN / OIDC 權限）
-      console.error('[upload] blob put failed:', e);
-      // 正式站報錯（dataURL 會被 /api/sync 擋下，不做無效退回）；本地才退回 dataURL
+    } catch {
+      // Blob 上傳失敗：只記一般訊息，不輸出 token / buffer / base64 / 完整 provider error
+      console.error('[upload] blob put failed');
+      // 正式站報錯（dataURL 會被 /api/sync 擋下，不做無效退回）；本地才退回已驗證的 dataURL
       if (isProd) return NextResponse.json({ error: '圖片上傳失敗，請確認 Vercel Blob 設定' }, { status: 502 });
-      return NextResponse.json({ url: dataUrl, fallback: true, blobError: String(e) });
+      return NextResponse.json({ url: dataUrl, fallback: true });
     }
-  } catch (e) {
-    console.error('[upload]', e);
+  } catch {
+    console.error('[upload] request error');
     return NextResponse.json({ error: 'server error' }, { status: 500 });
   }
 }

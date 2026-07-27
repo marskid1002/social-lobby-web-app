@@ -12,6 +12,8 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const SRC = path.join(ROOT, 'src');
 const STUB = pathToFileURL(path.join(ROOT, 'tests', 'next-server-stub.mjs')).href;
+// 測試用 @vercel/blob stub（僅在測試載入；正式程式不受影響）——避免 /api/upload 連真實 Blob。
+const BLOB_STUB = pathToFileURL(path.join(ROOT, 'tests', 'blob-stub.mjs')).href;
 const EXTS = ['.ts', '.tsx', '.mts', '.mjs', '.js', '.jsx'];
 
 function withExt(abs) {
@@ -23,6 +25,7 @@ function withExt(abs) {
 
 export async function resolve(specifier, context, next) {
   if (specifier === 'next/server') return { url: STUB, shortCircuit: true };
+  if (specifier === '@vercel/blob') return { url: BLOB_STUB, shortCircuit: true };
   if (specifier.startsWith('@/')) {
     const r = withExt(path.join(SRC, specifier.slice(2)));
     if (r) return { url: pathToFileURL(r).href, shortCircuit: true };
