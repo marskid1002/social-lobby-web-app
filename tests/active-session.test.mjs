@@ -183,13 +183,23 @@ test('Route：/api/sync GET 不因 F 新增帳號查詢（disabled 帳號仍可�
   }
 });
 
-// ── guest 相容：subscribe 仍允許 guest（F 五.2 既有行為維持）─────────────────────
+// ── F follow-up：guest 維持唯讀——subscribe 與 billing checkout 皆須 403 ──────────
 
-test('Route：guest 仍可 /api/subscribe（維持既有行為）', { skip }, async () => {
+test('Route：guest /api/subscribe → 403 且未儲存訂閱', { skip }, async () => {
   const { POST } = await import('@/app/api/subscribe/route');
-  const token = await signSession({ userId: 'g-xyz', role: 'guest', tier: 'free' });
+  const { getSubscriptionsForUsers } = await import('@/lib/push-store');
+  const token = await signSession({ userId: 'u-099', role: 'guest', tier: 'free' });
   const res = await POST(postReq('http://x/api/subscribe', token, { subscription: { endpoint: 'https://push.example/f-guest' } }));
-  assert.equal(res.status, 200);
+  assert.equal(res.status, 403);
+  const subs = await getSubscriptionsForUsers(['u-099']);
+  assert.ok(!subs.some((s) => s.endpoint === 'https://push.example/f-guest'), 'guest 訂閱不得被儲存');
+});
+
+test('Route：guest /api/billing checkout → 403', { skip }, async () => {
+  const { POST } = await import('@/app/api/billing/route');
+  const token = await signSession({ userId: 'u-099', role: 'guest', tier: 'free' });
+  const res = await POST(postReq('http://x/api/billing', token, { action: 'checkout', plan: 'monthly' }));
+  assert.equal(res.status, 403);
 });
 
 // ── billing webhook 不使用 session helper（F 六.10）──────────────────────────

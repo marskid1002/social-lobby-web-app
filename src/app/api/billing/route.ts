@@ -29,9 +29,11 @@ export async function POST(req: NextRequest) {
     }
 
     // F：webhook 以外的操作（checkout）需登入且帳號仍有效（含登入後被停用/刪除者）；
-    // 以可信任的 session.userId 建立 checkout。guest 沿用既有行為（不額外擋）。
+    // 以可信任的 session.userId 建立 checkout。
     const auth = await requireActiveSession(req);
     if (!auth.ok) return auth.response;
+    // F follow-up：guest 皆共用 u-099、應維持唯讀，且無正式帳號，不得建立結帳（在 isBillingEnabled/建立 checkout 前擋下）。
+    if (auth.isGuest) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     const session = auth.session;
 
     if (body?.action === 'checkout') {

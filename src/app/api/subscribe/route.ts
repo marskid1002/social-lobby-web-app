@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     // F：需登入且帳號仍有效（含登入後被停用/刪除者）才能儲存推播訂閱，在寫入 subscription 之前擋下。
-    // guest 沿用既有行為（允許）：訂閱仍只綁定其 session 身份。
     const auth = await requireActiveSession(req);
     if (!auth.ok) return auth.response;
+    // F follow-up：guest 皆共用 u-099、應維持唯讀，且無正式帳號，不得儲存 push 訂閱（在 req.json 之前擋下）。
+    if (auth.isGuest) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     const session = auth.session;
 
     const { subscription } = await req.json();
