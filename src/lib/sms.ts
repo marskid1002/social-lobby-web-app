@@ -2,28 +2,65 @@
  * 簡訊發送層（供應商可抽換）。金鑰一律讀環境變數，不寫死。
  *
  * SMS_PROVIDER：
- *   'console'（預設 / 測試）：不真的發送，只把驗證碼印到後端 log
+ *   'console'（預設 / 測試）：不真的發送，只把驗證碼印到後端 log（僅限非正式環境）
  *   'msgdogs'：接 MsgDogs（簡訊狗）真實發送
  *
- * 本 App 只用簡訊發「OTP 驗證碼」，故對外只暴露 sendOtpSms()。
+ * O（正式環境 fail-closed）：正式環境（NODE_ENV/VERCEL_ENV=production）只有在
+ * SMS_PROVIDER=msgdogs 且金鑰完整時才會真的發送；其餘一律回 false，且不得把手機/OTP/payload
+ * 寫入 log，避免正式站把 OTP 印到 log、或對使用者假裝發送成功。
+ *
+ * 本 App 只用簡訊發「OTP 驗證碼」，故對外只暴露 sendOtpSms()（另供 health 用的純判斷函式）。
  */
 
 import crypto from 'crypto';
 import type { OtpPurpose } from './otp-store';
 
+// 集中的「正式環境」判斷（health 與 sms 共用同一套，避免各自不一致）。
+// 任一成立即視為正式：NODE_ENV=production 或 VERCEL_ENV=production。
+// 注意：不可只看是否存在 VERCEL；VERCEL_ENV=preview 不算正式。
+export function isProductionEnv(): boolean {
+  return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
+
+// 正式簡訊供應商是否設定完整（供 health readiness 使用）。只回傳 boolean，絕不回傳/記錄任何 secret。
+// 條件：SMS_PROVIDER 必須明確為 msgdogs，且 merchant code 與 secret key 皆存在且非空白。
+// 目前兩種 MSGDOGS_MODE（single / otp）除 merchant+secret 外的參數都有預設值，故不額外要求其他變數。
+export function isSmsConfigured(): boolean {
+  const provider = (process.env.SMS_PROVIDER || '').toLowerCase();
+  if (provider !== 'msgdogs') return false; // 未設定 / console / 未知值 → false
+  const merchant = (process.env.MSGDOGS_MERCHANT_CODE || '').trim();
+  const secret = (process.env.MSGDOGS_SECRET_KEY || '').trim();
+  return Boolean(merchant && secret);
+}
+
 export async function sendOtpSms(phone: string, code: string, purpose: OtpPurpose): Promise<boolean> {
   const provider = (process.env.SMS_PROVIDER || 'console').toLowerCase();
 
-  if (provider === 'console') {
-    // 測試模式：不真的發送，只印在後端 log（方便開發驗證）
-    console.log(`[sms:test] → ${phone}｜驗證碼 ${code}（${purpose}）`);
-    return true;
-  }
-
-  if (provider === 'msgdogs') {
+  // ── 正式環境：fail-closed ──────────────────────────────────────────────────
+  // 絕不 fallback 到 console、絕不把手機/OTP/payload 寫入 log；未設定完整一律回 false。
+  if (isProductionEnv()) {
+    if (provider !== 'msgdogs') {
+      // 未設定 / console / 未知值 → 不發送、不印 OTP，只記一般設定錯誤（不含手機/OTP/payload）
+      console.error('[sms] production SMS provider is not configured');
+      return false;
+    }
+    if (!isSmsConfigured()) {
+      // msgdogs 但缺必要金鑰 → 不呼叫 fetch，只指出「缺少設定」（不含 secret/手機/OTP）
+      console.error('[sms] production SMS provider is missing required credentials');
+      return false;
+    }
     return sendViaMsgDogs(phone, code, purpose);
   }
 
+  // ── 本地 development：保留既有開發體驗 ────────────────────────────────────────
+  if (provider === 'console') {
+    // 測試模式：不真的發送，只把驗證碼印到後端 log（僅限非正式環境）
+    console.log(`[sms:test] → ${phone}｜驗證碼 ${code}（${purpose}）`);
+    return true;
+  }
+  if (provider === 'msgdogs') {
+    return sendViaMsgDogs(phone, code, purpose);
+  }
   console.error(`[sms] 未知的 SMS_PROVIDER: ${provider}`);
   return false;
 }
@@ -116,10 +153,13 @@ async function sendViaMsgDogs(phone: string, code: string, purpose: OtpPurpose):
       | { error?: boolean; code?: number; msg?: string | null }
       | null;
     const ok = Boolean(res.ok && data && data.error === false && data.code === 200);
-    if (!ok) console.error('[sms] MsgDogs 發送失敗', res.status, JSON.stringify(data));
+    // 只記錄非敏感的 HTTP status 與 provider 錯誤碼；不 stringify 完整 response（可能回顯內容），
+    // 更不記錄手機、OTP、payload、sign 或 secret。
+    if (!ok) console.error('[sms] MsgDogs send failed', 'http', res.status, 'providerCode', data?.code ?? 'n/a');
     return ok;
   } catch (e) {
-    console.error('[sms] MsgDogs 呼叫例外', e);
+    // 只記錄錯誤分類名稱，不輸出可能含 URL/payload 的完整錯誤物件
+    console.error('[sms] MsgDogs request threw', e instanceof Error ? e.name : 'unknown');
     return false;
   }
 }

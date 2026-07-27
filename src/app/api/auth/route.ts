@@ -6,7 +6,7 @@ import {
 import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
 import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-store';
-import { sendOtpSms } from '@/lib/sms';
+import { sendOtpSms, isSmsConfigured } from '@/lib/sms';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -84,6 +84,12 @@ export async function POST(req: NextRequest) {
       if (!rlCd.ok) return NextResponse.json({ error: `請 ${rlCd.retryAfter} 秒後再取得驗證碼` }, { status: 429 });
       const rlDay = await rateLimit('otp-day', phone, 5, 24 * 60 * 60);
       if (!rlDay.ok) return NextResponse.json({ error: '今日取得驗證碼次數已達上限' }, { status: 429 });
+
+      // O：正式環境若簡訊供應商未設定完整，send-otp 整體 fail-closed。此判斷放在查帳號「之前」，
+      // 讓 register/reset、帳號存在與否都回相同回應，避免 SMS 故障時被用來探測帳號是否存在。
+      if (isProd() && !isSmsConfigured()) {
+        return NextResponse.json({ error: '簡訊服務暫時無法使用，請稍後再試' }, { status: 503 });
+      }
 
       const existing = await getAccount(phone);
       // 註冊：手機已註冊就擋（提示改用登入/忘記密碼）

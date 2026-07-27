@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getRedis, isRedisConfigured, keyPrefix } from '@/lib/kv';
 import { isSessionSecretConfigured } from '@/lib/session';
+import { isSmsConfigured, isProductionEnv } from '@/lib/sms';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,17 +22,20 @@ export async function GET() {
     }
   }
 
-  const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+  const isProd = isProductionEnv(); // 與 sms.ts 共用同一套正式環境判斷
   const sessionSecretConfigured = isSessionSecretConfigured();
-  // 生產環境必須同時具備：可用 Redis + 已設定 SESSION_SECRET 才算就緒；
-  // 本地開發用記憶體 fallback / 預設密鑰視為就緒
-  const ready = isProd ? redisPing && sessionSecretConfigured : true;
+  // O：正式簡訊供應商是否設定完整（註冊/忘記密碼所需）；只回 boolean，不揭露任何值
+  const smsConfigured = isSmsConfigured();
+  // 生產環境必須同時具備：可用 Redis + 已設定 SESSION_SECRET + 正式簡訊已設定完整 才算就緒；
+  // 本地開發用記憶體 fallback / 預設密鑰 / console 簡訊視為就緒（smsConfigured 仍如實顯示）
+  const ready = isProd ? redisPing && sessionSecretConfigured && smsConfigured : true;
 
   const bodyData = {
     ready,
     redisConfigured,
     redisPing,
     sessionSecretConfigured,
+    smsConfigured,
     sentryConfigured: present('SENTRY_DSN') && present('NEXT_PUBLIC_SENTRY_DSN'),
     keyPrefix: keyPrefix(),
     env: {
