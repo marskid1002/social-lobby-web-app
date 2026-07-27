@@ -60,6 +60,15 @@ test('測試幹部 A012 不接受正式碼 MANAGER_ACTIVATION_CODE → 403', { s
   assert.equal(res.status, 403); assert.equal(res.body?.needActivation, true);
 });
 
+test('新增測試幹部 A016~A020 存在且走測試碼（錯碼→403 needActivation，非 401）', { skip }, async () => {
+  for (const acct of ['A016', 'A017', 'A018', 'A019', 'A020']) {
+    const res = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
+      { account: acct, password: '@Best123', activationCode: 'nope' });
+    assert.equal(res.status, 403, `${acct} 應存在且要求啟用碼（403 而非帳號不存在的 401）`);
+    assert.equal(res.body?.needActivation, true, acct);
+  }
+});
+
 test('正式幹部 A001 不接受測試碼，接受正式碼後進到密碼規則(400)', { skip }, async () => {
   const wrong = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
     { account: 'A001', password: '@Best123', activationCode: TEST }); // 用測試碼試正式帳號

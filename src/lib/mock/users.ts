@@ -123,13 +123,13 @@ export const users: User[] = [
     lineOAFollowed: true,
     createdAt: baseDate,
   })) as User[]),
-  // 測試用幹部帳號（對應 auth-store 的 A011~A015）
-  ...(['u-501', 'u-502', 'u-503', 'u-504', 'u-505'].map((id, i) => ({
+  // 測試用幹部帳號（對應 auth-store 的 A011~A020）
+  ...(['u-501', 'u-502', 'u-503', 'u-504', 'u-505', 'u-506', 'u-507', 'u-508', 'u-509', 'u-510'].map((id, i) => ({
     id,
     lineUserId: `T${id.slice(2)}test`,
     nickname: `測試幹部${i + 1}`,
-    avatarUrl: `https://randomuser.me/api/portraits/men/${[1, 2, 3, 4, 5][i]}.jpg`,
-    cardImageUrl: `https://randomuser.me/api/portraits/men/${[1, 2, 3, 4, 5][i]}.jpg`,
+    avatarUrl: `https://randomuser.me/api/portraits/men/${i + 1}.jpg`,
+    cardImageUrl: `https://randomuser.me/api/portraits/men/${i + 1}.jpg`,
     bio: '測試用幹部帳號。',
     defaultArea: '信義區',
     interests: ['測試'],

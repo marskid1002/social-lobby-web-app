@@ -41,12 +41,17 @@ const MANAGER_MAP: { code: string; userId: string; nickname: string }[] = [
   { code: 'A008', userId: 'u-029', nickname: '鄭經理' },
   { code: 'A009', userId: 'u-030', nickname: '謝經理' },
   { code: 'A010', userId: 'u-031', nickname: '許經理' },
-  // 測試用幹部帳號（A011~A015）；對應 mock/users.ts 的 u-501~u-505（role: manager）
+  // 測試用幹部帳號（A011~A020）；對應 mock/users.ts 的 u-501~u-510（role: manager）
   { code: 'A011', userId: 'u-501', nickname: '測試幹部1' },
   { code: 'A012', userId: 'u-502', nickname: '測試幹部2' },
   { code: 'A013', userId: 'u-503', nickname: '測試幹部3' },
   { code: 'A014', userId: 'u-504', nickname: '測試幹部4' },
   { code: 'A015', userId: 'u-505', nickname: '測試幹部5' },
+  { code: 'A016', userId: 'u-506', nickname: '測試幹部6' },
+  { code: 'A017', userId: 'u-507', nickname: '測試幹部7' },
+  { code: 'A018', userId: 'u-508', nickname: '測試幹部8' },
+  { code: 'A019', userId: 'u-509', nickname: '測試幹部9' },
+  { code: 'A020', userId: 'u-510', nickname: '測試幹部10' },
 ];
 
 const memAccounts: AccountsMap = {};
