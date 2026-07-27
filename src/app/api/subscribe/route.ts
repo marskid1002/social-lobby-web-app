@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveSubscription } from '@/lib/push-store';
-import { getSessionFromRequest } from '@/lib/session';
+import { requireActiveSession } from '@/lib/active-session';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSessionFromRequest(req);
-    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    // F：需登入且帳號仍有效（含登入後被停用/刪除者）才能儲存推播訂閱，在寫入 subscription 之前擋下。
+    // guest 沿用既有行為（允許）：訂閱仍只綁定其 session 身份。
+    const auth = await requireActiveSession(req);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const { subscription } = await req.json();
     if (!subscription?.endpoint) {

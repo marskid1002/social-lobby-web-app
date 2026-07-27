@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { getSubscriptionsForUsers, removeSubscriptionByEndpoint } from '@/lib/push-store';
-import { getSessionFromRequest } from '@/lib/session';
+import { requireActiveSession } from '@/lib/active-session';
 import { rateLimit } from '@/lib/rate-limit';
 
 const MAX_RECIPIENTS = 50;
@@ -29,11 +29,12 @@ function ensureVapid(): boolean {
 
 export async function POST(req: NextRequest) {
   try {
-    // 需登入才能觸發推播（防止匿名釣魚推播）
-    const session = await getSessionFromRequest(req);
-    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    // 訪客唯讀，不可觸發推播
-    if (session.role === 'guest') return NextResponse.json({ error: 'guest is read-only' }, { status: 403 });
+    // F：需登入且帳號仍有效（含登入後被停用/刪除者），在 rate limit 與任何推播之前擋下。
+    const auth = await requireActiveSession(req);
+    if (!auth.ok) return auth.response;
+    // 訪客唯讀，不可觸發推播（沿用既有行為）
+    if (auth.isGuest) return NextResponse.json({ error: 'guest is read-only' }, { status: 403 });
+    const session = auth.session;
 
     // 速率限制：每人每 5 分鐘最多 30 次，抵擋大量濫發/騷擾
     const rl = await rateLimit('notify', session.userId, 30, 5 * 60);

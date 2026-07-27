@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getShared, mergeShared, clearShared, getCollection, getResetMarks, SHARED_KEYS, type SharedState } from '@/lib/sync-store';
 import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
-import { getAccountByUserId } from '@/lib/auth-store';
+import { requireActiveSession } from '@/lib/active-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -258,8 +258,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getSessionFromRequest(req);
-    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    // F：驗證 session 對應帳號仍有效（含登入後才被停用/刪除者）；失敗直接回 401/403，
+    // 且在 mergeShared 及任何 Redis 寫入之前完成。guest 交由下方既有「訪客唯讀」政策處理。
+    const auth = await requireActiveSession(req);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     const body = await req.json();
 
@@ -274,14 +277,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, cleared: cols ?? 'all' });
     }
 
-    // 訪客唯讀，不可寫入
-    if (session.role === 'guest') {
+    // 訪客唯讀，不可寫入（沿用既有行為）
+    if (auth.isGuest) {
       return NextResponse.json({ error: 'guest is read-only' }, { status: 403 });
     }
-
-    // 帳號已被停用者，即時擋下寫入（session 為 30 天 JWT，登入後才被停用者也要擋）
-    const acct = await getAccountByUserId(session.userId);
-    if (acct?.disabled) return NextResponse.json({ error: '此帳號已被停用' }, { status: 403 });
 
     // C：先做 shape 驗證（擋惡意/損壞資料造成同步整批 500）；通過後才進後續清洗流程
     const shape = validatePatchShape(body?.patch ?? {});

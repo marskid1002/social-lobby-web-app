@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/session';
+import { requireActiveSession } from '@/lib/active-session';
 import {
   createSubscriptionCheckout, handleBillingWebhook, getSubscription,
   isBillingEnabled, type SubscriptionPlan,
@@ -20,14 +21,18 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // 金流 webhook（未來由金流服務呼叫，無 session）
+    // 金流 webhook（未來由金流服務呼叫，無瀏覽器 session）——絕不使用 session helper。
+    // 此分支在最前面就 return，因此下方的 requireActiveSession 永遠不會作用在 webhook 上。
     if (body?.action === 'webhook') {
       const result = await handleBillingWebhook(body);
       return NextResponse.json(result);
     }
 
-    const session = await getSessionFromRequest(req);
-    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    // F：webhook 以外的操作（checkout）需登入且帳號仍有效（含登入後被停用/刪除者）；
+    // 以可信任的 session.userId 建立 checkout。guest 沿用既有行為（不額外擋）。
+    const auth = await requireActiveSession(req);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
 
     if (body?.action === 'checkout') {
       if (!isBillingEnabled()) {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest } from '@/lib/session';
+import { requireActiveSession } from '@/lib/active-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,10 +12,12 @@ function dataUrlToBuffer(dataUrl: string): { buffer: Buffer; contentType: string
 
 export async function POST(req: NextRequest) {
   try {
-    // 需登入；訪客唯讀不可上傳。幹部管理小姐照片、一般客戶在聊天室傳照片都會用到，故放寬給非訪客。
-    const session = await getSessionFromRequest(req);
-    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    if (session.role === 'guest') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    // F：需登入且帳號仍有效（含登入後被停用/刪除者），在解析 body 與任何 Blob 上傳/刪除之前擋下。
+    // 訪客唯讀不可上傳/刪除。幹部管理小姐照片、一般客戶在聊天室傳照片都會用到，故放寬給非訪客。
+    const auth = await requireActiveSession(req);
+    if (!auth.ok) return auth.response;
+    if (auth.isGuest) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    const session = auth.session;
 
     const body = await req.json();
 
