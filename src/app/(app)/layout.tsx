@@ -20,6 +20,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/inbox': '收件匣',
   '/updates': '動態',
   '/me': '我的個人檔案',
+  '/blocked': '封鎖名單',
   '/settings': '設定',
   '/plaza': '廣場',
 };

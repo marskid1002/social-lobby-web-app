@@ -1,10 +1,8 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { X, User, ClipboardList, ShieldOff, Settings, LogOut, MapPin, ChevronRight, Bell } from 'lucide-react';
+import { X, User, ClipboardList, ShieldOff, FileText, Settings, LogOut, ChevronRight, Bell } from 'lucide-react';
 import { useAppState, resetState } from '@/lib/state';
-import { TAIPEI_AREAS } from '@/lib/mock';
 import { useNotificationPermission } from './PushManager';
 import { toast } from 'sonner';
 
@@ -14,7 +12,7 @@ interface Props {
 }
 
 export function ProfileDrawer({ open, onClose }: Props) {
-  const { currentUser, isOnline, setOnline, setArea } = useAppState();
+  const { currentUser } = useAppState();
   const router = useRouter();
   const { permission, request: requestNotif } = useNotificationPermission();
 
@@ -85,43 +83,6 @@ export function ProfileDrawer({ open, onClose }: Props) {
 
           {/* Scrollable body */}
           <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-            {/* Status controls（訪客/管理員不顯示自身上班狀態）*/}
-            {currentUser && currentUser.tier !== 'guest' && currentUser.role !== 'admin' && (
-            <div className="bg-white rounded-2xl p-4 shadow-card flex flex-col gap-3">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">上班狀態</p>
-
-              {/* Area select */}
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.75} />
-                <select
-                  value={currentUser?.defaultArea ?? '信義區'}
-                  onChange={(e) => setArea(e.target.value)}
-                  className="flex-1 rounded-xl border border-brand-lavender bg-brand-snow px-3 py-2.5 text-sm text-brand-ink focus:outline-none appearance-none"
-                >
-                  {TAIPEI_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
-
-              {/* Online toggle */}
-              <button
-                onClick={() => setOnline(!isOnline)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-colors ${
-                  isOnline ? 'bg-status-available/10 border-2 border-status-available/30' : 'bg-brand-snow border-2 border-brand-lavender'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-status-available' : 'bg-zinc-300'}`} />
-                  <span className={`text-sm font-semibold ${isOnline ? 'text-status-available' : 'text-zinc-400'}`}>
-                    {isOnline ? '我已上線' : '我離線中'}
-                  </span>
-                </div>
-                <div className={`w-11 h-6 rounded-full transition-colors ${isOnline ? 'bg-status-available' : 'bg-zinc-200'}`}>
-                  <div className={`w-5 h-5 bg-white rounded-full shadow-sm mt-0.5 transition-transform ${isOnline ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
-                </div>
-              </button>
-            </div>
-            )}
-
             {/* 通知開關 */}
             <div className="bg-white rounded-2xl p-4 shadow-card">
               <div className="flex items-center gap-3">
@@ -161,7 +122,8 @@ export function ProfileDrawer({ open, onClose }: Props) {
               {[
                 { icon: User, label: '我的個人檔案', path: '/me' },
                 { icon: ClipboardList, label: '我的需求', path: '/inbox' },
-                { icon: ShieldOff, label: '封鎖名單', path: '/settings' },
+                { icon: ShieldOff, label: '封鎖名單', path: '/blocked' },
+                { icon: FileText, label: '平台規範', path: '/legal/terms' },
                 { icon: Settings, label: '設定', path: '/settings' },
               ].map((item, i) => (
                 <button
