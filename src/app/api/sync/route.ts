@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getShared, mergeShared, clearShared, getCollection, getResetMarks, SHARED_KEYS, type SharedState } from '@/lib/sync-store';
+import { getShared, mergeShared, clearShared, getCollection, getResetMarks, SHARED_KEYS, type SharedState, type SharedKey } from '@/lib/sync-store';
 import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 import { requireActiveSession } from '@/lib/active-session';
+import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
+import { getManagerUserIds } from '@/lib/auth-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -149,38 +151,7 @@ function stripDataUrlItems(patch: Record<string, unknown>): void {
   }
 }
 
-// 依 session 過濾 patch 的寫入權限：丟掉「不屬於本人/無權寫」的項目，其餘照存。
-// 不整批 403 拒絕——否則一顆外來項（例如啟動時把同步下來的別人資料一起推回）會害整批同步失敗。
-// reqCreator：requestId -> creatorId（供驗證「該局發起人」可操作其回應）
-function sanitizeWriteAuthz(patch: Record<string, unknown>, s: SessionPayload, reqCreator: Record<string, string>): void {
-  const me = s.userId;
-  const isManager = s.role === 'manager';
-  const keep = (k: string, pred: (it: Record<string, unknown>) => boolean) => {
-    if (Array.isArray(patch[k])) patch[k] = (patch[k] as Record<string, unknown>[]).filter(pred);
-  };
-
-  // 只有本人能以自己身份建立
-  keep('requests', (r) => r.creatorId === me);
-  keep('chatMessages', (m) => m.senderId === me);
-  keep('registeredUsers', (u) => u.id === me);
-  keep('blocks', (b) => b.blockerId === me);
-  keep('escorts', (e) => isManager && e.managerId === me);
-  // 邀請：本人須為 from/to 一方
-  keep('invitations', (i) => i.fromUserId === me || i.toUserId === me);
-  // 回應：幹部（派工）／本人（加入）／該局發起人（接受、婉拒）
-  keep('responses', (r) => isManager || r.userId === me || reqCreator[r.requestId as string] === me);
-  // 通知：幹部／本人為觸發者(actor)或收件人(userId)
-  keep('updates', (u) => isManager || u.actorId === me || u.userId === me);
-  // 廣場：只能發自己的貼文/留言
-  keep('momentPosts', (p) => p.authorId === me);
-  keep('plazaComments', (c) => c.userId === me);
-  // 小姐狀態/照片/相簿：僅限幹部（非幹部一律清空）
-  if (!isManager) {
-    for (const k of ['presence', 'photoOverrides', 'photoGalleries']) {
-      if (Array.isArray(patch[k])) patch[k] = [];
-    }
-  }
-}
+// 物件層級寫入授權已抽到純模組 @/lib/sync-authz（authorizeWrites），route POST 內批次預讀後呼叫。
 
 // ── C：寫入 shape 驗證 ────────────────────────────────────────────────────
 // 目的：擋掉惡意/損壞的同步資料（例如 threadId:null 的 chatMessage），避免它們寫入後
@@ -287,16 +258,21 @@ export async function POST(req: NextRequest) {
     if (!shape.ok) return NextResponse.json({ error: shape.error }, { status: 400 });
     const patch: Record<string, unknown> = shape.patch;
     stripDataUrlItems(patch); // 丟掉殘留的 dataURL 項目（不整批拒絕），避免一顆壞照片讓整批同步失敗
-    sanitizePatch(patch, session); // 權限/等級以伺服器 session 為準，擋自升 tier/role
-    // 若寫入含 responses，先取回 requests 建立 creator 對照表以驗證授權
-    let reqCreator: Record<string, string> = {};
-    if (Array.isArray(patch.responses) && patch.responses.length) {
-      const reqs = await getCollection('requests');
-      reqCreator = Object.fromEntries(reqs.map((r) => [r.id, (r as { creatorId?: string }).creatorId ?? '']));
-    }
-    sanitizeWriteAuthz(patch, session, reqCreator); // 丟掉未授權的項目（不整批 403），避免一顆外來項讓整批同步失敗
+    sanitizePatch(patch, session); // 權限/等級以伺服器 session 為準，擋自升 tier/role（economic 欄位剔除）
 
-    const merged = await mergeShared(patch);
+    // B：物件層級寫入授權——批次預讀「授權需要」的 server 集合、建 by-id index，逐筆授權。
+    // 既有物件一律以 server stored object 為權威、update 凍結不可變欄位；未授權項逐筆丟棄、合法項照存（不整批失敗）。
+    const need = new Set<string>(['escorts', 'requests', 'responses']); // 關係依賴＋managed girls：恆需
+    if (Array.isArray(patch.invitations) || Array.isArray(patch.updates)) need.add('invitations'); // updates 的 invite_* 需比對邀請
+    if (Array.isArray(patch.updates)) need.add('updates'); // updates append-only 需既有 id
+    for (const k of ['blocks', 'momentPosts', 'plazaComments'] as const) if (Array.isArray(patch[k])) need.add(k);
+    const cols: Record<string, { id: string; [k: string]: unknown }[]> = {};
+    await Promise.all([...need].map(async (k) => { cols[k] = await getCollection(k as SharedKey); }));
+    // request_posted 通知收件人須為 server 權威幹部帳號；僅在 patch 含 updates 時多讀一次帳號
+    const managerUserIds = Array.isArray(patch.updates) ? await getManagerUserIds() : [];
+    const authzPatch = authorizeWrites(patch, session, buildIndex(cols, managerUserIds));
+
+    const merged = await mergeShared(authzPatch);
     const resetAt = await getResetMarks();
     return NextResponse.json({ ...scopeForSession(merged, session), resetAt });
   } catch (e) {

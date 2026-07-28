@@ -249,6 +249,14 @@ export async function listAccounts(): Promise<Account[]> {
   return Object.values(accounts);
 }
 
+// server 權威的幹部 userId 集合（供 /api/sync 的 request_posted 通知收件人驗證用）。
+// 只讀帳號儲存層、以 role==='manager' 判定，不使用 client 傳入的 role 或 roster。
+export async function getManagerUserIds(): Promise<string[]> {
+  const accounts = await readAccounts();
+  if (await ensureManagerAccounts(accounts)) await writeAccounts(accounts);
+  return Object.values(accounts).filter((a) => a.role === 'manager').map((a) => a.userId);
+}
+
 // 停用/啟用帳號（admin 帳號不可停用）
 export async function setAccountDisabled(key: string, disabled: boolean): Promise<boolean> {
   const accounts = await readAccounts();
