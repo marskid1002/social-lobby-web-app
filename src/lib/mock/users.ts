@@ -123,8 +123,8 @@ export const users: User[] = [
     lineOAFollowed: true,
     createdAt: baseDate,
   })) as User[]),
-  // 測試用幹部帳號（對應 auth-store 的 A011~A020）
-  ...(['u-501', 'u-502', 'u-503', 'u-504', 'u-505', 'u-506', 'u-507', 'u-508', 'u-509', 'u-510'].map((id, i) => ({
+  // 測試用幹部帳號（對應 auth-store 的 A011~A020 及 A999/A1000）
+  ...(['u-501', 'u-502', 'u-503', 'u-504', 'u-505', 'u-506', 'u-507', 'u-508', 'u-509', 'u-510', 'u-511', 'u-512'].map((id, i) => ({
     id,
     lineUserId: `T${id.slice(2)}test`,
     nickname: `測試幹部${i + 1}`,

@@ -52,6 +52,9 @@ const MANAGER_MAP: { code: string; userId: string; nickname: string }[] = [
   { code: 'A018', userId: 'u-508', nickname: '測試幹部8' },
   { code: 'A019', userId: 'u-509', nickname: '測試幹部9' },
   { code: 'A020', userId: 'u-510', nickname: '測試幹部10' },
+  // 額外測試幹部（規則同 A011~A020：走 MANAGER_TEST_ACTIVATION_CODE）；A1000 為 4 位數，見 normalizeKey 放寬
+  { code: 'A999', userId: 'u-511', nickname: '測試幹部11' },
+  { code: 'A1000', userId: 'u-512', nickname: '測試幹部12' },
 ];
 
 const memAccounts: AccountsMap = {};
@@ -86,13 +89,14 @@ export function normalizePhone(phone: string): string {
 
 export function normalizeKey(key: string): string {
   const k = (key ?? '').trim();
-  return /^A\d{3}$/i.test(k) ? k.toUpperCase() : normalizePhone(k);
+  // 幹部/管理員帳號＝A + 3~4 位數字（A000~A020 為既有；A999/A1000 為額外測試帳號）；其餘視為手機
+  return /^A\d{3,4}$/i.test(k) ? k.toUpperCase() : normalizePhone(k);
 }
 
-// 測試用幹部帳號 A011~A020：首次登入啟用碼與正式幹部(A001~A010)分開，
+// 測試用幹部帳號（A011~A020 及額外的 A999/A1000）：首次登入啟用碼與正式幹部(A001~A010)分開，
 // 避免測試帳號共用正式的 MANAGER_ACTIVATION_CODE。
 export function isTestManagerKey(key: string): boolean {
-  return /^A0(1[1-9]|20)$/.test(normalizeKey(key));
+  return /^(A0(1[1-9]|20)|A999|A1000)$/.test(normalizeKey(key));
 }
 
 // 確保管理員(A000)與 10 個幹部帳號存在（無密碼），首次呼叫時建立

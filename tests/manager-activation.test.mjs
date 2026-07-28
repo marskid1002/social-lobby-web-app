@@ -11,9 +11,9 @@ const route = await import('@/app/api/auth/route');
 const authStore = await import('@/lib/auth-store');
 
 // ── isTestManagerKey 邊界 ─────────────────────────────────────────────────────
-test('isTestManagerKey：A011~A020 為 true，其餘為 false', () => {
-  for (const k of ['A011', 'A012', 'A015', 'A019', 'A020', 'a012']) assert.equal(authStore.isTestManagerKey(k), true, k);
-  for (const k of ['A001', 'A010', 'A021', 'A000', 'A100', '0912345678', '']) assert.equal(authStore.isTestManagerKey(k), false, k);
+test('isTestManagerKey：A011~A020 及 A999/A1000 為 true，其餘為 false', () => {
+  for (const k of ['A011', 'A012', 'A015', 'A019', 'A020', 'a012', 'A999', 'A1000', 'a1000']) assert.equal(authStore.isTestManagerKey(k), true, k);
+  for (const k of ['A001', 'A010', 'A021', 'A000', 'A100', 'A998', 'A1001', '0912345678', '']) assert.equal(authStore.isTestManagerKey(k), false, k);
 });
 
 // ── Route：啟用碼分流（皆為 reject 路徑）────────────────────────────────────────
@@ -60,8 +60,8 @@ test('測試幹部 A012 不接受正式碼 MANAGER_ACTIVATION_CODE → 403', { s
   assert.equal(res.status, 403); assert.equal(res.body?.needActivation, true);
 });
 
-test('新增測試幹部 A016~A020 存在且走測試碼（錯碼→403 needActivation，非 401）', { skip }, async () => {
-  for (const acct of ['A016', 'A017', 'A018', 'A019', 'A020']) {
+test('新增測試幹部 A016~A020 及 A999/A1000 存在且走測試碼（錯碼→403 needActivation，非 401）', { skip }, async () => {
+  for (const acct of ['A016', 'A017', 'A018', 'A019', 'A020', 'A999', 'A1000']) {
     const res = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
       { account: acct, password: '@Best123', activationCode: 'nope' });
     assert.equal(res.status, 403, `${acct} 應存在且要求啟用碼（403 而非帳號不存在的 401）`);
