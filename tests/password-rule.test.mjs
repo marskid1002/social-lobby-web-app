@@ -67,7 +67,16 @@ test('register：弱密碼 → 400（複雜度接線，且在 OTP 之前）', { 
 
 test('register：複雜密碼通過複雜度、續往 OTP（OTP 錯 → 400 但非密碼錯）', { skip }, async () => {
   await sandbox(async () => {
-    const res = await route.POST(authPost({ action: 'register', phone: '09' + (seq++), password: '@Best123', nickname: 'x', code: '000000' }));
+    const res = await route.POST(authPost({
+      action: 'register',
+      phone: '09' + (seq++),
+      password: '@Best123',
+      nickname: 'x',
+      code: '000000',
+      ageConfirmed: true,
+      termsAccepted: true,
+      termsVersion: '1.0',
+    }));
     assert.equal(res.status, 400);
     assert.ok(String(res.body?.error || '').includes('驗證碼'), '複雜度已通過，錯在 OTP');
   });

@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAppState } from '@/lib/state';
+import TermsConsent from '@/components/legal/terms-consent';
+import { TERMS_VERSION } from '@/lib/legal';
 
 type Mode = 'login' | 'register' | 'reset';
 
@@ -23,6 +26,7 @@ export default function LoginPage() {
   const [cooldown, setCooldown] = useState(0);      // 重新發送倒數（秒）
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');             // 成功/提示訊息（綠字）
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // 發送驗證碼倒數
   useEffect(() => {
@@ -87,12 +91,22 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     if (code.trim().length < 4) { setError('請先輸入簡訊驗證碼'); return; }
+    if (!termsAccepted) { setError('請先閱讀並同意平台規範'); return; }
     setBusy(true);
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'register', phone, password, nickname, code }),
+        body: JSON.stringify({
+          action: 'register',
+          phone,
+          password,
+          nickname,
+          code,
+          ageConfirmed: true,
+          termsAccepted: true,
+          termsVersion: TERMS_VERSION,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) { setError(data.error ?? '註冊失敗'); return; }
@@ -214,9 +228,10 @@ export default function LoginPage() {
                 {otpRow('register')}
                 <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="暱稱" className={inputCls} aria-label="暱稱" />
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼（至少 6 碼）" className={inputCls} aria-label="密碼" />
+                <TermsConsent accepted={termsAccepted} onAcceptedChange={setTermsAccepted} />
                 {info && <p className="text-xs text-green-600 font-semibold">{info}</p>}
                 {error && <p className="text-xs text-red-500 font-semibold">{error}</p>}
-                <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
+                <button type="submit" disabled={busy || !termsAccepted} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
                   {busy ? '註冊中…' : '註冊並開始'}
                 </button>
               </form>
@@ -250,10 +265,10 @@ export default function LoginPage() {
           </button>
 
           <p className="text-xs text-zinc-400 text-center mt-6 leading-relaxed">
-            登入即表示你同意
-            <a href="/legal/terms" className="underline text-zinc-500">服務條款</a>
+            查看
+            <Link href="/legal/terms" className="mx-1 underline text-zinc-500">平台服務條款</Link>
             與
-            <a href="/legal/privacy" className="underline text-zinc-500">隱私權政策</a>
+            <Link href="/legal/privacy" className="mx-1 underline text-zinc-500">隱私權政策</Link>
             <br />本平台限 18 歲以上使用
           </p>
         </div>

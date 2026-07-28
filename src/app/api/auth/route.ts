@@ -7,6 +7,7 @@ import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionF
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
 import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-store';
 import { sendOtpSms, isSmsConfigured } from '@/lib/sms';
+import { registrationConsentError, TERMS_VERSION } from '@/lib/legal';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -131,11 +132,19 @@ export async function POST(req: NextRequest) {
       const pw = String(body.password ?? '');
       if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
       { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: e }, { status: 400 }); }
+      {
+        const e = registrationConsentError(body);
+        if (e) return NextResponse.json({ error: e }, { status: 400 });
+      }
       if (await getAccount(phone)) return NextResponse.json({ error: '此手機已註冊，請直接登入' }, { status: 409 });
       // 驗證簡訊碼（通過即消耗），最後才建立帳號
       const otp = await verifyOtp('register', phone, String(body.code ?? ''));
       if (!otp.ok) return NextResponse.json({ error: otp.reason ?? '驗證碼錯誤' }, { status: 400 });
-      const acc = await createCustomer(phone, pw, body.nickname);
+      const acceptedAt = new Date().toISOString();
+      const acc = await createCustomer(phone, pw, body.nickname, {
+        termsVersion: TERMS_VERSION,
+        acceptedAt,
+      });
       return withSession({ id: acc.userId, role: 'user', tier: acc.tier, nickname: acc.nickname });
     }
 

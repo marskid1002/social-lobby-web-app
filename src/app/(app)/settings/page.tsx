@@ -164,7 +164,7 @@ export default function SettingsPage() {
           <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2">關於</p>
           <div className="bg-white rounded-2xl shadow-card overflow-hidden">
             {[
-              { label: '服務條款', onClick: () => router.push('/legal/terms') },
+              { label: '平台服務條款暨使用規章', onClick: () => router.push('/legal/terms') },
               { label: '隱私權政策', onClick: () => router.push('/legal/privacy') },
               { label: '檢舉問題', onClick: () => showToast('檢舉功能開放中，請先截圖並來信客服') },
             ].map((item, i) => (

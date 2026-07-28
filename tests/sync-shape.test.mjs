@@ -33,7 +33,16 @@ async function registerCustomer(phone) {
   assert.ok(code, 'send-otp 應回傳 devCode（需在本地非生產環境執行）');
   const regRes = await fetch(`${BASE}/api/auth`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'register', phone, password: 'secret123', nickname: 't', code }),
+    body: JSON.stringify({
+      action: 'register',
+      phone,
+      password: 'Secret1!',
+      nickname: 't',
+      code,
+      ageConfirmed: true,
+      termsAccepted: true,
+      termsVersion: '1.0',
+    }),
   });
   const reg = await regRes.json();
   assert.equal(regRes.status, 200, 'register 應成功');

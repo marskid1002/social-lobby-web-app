@@ -22,9 +22,17 @@ export interface Account {
   hash: string | null;      // null = 尚未設定密碼（幹部/管理員首次登入前）
   createdAt: string;
   disabled?: boolean;       // true = 已停用（登入被擋）
+  termsVersion?: string;    // 客戶註冊時同意的平台規範版本
+  termsAcceptedAt?: string; // 由 server 產生的同意時間
+  ageConfirmedAt?: string;  // 由 server 產生的年滿 18 歲確認時間
 }
 
 type AccountsMap = Record<string, Account>; // key -> Account
+
+export interface RegistrationConsentRecord {
+  termsVersion: string;
+  acceptedAt: string;
+}
 
 // 最高權限管理員帳號（後台 /admin 用）；首次登入需 ADMIN_SECRET 啟用
 const ADMIN_ACCOUNT = { code: 'A000', userId: 'u-016', nickname: '管理員' };
@@ -136,7 +144,12 @@ export async function getAccountByUserId(userId: string): Promise<Account | null
 }
 
 // 客戶註冊（手機 + 暱稱 + 密碼），userId 為隨機不可反推值
-export async function createCustomer(phone: string, password: string, nickname: string): Promise<Account> {
+export async function createCustomer(
+  phone: string,
+  password: string,
+  nickname: string,
+  consent?: RegistrationConsentRecord,
+): Promise<Account> {
   const accounts = await readAccounts();
   await ensureManagerAccounts(accounts);
   const key = normalizePhone(phone);
@@ -147,6 +160,11 @@ export async function createCustomer(phone: string, password: string, nickname: 
     nickname: nickname || `用戶${key.slice(-4)}`,
     salt, hash: hashPassword(password, salt),
     createdAt: new Date().toISOString(),
+    ...(consent ? {
+      termsVersion: consent.termsVersion,
+      termsAcceptedAt: consent.acceptedAt,
+      ageConfirmedAt: consent.acceptedAt,
+    } : {}),
   };
   accounts[key] = account;
   await writeAccounts(accounts);
