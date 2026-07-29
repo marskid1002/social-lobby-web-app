@@ -1,0 +1,250 @@
+type Item = { id: string; [key: string]: unknown };
+
+export interface AdminAccountSummary {
+  key: string;
+  role: string;
+  tier: string;
+  userId: string;
+  nickname: string;
+  hasPassword: boolean;
+  disabled: boolean;
+  createdAt: string;
+}
+
+export interface AdminFlowStep {
+  key: 'created' | 'responded' | 'accepted' | 'chat' | 'message';
+  label: string;
+  state: 'done' | 'waiting' | 'error';
+  at?: string;
+}
+
+export interface AdminFlow {
+  requestId: string;
+  creatorId: string;
+  creatorName: string;
+  area: string;
+  requestType: string;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+  responseCount: number;
+  joiningCount: number;
+  chatCount: number;
+  messageCount: number;
+  health: 'healthy' | 'waiting' | 'error';
+  issue: string;
+  steps: AdminFlowStep[];
+}
+
+export interface AdminConversationSummary {
+  key: string;
+  threadId: string;
+  requestId: string | null;
+  participants: string[];
+  participantNames: string[];
+  messageCount: number;
+  lastAt: string;
+  lastPreview: string;
+}
+
+export interface AdminDashboard {
+  overview: {
+    accounts: number;
+    customers: number;
+    managers: number;
+    disabledAccounts: number;
+    openRequests: number;
+    activeChats: number;
+    messages: number;
+    pendingReports: number;
+    brokenFlows: number;
+  };
+  flows: AdminFlow[];
+  conversations: AdminConversationSummary[];
+}
+
+const text = (value: unknown): string =>
+  typeof value === 'string' ? value : '';
+
+const dateMs = (value: unknown): number => {
+  const parsed = Date.parse(text(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const byOldest = (a: Item, b: Item): number =>
+  dateMs(a.createdAt) - dateMs(b.createdAt);
+
+const accountName = (accounts: AdminAccountSummary[], userId: string): string =>
+  accounts.find((account) => account.userId === userId)?.nickname || userId;
+
+export function buildAdminDashboard(input: {
+  accounts: AdminAccountSummary[];
+  reports: Array<{ resolved?: boolean }>;
+  requests: Item[];
+  responses: Item[];
+  invitations: Item[];
+  chatMessages: Item[];
+  now?: number;
+}): AdminDashboard {
+  const now = input.now ?? Date.now();
+  const messagesByRequest = new Map<string, Item[]>();
+  for (const message of input.chatMessages) {
+    const requestId = text(message.requestId);
+    if (!requestId) continue;
+    const list = messagesByRequest.get(requestId) ?? [];
+    list.push(message);
+    messagesByRequest.set(requestId, list);
+  }
+
+  const flows: AdminFlow[] = input.requests.map((request) => {
+    const requestId = request.id;
+    const responses = input.responses
+      .filter((response) => response.requestId === requestId)
+      .sort(byOldest);
+    const joining = responses.filter((response) => response.responseStatus === 'joining');
+    const invitations = input.invitations
+      .filter((invitation) => invitation.requestId === requestId)
+      .sort(byOldest);
+    const accepted = invitations.filter((invitation) => invitation.status === 'accepted');
+    const messages = (messagesByRequest.get(requestId) ?? []).sort(byOldest);
+    const activeAccepted = accepted.filter((invitation) =>
+      invitation.meetupConfirmed !== true
+      && dateMs(invitation.chatExpiresAt) >= now
+    );
+    const acceptedMissingExpiry = accepted.filter((invitation) =>
+      invitation.meetupConfirmed !== true
+      && dateMs(invitation.chatExpiresAt) === 0
+    );
+    const acceptedConfirmed = accepted.filter((invitation) =>
+      invitation.meetupConfirmed === true
+    );
+
+    let health: AdminFlow['health'] = 'waiting';
+    let issue = '等待幹部安排或使用者加入';
+    if (joining.length > 0 && accepted.length === 0) {
+      health = 'error';
+      issue = '已有同意入局紀錄，但聊天室尚未建立';
+    } else if (acceptedMissingExpiry.length > 0) {
+      health = 'error';
+      issue = '聊天室缺少有效期限';
+    } else if (accepted.length > 0 && activeAccepted.length === 0) {
+      health = 'healthy';
+      issue = acceptedConfirmed.length === accepted.length
+        ? '已確認見面'
+        : '聊天室已正常到期';
+    } else if (accepted.length > 0 && messages.length === 0) {
+      issue = '聊天室已建立，尚未有訊息';
+    } else if (messages.length > 0) {
+      health = 'healthy';
+      issue = '流程正常';
+    } else if (responses.length > 0) {
+      issue = '已有回應，等待客戶同意';
+    }
+
+    const responseAt = responses[0]?.createdAt;
+    const acceptedAt = joining[0]?.createdAt;
+    const chatAt = accepted[0]?.respondedAt || accepted[0]?.createdAt;
+    const messageAt = messages[0]?.createdAt;
+    const steps: AdminFlowStep[] = [
+      { key: 'created', label: '客戶發局', state: 'done', at: text(request.createdAt) },
+      {
+        key: 'responded',
+        label: '收到加入／派工',
+        state: responses.length > 0 ? 'done' : 'waiting',
+        at: text(responseAt),
+      },
+      {
+        key: 'accepted',
+        label: '客戶同意入局',
+        state: joining.length > 0 ? 'done' : 'waiting',
+        at: text(acceptedAt),
+      },
+      {
+        key: 'chat',
+        label: '伺服器建立聊天室',
+        state: joining.length > 0 && accepted.length === 0
+          ? 'error'
+          : accepted.length > 0 ? 'done' : 'waiting',
+        at: text(chatAt),
+      },
+      {
+        key: 'message',
+        label: '第一則訊息',
+        state: messages.length > 0 ? 'done' : 'waiting',
+        at: text(messageAt),
+      },
+    ];
+
+    return {
+      requestId,
+      creatorId: text(request.creatorId),
+      creatorName: accountName(input.accounts, text(request.creatorId)),
+      area: text(request.area),
+      requestType: text(request.requestType),
+      status: text(request.status),
+      createdAt: text(request.createdAt),
+      expiresAt: text(request.expiresAt),
+      responseCount: responses.length,
+      joiningCount: joining.length,
+      chatCount: accepted.length,
+      messageCount: messages.length,
+      health,
+      issue,
+      steps,
+    };
+  }).sort((a, b) => dateMs(b.createdAt) - dateMs(a.createdAt));
+
+  const conversationGroups = new Map<string, Item[]>();
+  for (const message of input.chatMessages) {
+    const threadId = text(message.threadId);
+    if (!threadId) continue;
+    const requestId = text(message.requestId);
+    const key = `${threadId}\u0000${requestId}`;
+    const list = conversationGroups.get(key) ?? [];
+    list.push(message);
+    conversationGroups.set(key, list);
+  }
+  const conversations = [...conversationGroups.entries()].map(([key, messages]) => {
+    messages.sort(byOldest);
+    const last = messages[messages.length - 1];
+    const participants = [...new Set(messages.map((message) => text(message.senderId)).filter(Boolean))];
+    const separator = key.indexOf('\u0000');
+    const threadId = key.slice(0, separator);
+    const requestId = key.slice(separator + 1) || null;
+    return {
+      key,
+      threadId,
+      requestId,
+      participants,
+      participantNames: participants.map((userId) => accountName(input.accounts, userId)),
+      messageCount: messages.length,
+      lastAt: text(last?.createdAt),
+      // 首頁只提供摘要 metadata；實際文字與圖片 URL 必須等 A000 點開後再取。
+      lastPreview: last?.imageUrl ? '[照片]' : '文字訊息',
+    };
+  }).sort((a, b) => dateMs(b.lastAt) - dateMs(a.lastAt));
+
+  const activeChats = input.invitations.filter((invitation) =>
+    invitation.status === 'accepted'
+    && invitation.meetupConfirmed !== true
+    && dateMs(invitation.chatExpiresAt) >= now
+  ).length;
+
+  return {
+    overview: {
+      accounts: input.accounts.length,
+      customers: input.accounts.filter((account) => account.role === 'user').length,
+      managers: input.accounts.filter((account) => account.role === 'manager').length,
+      disabledAccounts: input.accounts.filter((account) => account.disabled).length,
+      openRequests: input.requests.filter((request) =>
+        request.status === 'open' && dateMs(request.expiresAt) >= now
+      ).length,
+      activeChats,
+      messages: input.chatMessages.length,
+      pendingReports: input.reports.filter((report) => !report.resolved).length,
+      brokenFlows: flows.filter((flow) => flow.health === 'error').length,
+    },
+    flows,
+    conversations,
+  };
+}
