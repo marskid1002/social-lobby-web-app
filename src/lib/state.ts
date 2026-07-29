@@ -741,6 +741,28 @@ export function useAppState() {
     return newReq;
   }, []);
 
+  const updateRequest = useCallback((
+    requestId: string,
+    changes: Pick<Request, 'area' | 'requestType' | 'peopleCount' | 'note'>,
+  ) => {
+    let updated = false;
+    setState((prev) => {
+      const target = prev.requests.find((request) => request.id === requestId);
+      if (!target || target.creatorId !== prev.currentUserId || target.status !== 'open') {
+        return prev;
+      }
+      updated = true;
+      return {
+        ...prev,
+        requests: prev.requests.map((request) => {
+          if (request.id !== requestId) return request;
+          return { ...request, ...changes };
+        }),
+      };
+    });
+    return updated;
+  }, []);
+
   const respondToRequest = useCallback((requestId: string, note?: string) => {
     const newResponse: Response = {
       id: `rr-${Date.now()}`,
@@ -1409,6 +1431,7 @@ export function useAppState() {
     setArea,
     updateUser,
     postRequest,
+    updateRequest,
     respondToRequest,
     sendInvite,
     respondToInvite,

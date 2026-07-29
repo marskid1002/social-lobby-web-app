@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Minus, Plus } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { TAIPEI_AREAS } from '@/lib/mock';
-import type { RequestType } from '@/lib/mock';
+import type { Request, RequestType } from '@/lib/mock';
 import { useRouter } from 'next/navigation';
 
 const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
@@ -18,11 +18,14 @@ const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
 interface Props {
   open: boolean;
   onClose: () => void;
+  request?: Request;
+  onSaved?: () => void;
 }
 
-export function PostRequestSheet({ open, onClose }: Props) {
-  const { currentUser, postRequest } = useAppState();
+export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
+  const { currentUser, postRequest, updateRequest } = useAppState();
   const router = useRouter();
+  const isEditing = Boolean(request);
 
   const maxCount = 20; // 發局免費、不分等級：可加入人數 1~20
 
@@ -32,18 +35,37 @@ export function PostRequestSheet({ open, onClose }: Props) {
   const [note, setNote] = useState('');
   const [toast, setToast] = useState(false);
 
+  useEffect(() => {
+    if (!open) return;
+    setArea(request?.area ?? currentUser?.defaultArea ?? '信義區');
+    setType(request?.requestType ?? null);
+    setCount(request?.peopleCount ?? 1);
+    setNote(request?.note ?? '');
+  }, [currentUser?.defaultArea, open, request]);
+
   function handleSubmit() {
     if (!type) return;
     if (currentUser?.tier === 'guest') return; // 訪客不可發局（伺服器也會擋）
-    postRequest({ area, requestType: type, peopleCount: count, note });
+    if (request) {
+      const updated = updateRequest(request.id, {
+        area,
+        requestType: type,
+        peopleCount: count,
+        note,
+      });
+      if (!updated) return;
+    } else {
+      postRequest({ area, requestType: type, peopleCount: count, note });
+    }
     setToast(true);
     setTimeout(() => {
       setToast(false);
       onClose();
+      onSaved?.();
       setType(null);
       setNote('');
       setCount(Math.min(1, maxCount));
-      router.push('/inbox');
+      if (!isEditing) router.push('/inbox');
     }, 1000);
   }
 
@@ -76,7 +98,7 @@ export function PostRequestSheet({ open, onClose }: Props) {
 
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-brand-ink">發布邀請</h2>
+          <h2 className="text-lg font-semibold text-brand-ink">{isEditing ? '編輯邀請' : '發布邀請'}</h2>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-brand-snow" aria-label="關閉">
             <X className="w-5 h-5 text-zinc-500" strokeWidth={1.75} />
           </button>
@@ -155,7 +177,9 @@ export function PostRequestSheet({ open, onClose }: Props) {
               <p className="text-xs text-zinc-400 text-right">{note.length}/200</p>
             </div>
 
-            <p className="text-xs text-zinc-400 text-center">邀請有效時間：2 小時</p>
+            <p className="text-xs text-zinc-400 text-center">
+              {isEditing ? '原本的有效期限不會因編輯而延長' : '邀請有效時間：2 小時'}
+            </p>
 
             {/* Submit */}
             <button
@@ -163,14 +187,14 @@ export function PostRequestSheet({ open, onClose }: Props) {
               disabled={!type}
               className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
             >
-              發送邀請
+              {isEditing ? '儲存變更' : '發送邀請'}
             </button>
           </div>
       </div>
 
       {toast && (
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50">
-          邀請已發送
+          {isEditing ? '邀請已更新' : '邀請已發送'}
         </div>
       )}
     </div>

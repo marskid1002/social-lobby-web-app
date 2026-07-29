@@ -49,12 +49,18 @@ test('presence/photos：本人 escort 可寫；他人/未知/removed/非 manager
 });
 
 // ══ requests（M5）══
-test('requests：creator-only、update 只允許 status、凍結身份/內容、takeover 丟棄', () => {
+test('requests：creator-only、發局者可編輯白名單欄位、凍結身份/時間、takeover 丟棄', () => {
   assert.deepEqual(ids(run({ requests: [{ id: 'r1', creatorId: 'A', createdAt: CA }] }, usr('A')).requests), ['r1']);
   assert.deepEqual(run({ requests: [{ id: 'r1', creatorId: 'B', createdAt: CA }] }, usr('A')).requests, []);
-  const cols = { requests: [{ id: 'r1', creatorId: 'A', createdAt: CA, area: '信義區', peopleCount: 2, status: 'open' }] };
-  const m = one(run({ requests: [{ id: 'r1', creatorId: 'HACK', createdAt: 'HACK', peopleCount: 99, status: 'closed' }] }, usr('A'), cols).requests);
-  assert.equal(m.status, 'closed'); assert.equal(m.creatorId, 'A'); assert.equal(m.createdAt, CA); assert.equal(m.peopleCount, 2);
+  const cols = { requests: [{ id: 'r1', creatorId: 'A', createdAt: CA, expiresAt: CA, area: '信義區', requestType: 'other', peopleCount: 2, note: '原文', status: 'open' }] };
+  const m = one(run({ requests: [{ id: 'r1', creatorId: 'HACK', createdAt: 'HACK', expiresAt: 'HACK', area: '大安區', requestType: 'drinking', peopleCount: 4, note: '更新', status: 'closed' }] }, usr('A'), cols).requests);
+  assert.equal(m.status, 'closed'); assert.equal(m.creatorId, 'A'); assert.equal(m.createdAt, CA); assert.equal(m.expiresAt, CA);
+  assert.equal(m.area, '大安區'); assert.equal(m.requestType, 'drinking'); assert.equal(m.peopleCount, 4); assert.equal(m.note, '更新');
+  const invalid = one(run({ requests: [{ id: 'r1', area: '', requestType: 'hack', peopleCount: 99, note: 'x'.repeat(201) }] }, usr('A'), cols).requests);
+  assert.equal(invalid.area, '信義區'); assert.equal(invalid.requestType, 'other'); assert.equal(invalid.peopleCount, 2); assert.equal(invalid.note, '原文');
+  const closedCols = { requests: [{ ...cols.requests[0], status: 'closed' }] };
+  const closed = one(run({ requests: [{ id: 'r1', area: '大安區', note: '不可更新' }] }, usr('A'), closedCols).requests);
+  assert.equal(closed.area, '信義區'); assert.equal(closed.note, '原文');
   assert.deepEqual(run({ requests: [{ id: 'r1', creatorId: 'B', status: 'closed' }] }, usr('B'), cols).requests, []);
 });
 

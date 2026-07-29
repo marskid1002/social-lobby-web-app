@@ -43,6 +43,7 @@ const s = (v: unknown): string | undefined => (typeof v === 'string' ? v : undef
 const asArr = (v: unknown): Item[] => (Array.isArray(v) ? (v.filter(isObj) as Item[]) : []);
 
 const REQUEST_STATUSES = new Set(['open', 'closed']);
+const REQUEST_TYPES = new Set(['after_party', 'drinking', 'fill_spot', 'last_minute', 'other']);
 const UPDATE_EVENTTYPES = new Set(['request_posted', 'response_received', 'invite_received', 'invite_accepted']);
 
 // response 狀態轉移矩陣（依 state.ts 實際流程；[from,to]）
@@ -86,7 +87,8 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
     if (k in out) out[k] = asArr(out[k]).filter((it) => { const id = s(it.id); return !!id && isManager && managed.has(id); });
   }
 
-  // ── 3) requests：create creatorId===me；update 以 server existing.creatorId===me，只允許 status ──
+  // ── 3) requests：create creatorId===me；update 以 server existing.creatorId===me，
+  // 凍結身份/時間/統計，只允許狀態與發局者可編輯的內容欄位。
   if ('requests' in out) {
     out.requests = asArr(out.requests).flatMap((r) => {
       const id = s(r.id); if (!id) return [];
@@ -95,6 +97,20 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         if (s(existing.creatorId) !== me) return [];
         const merged: Item = { ...existing };
         if (typeof r.status === 'string' && REQUEST_STATUSES.has(r.status)) merged.status = r.status;
+        if (s(existing.status) === 'open') {
+          if (typeof r.area === 'string' && r.area.trim().length > 0 && r.area.length <= 40) {
+            merged.area = r.area.trim();
+          }
+          if (typeof r.requestType === 'string' && REQUEST_TYPES.has(r.requestType)) {
+            merged.requestType = r.requestType;
+          }
+          if (typeof r.peopleCount === 'number' && Number.isInteger(r.peopleCount) && r.peopleCount >= 1 && r.peopleCount <= 20) {
+            merged.peopleCount = r.peopleCount;
+          }
+          if (typeof r.note === 'string' && r.note.length <= 200) {
+            merged.note = r.note;
+          }
+        }
         return [merged];
       }
       if (s(r.creatorId) !== me) return [];

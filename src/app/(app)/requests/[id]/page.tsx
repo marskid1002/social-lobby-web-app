@@ -2,8 +2,9 @@
 
 import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Clock, MapPin, Users, Share2 } from 'lucide-react';
+import { ArrowLeft, Clock, MapPin, Users, Share2, Pencil } from 'lucide-react';
 import { useAppState } from '@/lib/state';
+import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 
@@ -43,6 +44,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   } = useAppState();
   const [toast, setToast] = useState('');
   const [acceptingResponseId, setAcceptingResponseId] = useState<string | null>(null);
+  const [showEditSheet, setShowEditSheet] = useState(false);
 
   const rejectTargetId  = useRef<string | null>(null);
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
@@ -172,6 +174,15 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           <ArrowLeft className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
         </button>
         <h1 className="flex-1 text-base font-semibold text-brand-ink">邀請詳情</h1>
+        {isCreator && request.status === 'open' && (
+          <button
+            onClick={() => setShowEditSheet(true)}
+            className="p-1.5 rounded-full hover:bg-brand-ice"
+            aria-label="編輯邀請"
+          >
+            <Pencil className="w-5 h-5 text-zinc-500" strokeWidth={1.75} />
+          </button>
+        )}
         <button onClick={handleShare} className="p-1.5 rounded-full hover:bg-brand-ice" aria-label="分享">
           <Share2 className="w-5 h-5 text-zinc-500" strokeWidth={1.75} />
         </button>
@@ -360,6 +371,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </div>
         )}
       </div>
+
+      <PostRequestSheet
+        open={showEditSheet}
+        onClose={() => setShowEditSheet(false)}
+        request={isCreator ? request : undefined}
+        onSaved={() => showToast('邀請資料已更新')}
+      />
 
       {/* Sticky CTA */}
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-brand-lavender px-4 py-3 pb-safe z-40">
