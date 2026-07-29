@@ -7,6 +7,7 @@ export interface SessionPayload {
   userId: string;
   role: 'user' | 'manager' | 'guest' | 'admin';
   tier: string;
+  sessionVersion?: number;
 }
 
 // 是否為正式生產環境
@@ -46,7 +47,12 @@ export async function verifySession(token: string | undefined | null): Promise<S
   try {
     const { payload } = await jwtVerify(token, getSecret());
     if (!payload.userId || !payload.role) return null;
-    return { userId: String(payload.userId), role: payload.role as SessionPayload['role'], tier: String(payload.tier ?? 'free') };
+    return {
+      userId: String(payload.userId),
+      role: payload.role as SessionPayload['role'],
+      tier: String(payload.tier ?? 'free'),
+      sessionVersion: Number(payload.sessionVersion ?? 0),
+    };
   } catch {
     return null;
   }

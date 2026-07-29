@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getShared, mergeShared, clearShared, getCollection, getResetMarks, SHARED_KEYS, type SharedState, type SharedKey } from '@/lib/sync-store';
-import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
+import { type SessionPayload } from '@/lib/session';
 import { requireActiveSession } from '@/lib/active-session';
 import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
 import { buildChatAccessIndex, canReadChatThread } from '@/lib/chat-authz';
 import { getManagerUserIds } from '@/lib/auth-store';
+import { recordAcceptedSyncWrites } from '@/lib/flow-trace';
 
 export const dynamic = 'force-dynamic';
 
@@ -212,8 +213,9 @@ export function validatePatchShape(rawPatch: unknown): ShapeResult {
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getSessionFromRequest(req);
-    if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const auth = await requireActiveSession(req);
+    if (!auth.ok) return auth.response;
+    const session = auth.session;
     const shared = await getShared();
     const resetAt = await getResetMarks();
     return NextResponse.json({ ...scopeForSession(shared, session), resetAt }, { headers: { 'Cache-Control': 'no-store' } });
@@ -271,6 +273,14 @@ export async function POST(req: NextRequest) {
     const authzPatch = authorizeWrites(patch, session, buildIndex(cols, managerUserIds));
 
     const merged = await mergeShared(authzPatch);
+    await recordAcceptedSyncWrites({
+      patch: authzPatch,
+      existing: cols,
+      session,
+    }).catch((error) => {
+      // 診斷紀錄不可反過來讓主要流程失敗。
+      console.error('[flow trace sync]', error instanceof Error ? error.name : 'UnknownError');
+    });
     const resetAt = await getResetMarks();
     return NextResponse.json({ ...scopeForSession(merged, session), resetAt });
   } catch (e) {

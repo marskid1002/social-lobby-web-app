@@ -11,6 +11,7 @@ import { NotificationBanner } from '@/components/NotificationBanner';
 import { SyncErrorToast } from '@/components/SyncErrorToast';
 import { VersionWatcher } from '@/components/VersionWatcher';
 import { PullToRefresh } from '@/components/PullToRefresh';
+import { IssueReporter } from '@/components/IssueReporter';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { Suspense } from 'react';
@@ -116,6 +117,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           onOpenDrawer={() => setDrawerOpen(true)}
         />
       )}
+      {currentUser?.role === 'admin' && (isUserProfile || isStore || isChat) && (
+        <button
+          type="button"
+          onClick={() => router.push('/admin')}
+          className="fixed right-[max(12px,calc(50%-203px))] top-3 z-[80] rounded-full bg-zinc-900 px-3 py-2 text-[11px] font-bold text-white shadow-lg"
+          aria-label="返回管理後台"
+        >
+          返回後台
+        </button>
+      )}
 
       {/* Acting-as banner: shown when manager has switched into a roster girl */}
       {isActingAsRosterGirl && (
@@ -151,6 +162,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <SyncErrorToast />
       <VersionWatcher />
       <PullToRefresh />
+      <Suspense fallback={null}>
+        <IssueReporter />
+      </Suspense>
     </div>
   );
 }

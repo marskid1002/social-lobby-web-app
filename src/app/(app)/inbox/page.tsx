@@ -17,6 +17,7 @@ export default function InboxPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedMatchId = searchParams.get('match');
+  const openedFromPush = searchParams.get('src') === 'push';
   const [matchRefreshAttempts, setMatchRefreshAttempts] = useState(0);
   const requestedMatch = requestedMatchId
     ? state.invitations.find((invitation) => invitation.id === requestedMatchId && invitation.status === 'accepted')
@@ -39,10 +40,10 @@ export default function InboxPage() {
       : requestedMatch.fromUserId;
     if (!otherUserId) return;
     const requestQuery = requestedMatch.requestId
-      ? `?req=${encodeURIComponent(requestedMatch.requestId)}`
-      : '';
+      ? `?req=${encodeURIComponent(requestedMatch.requestId)}${openedFromPush ? '&src=push' : ''}`
+      : openedFromPush ? '?src=push' : '';
     router.replace(`/chat/${encodeURIComponent(getThreadId(currentUser.id, otherUserId))}${requestQuery}`);
-  }, [requestedMatchId, requestedMatch, currentUser, router]);
+  }, [requestedMatchId, requestedMatch, currentUser, router, openedFromPush]);
 
   const role = currentUser?.role;
   const isEscort = role === 'escort';

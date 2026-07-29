@@ -171,13 +171,13 @@ test('Route：正常啟用帳號的請求不被 F 擋（非 401/403）', { skip 
   });
 });
 
-test('Route：/api/sync GET 不因 F 新增帳號查詢（disabled 帳號仍可讀）', { skip }, async () => {
+test('Route：/api/sync GET 也拒絕 disabled 帳號，避免舊 JWT 繼續讀取私人資料', { skip }, async () => {
   assert.equal(await authStore.setAccountDisabled('A001', true), true);
   try {
     const { GET } = await import('@/app/api/sync/route');
     const token = await signSession(managerSession('u-018'));
     const res = await GET(getReq('http://x/api/sync', token));
-    assert.equal(res.status, 200, 'GET 讀取不受 F 影響（F 只擋寫入）');
+    assert.equal(res.status, 403);
   } finally {
     await authStore.setAccountDisabled('A001', false);
   }

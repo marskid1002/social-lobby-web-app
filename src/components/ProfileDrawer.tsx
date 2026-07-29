@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { X, User, ClipboardList, ShieldOff, FileText, Settings, LogOut, ChevronRight, Bell } from 'lucide-react';
+import { X, User, ClipboardList, ShieldOff, ShieldCheck, FileText, Settings, LogOut, ChevronRight, Bell } from 'lucide-react';
 import { useAppState, resetState } from '@/lib/state';
 import { useNotificationPermission } from './PushManager';
 import { toast } from 'sonner';
@@ -120,6 +120,9 @@ export function ProfileDrawer({ open, onClose }: Props) {
             {currentUser?.tier !== 'guest' && (
             <div className="bg-white rounded-2xl shadow-card overflow-hidden">
               {[
+                ...(currentUser?.role === 'admin'
+                  ? [{ icon: ShieldCheck, label: '返回管理後台', path: '/admin' }]
+                  : []),
                 { icon: User, label: '我的個人檔案', path: '/me' },
                 { icon: ClipboardList, label: '我的需求', path: '/inbox' },
                 { icon: ShieldOff, label: '封鎖名單', path: '/blocked' },

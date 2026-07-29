@@ -4,6 +4,7 @@ import { getCollection, mergeShared } from '@/lib/sync-store';
 import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
 import { canonicalThreadId } from '@/lib/chat-authz';
 import { sendWebPushToUsers } from '@/lib/push-service';
+import { getOrCreateTraceId, recordFlowTrace } from '@/lib/flow-trace-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,9 +68,24 @@ export async function POST(req: NextRequest) {
     }
 
     await mergeShared({ chatMessages: [message] });
+    const messageRequestId = typeof body.requestId === 'string' ? body.requestId : null;
+    const traceId = messageRequestId
+      ? await getOrCreateTraceId(messageRequestId)
+      : `tr-${crypto.randomUUID()}`;
+    await recordFlowTrace({
+      traceId,
+      eventType: 'message.stored',
+      actorUserId: auth.session.userId,
+      requestId: messageRequestId ?? undefined,
+      threadId: body.threadId,
+      entityId: message.id,
+      detail: typeof body.imageUrl === 'string' ? 'image' : 'text',
+      dedupeKey: `message.stored:${message.id}`,
+    }).catch((error) => {
+      console.error('[flow trace message]', error instanceof Error ? error.name : 'UnknownError');
+    });
 
     // Only the server decides recipients, and only after the message is stored.
-    const messageRequestId = typeof body.requestId === 'string' ? body.requestId : null;
     const recipients = new Set<string>();
     for (const invitation of invitations) {
       if (invitation.status !== 'accepted') continue;
@@ -91,6 +107,10 @@ export async function POST(req: NextRequest) {
     }
     recipients.delete(auth.session.userId);
 
+    let pushResult: { sent: number; total?: number; skipped?: string } = {
+      sent: 0,
+      skipped: 'no recipients',
+    };
     if (recipients.size > 0) {
       const preview = typeof body.imageUrl === 'string'
         ? '傳送了一張照片'
@@ -98,19 +118,39 @@ export async function POST(req: NextRequest) {
           ? `${body.text.slice(0, 40)}…`
           : body.text;
       const chatUrl = `/chat/${encodeURIComponent(body.threadId)}${
-        messageRequestId ? `?req=${encodeURIComponent(messageRequestId)}` : ''
+        messageRequestId
+          ? `?req=${encodeURIComponent(messageRequestId)}&src=push`
+          : '?src=push'
       }`;
-      await sendWebPushToUsers(
+      pushResult = await sendWebPushToUsers(
         [...recipients],
         `${auth.account?.nickname ?? '對方'} 傳來訊息`,
         preview,
         chatUrl,
       ).catch((error) => {
         console.error('[chat message push]', error instanceof Error ? error.name : 'UnknownError');
+        return { sent: 0, total: 0, skipped: 'push error' };
       });
     }
+    await recordFlowTrace({
+      traceId,
+      eventType: 'message.push',
+      outcome: pushResult.sent > 0 ? 'success' : 'skipped',
+      actorUserId: auth.session.userId,
+      requestId: messageRequestId ?? undefined,
+      threadId: body.threadId,
+      entityId: message.id,
+      code: pushResult.skipped,
+      detail: `sent=${pushResult.sent};total=${pushResult.total ?? 0}`,
+      dedupeKey: `message.push:${message.id}`,
+    }).catch((error) => {
+      console.error('[flow trace message push]', error instanceof Error ? error.name : 'UnknownError');
+    });
 
-    return NextResponse.json({ ok: true, message }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(
+      { ok: true, message, traceId },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (error) {
     console.error('[chat message]', error instanceof Error ? error.name : 'UnknownError');
     return NextResponse.json({ error: 'server error' }, { status: 500 });

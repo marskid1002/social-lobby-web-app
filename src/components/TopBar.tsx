@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import Link from 'next/link';
-import { Bell } from 'lucide-react';
+import { Bell, ShieldCheck } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { DemoUserSwitcher } from './DemoUserSwitcher';
 
@@ -72,6 +72,16 @@ export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Prop
         </div>
 
         {/* Bell */}
+        {currentUser?.role === 'admin' && (
+          <Link
+            href="/admin"
+            className="flex shrink-0 items-center gap-1 rounded-full bg-zinc-900 px-3 py-2 text-[11px] font-bold text-white"
+            aria-label="返回管理後台"
+          >
+            <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+            後台
+          </Link>
+        )}
         <Link href="/inbox" className="relative shrink-0 p-1.5 rounded-full hover:bg-brand-ice transition-colors" aria-label="通知">
           <Bell className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
           {unreadCount > 0 && (

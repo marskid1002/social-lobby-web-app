@@ -10,6 +10,9 @@ export function SyncErrorToast() {
 
   useEffect(() => {
     return onSyncError((raw) => {
+      try {
+        window.sessionStorage.setItem('sl:last-sync-error', String(raw).slice(0, 160));
+      } catch {}
       // 訪客/唯讀被拒 → 給友善說明；其餘保留診斷字串（含狀態碼/集合名）方便回報
       const friendly = /guest is read-only|唯讀|read-only/i.test(raw)
         ? '訪客無法儲存資料，請先登入或註冊才能進行此操作'

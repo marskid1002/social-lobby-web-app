@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest } from '@/lib/session';
 import { requireActiveSession } from '@/lib/active-session';
 import {
   createSubscriptionCheckout, handleBillingWebhook, getSubscription,
@@ -10,9 +9,10 @@ export const dynamic = 'force-dynamic';
 
 // GET：查詢目前訂閱狀態
 export async function GET(req: NextRequest) {
-  const session = await getSessionFromRequest(req);
-  if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  const sub = await getSubscription(session.userId);
+  const auth = await requireActiveSession(req);
+  if (!auth.ok) return auth.response;
+  if (auth.isGuest) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const sub = await getSubscription(auth.session.userId);
   return NextResponse.json({ billingEnabled: isBillingEnabled(), subscription: sub });
 }
 

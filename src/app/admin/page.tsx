@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation';
 
 type Account = {
   key: string;
+  accountRef: string;
   role: 'user' | 'manager' | 'admin';
   tier: string;
   userId: string;
   nickname: string;
   hasPassword: boolean;
   disabled: boolean;
+  archived?: boolean;
+  hasActivationCode?: boolean;
+  activationCreatedAt?: string;
   createdAt: string;
 };
 
@@ -20,6 +24,20 @@ type Report = {
   targetId: string;
   targetName?: string;
   reason: string;
+  createdAt: string;
+  resolved: boolean;
+};
+
+type IssueReport = {
+  id: string;
+  reporterId: string;
+  description: string;
+  page: string;
+  requestId?: string;
+  threadId?: string;
+  traceId?: string;
+  lastErrorCode?: string;
+  userAgent: string;
   createdAt: string;
   resolved: boolean;
 };
@@ -77,6 +95,27 @@ type AuditRecord = {
   createdAt: string;
 };
 
+type TraceEvent = {
+  id: string;
+  traceId: string;
+  eventType: string;
+  outcome: 'success' | 'failure' | 'skipped';
+  createdAt: string;
+  actorUserId?: string;
+  requestId?: string;
+  threadId?: string;
+  entityId?: string;
+  code?: string;
+  detail?: string;
+};
+
+type DeviceSummary = {
+  userId: string;
+  count: number;
+  lastSeenAt?: string;
+  userAgents: string[];
+};
+
 type SystemStatus = {
   ready: boolean;
   redisConfigured: boolean;
@@ -110,6 +149,9 @@ type DashboardData = {
   };
   system: SystemStatus;
   auditLogs: AuditRecord[];
+  traceEvents: TraceEvent[];
+  issues: IssueReport[];
+  devices: DeviceSummary[];
 };
 
 type Tab = 'overview' | 'flows' | 'accounts' | 'reports' | 'chats' | 'system' | 'danger';
@@ -145,9 +187,25 @@ const ACTION_LABEL: Record<string, string> = {
   delete: '刪除帳號',
   'resolve-report': '完成檢舉',
   'reopen-report': '重開檢舉',
+  'resolve-issue': '完成問題回報',
+  'reopen-issue': '重開問題回報',
   'clear-shared': '清除局與聊天資料',
   'reset-all-managers': '清空所有幹部密碼',
   'delete-all-customers': '刪除所有客戶',
+};
+
+const TRACE_LABEL: Record<string, string> = {
+  'request.created': '客戶發局已儲存',
+  'response.created': '使用者回應已儲存',
+  'dispatch.created': '幹部派工已儲存',
+  'match.accepted': '客戶同意入局',
+  'chat.created': '聊天室已建立',
+  'chat.push': '聊天室通知',
+  'notification.opened': '通知連結已開啟',
+  'chat.entered': '已進入聊天室',
+  'message.stored': '訊息已儲存',
+  'message.push': '訊息通知',
+  'issue.reported': '問題已回報',
 };
 
 const fmtTime = (iso?: string) => {
@@ -189,7 +247,10 @@ export default function AdminPage() {
   const [chatMessages, setChatMessages] = useState<Record<string, ConversationMessage[]>>({});
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const [confirmText, setConfirmText] = useState('');
-  const [tempPassword, setTempPassword] = useState<{ key: string; value: string } | null>(null);
+  const [oneTimeSecret, setOneTimeSecret] = useState<{ key: string; value: string; label: string } | null>(null);
+  const [newManagerName, setNewManagerName] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState('');
 
   const showToast = (message: string) => {
     setToast(message);
@@ -206,14 +267,29 @@ export default function AdminPage() {
     }
     if (!response.ok) {
       setError('後台資料載入失敗');
-      return;
+      return false;
     }
     setData(await response.json() as DashboardData);
+    setLastRefreshedAt(new Date().toISOString());
+    return true;
   }, []);
 
   useEffect(() => {
     load().catch(() => setError('後台資料載入失敗'));
   }, [load]);
+
+  async function refreshDashboard() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const ok = await load();
+      if (ok) showToast('後台資料已更新');
+    } catch {
+      showToast('重新整理失敗，請確認網路後再試');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const accountName = useCallback((userId: string) =>
     data?.accounts.find((account) => account.userId === userId)?.nickname || userId,
@@ -236,6 +312,11 @@ export default function AdminPage() {
     return data.dashboard.flows.filter((flow) =>
       [flow.requestId, flow.creatorName, flow.creatorId, flow.area, flow.issue]
         .some((value) => value.toLowerCase().includes(query))
+      || data.traceEvents.some((event) =>
+        event.requestId === flow.requestId
+        && [event.traceId, event.threadId, event.actorUserId, event.entityId, event.code]
+          .some((value) => value?.toLowerCase().includes(query))
+      )
     );
   }, [data, search]);
 
@@ -254,9 +335,15 @@ export default function AdminPage() {
 
   async function runAction(
     action: string,
-    input: { account?: string; reportId?: string; confirmation?: string } = {},
+    input: {
+      account?: string;
+      reportId?: string;
+      issueId?: string;
+      confirmation?: string;
+      nickname?: string;
+    } = {},
   ) {
-    setBusy(`${action}:${input.account ?? input.reportId ?? ''}`);
+    setBusy(`${action}:${input.account ?? input.reportId ?? input.issueId ?? ''}`);
     try {
       const response = await fetch('/api/admin', {
         method: 'POST',
@@ -268,13 +355,17 @@ export default function AdminPage() {
         error?: string;
         count?: number;
         tempPassword?: string;
+        activationCode?: string;
+        account?: string;
       };
       if (!response.ok || !result.ok) {
         showToast(result.error || '操作失敗');
         return false;
       }
       if (result.tempPassword && input.account) {
-        setTempPassword({ key: input.account, value: result.tempPassword });
+        setOneTimeSecret({ key: input.account, value: result.tempPassword, label: '臨時密碼' });
+      } else if (result.activationCode && result.account) {
+        setOneTimeSecret({ key: result.account, value: result.activationCode, label: '一次性啟用碼' });
       } else if (typeof result.count === 'number') {
         showToast(`已完成，共處理 ${result.count} 筆`);
       } else {
@@ -363,14 +454,18 @@ export default function AdminPage() {
       <header className="flex h-16 items-center justify-between border-b border-zinc-200 bg-white px-4 md:px-6">
         <div>
           <p className="text-lg font-bold">Social Lobby 管理後台</p>
-          <p className="text-[11px] text-zinc-400">A000 · 正式營運與流程診斷</p>
+          <p className="text-[11px] text-zinc-400">
+            A000 · 正式營運與流程診斷
+            {lastRefreshedAt && ` · 更新於 ${fmtTime(lastRefreshedAt)}`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => load()}
-            className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-semibold hover:bg-zinc-50"
+            disabled={refreshing}
+            onClick={refreshDashboard}
+            className="rounded-xl border border-zinc-200 px-3 py-2 text-xs font-semibold hover:bg-zinc-50 disabled:cursor-wait disabled:opacity-60"
           >
-            重新整理
+            {refreshing ? '整理中…' : '重新整理'}
           </button>
           <button
             onClick={() => router.push('/lobby/explore')}
@@ -473,16 +568,20 @@ export default function AdminPage() {
             {tab === 'flows' && (
               <section>
                 <h1 className="text-2xl font-bold">流程診斷</h1>
-                <p className="mt-1 text-sm text-zinc-500">從發局、派工、同意、聊天室到第一則訊息逐步檢查。</p>
+                <p className="mt-1 text-sm text-zinc-500">伺服器真實事件時間軸，搭配既有資料檢查卡住的步驟。</p>
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="搜尋局編號、客戶、地區或錯誤原因"
+                  placeholder="搜尋 traceId、局、聊天室、帳號、地區或錯誤原因"
                   className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-sky-400"
                 />
                 <div className="mt-4 space-y-3">
                   {filteredFlows.map((flow) => {
                     const isOpen = flowOpen === flow.requestId;
+                    const traceEvents = data.traceEvents
+                      .filter((event) => event.requestId === flow.requestId)
+                      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+                    const traceId = traceEvents[0]?.traceId;
                     return (
                       <div key={flow.requestId} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
                         <button
@@ -511,6 +610,7 @@ export default function AdminPage() {
                           <div className="border-t border-zinc-100 bg-zinc-50 p-4">
                             <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2 lg:grid-cols-4">
                               <p>局編號：<span className="font-mono text-zinc-800">{flow.requestId}</span></p>
+                              <p>Trace：<span className="font-mono text-zinc-800">{traceId ?? '尚無真實紀錄'}</span></p>
                               <p>狀態：<span className="text-zinc-800">{flow.status}</span></p>
                               <p>回應／同意：<span className="text-zinc-800">{flow.responseCount} / {flow.joiningCount}</span></p>
                               <p>聊天室／訊息：<span className="text-zinc-800">{flow.chatCount} / {flow.messageCount}</span></p>
@@ -531,6 +631,31 @@ export default function AdminPage() {
                                 </div>
                               ))}
                             </div>
+                            <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
+                              <p className="text-xs font-bold text-zinc-700">伺服器事件時間軸</p>
+                              {traceEvents.length === 0 ? (
+                                <p className="mt-2 text-xs text-zinc-400">這筆局建立於追蹤功能上線前，尚無事件紀錄。</p>
+                              ) : (
+                                <div className="mt-2 space-y-2">
+                                  {traceEvents.map((event) => (
+                                    <div key={event.id} className="flex flex-col gap-1 border-l-2 border-zinc-200 pl-3 text-xs sm:flex-row sm:items-center">
+                                      <span className={`font-bold ${
+                                        event.outcome === 'failure'
+                                          ? 'text-red-600'
+                                          : event.outcome === 'skipped' ? 'text-amber-600' : 'text-emerald-600'
+                                      }`}>
+                                        {TRACE_LABEL[event.eventType] ?? event.eventType}
+                                      </span>
+                                      <span className="text-zinc-400">{fmtTime(event.createdAt)}</span>
+                                      {event.actorUserId && <span className="text-zinc-500">操作者：{accountName(event.actorUserId)}</span>}
+                                      {event.threadId && <span className="font-mono text-zinc-400">{event.threadId}</span>}
+                                      {event.code && <span className="text-amber-600">{event.code}</span>}
+                                      {event.detail && <span className="text-zinc-400">{event.detail}</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -547,6 +672,28 @@ export default function AdminPage() {
               <section>
                 <h1 className="text-2xl font-bold">帳號管理</h1>
                 <p className="mt-1 text-sm text-zinc-500">A000、幹部與客戶帳號集中管理。</p>
+                <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                  <p className="text-sm font-bold text-sky-900">新增幹部帳號</p>
+                  <p className="mt-1 text-xs text-sky-700">帳號由伺服器配置；一次性啟用碼只顯示一次。</p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={newManagerName}
+                      onChange={(event) => setNewManagerName(event.target.value.slice(0, 60))}
+                      placeholder="幹部顯示名稱"
+                      className="min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"
+                    />
+                    <button
+                      disabled={Boolean(busy) || !newManagerName.trim()}
+                      onClick={async () => {
+                        const success = await runAction('create-manager', { nickname: newManagerName.trim() });
+                        if (success) setNewManagerName('');
+                      }}
+                      className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+                    >
+                      建立幹部
+                    </button>
+                  </div>
+                </div>
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -555,7 +702,7 @@ export default function AdminPage() {
                 />
                 <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
                   {filteredAccounts.map((account) => (
-                    <div key={account.key} className="flex flex-col gap-3 border-b border-zinc-100 p-4 last:border-0 lg:flex-row lg:items-center">
+                    <div key={account.userId} className="flex flex-col gap-3 border-b border-zinc-100 p-4 last:border-0 lg:flex-row lg:items-center">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-bold">{account.nickname}</p>
@@ -563,22 +710,65 @@ export default function AdminPage() {
                             {ROLE_LABEL[account.role]}
                           </span>
                           {account.disabled && <span className="text-xs font-bold text-red-600">已停用</span>}
-                          {!account.hasPassword && <span className="text-xs font-bold text-amber-600">未設密碼</span>}
+                          {account.archived && <span className="text-xs font-bold text-zinc-600">已封存</span>}
+                          {!account.hasPassword && (
+                            <span className="text-xs font-bold text-amber-600">
+                              {account.hasActivationCode ? '待啟用' : '未設密碼'}
+                            </span>
+                          )}
                         </div>
                         <p className="mt-1 text-xs text-zinc-400">{account.key} · {account.userId}</p>
+                        <p className="mt-1 text-xs text-zinc-400">
+                          裝置：{data.devices.find((device) => device.userId === account.userId)?.count ?? 0}
+                          {' · '}
+                          最近登入：{fmtTime(data.devices.find((device) => device.userId === account.userId)?.lastSeenAt)}
+                        </p>
                       </div>
                       {account.role !== 'admin' && (
                         <div className="flex flex-wrap gap-2">
+                          {account.role === 'manager' && (
+                            <>
+                              <button
+                                disabled={Boolean(busy)}
+                                onClick={() => {
+                                  const nickname = window.prompt('新的幹部顯示名稱', account.nickname);
+                                  if (nickname?.trim() && nickname.trim() !== account.nickname) {
+                                    runAction('edit-manager', { account: account.accountRef, nickname: nickname.trim() });
+                                  }
+                                }}
+                                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold"
+                              >
+                                編輯名稱
+                              </button>
+                              <button
+                                disabled={Boolean(busy) || Boolean(account.archived)}
+                                onClick={() => runAction('regenerate-manager-activation', { account: account.accountRef })}
+                                className="rounded-lg border border-sky-300 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-40"
+                              >
+                                重發啟用碼
+                              </button>
+                              <button
+                                disabled={Boolean(busy)}
+                                onClick={() => runAction(
+                                  account.archived ? 'unarchive-manager' : 'archive-manager',
+                                  { account: account.accountRef },
+                                )}
+                                className="rounded-lg border border-zinc-400 px-3 py-1.5 text-xs font-semibold text-zinc-700"
+                              >
+                                {account.archived ? '取消封存' : '封存'}
+                              </button>
+                            </>
+                          )}
                           <button
                             disabled={Boolean(busy)}
-                            onClick={() => runAction('reset', { account: account.key })}
+                            onClick={() => runAction('reset', { account: account.accountRef })}
                             className="rounded-lg border border-sky-300 px-3 py-1.5 text-xs font-semibold text-sky-700"
                           >
                             重設密碼
                           </button>
                           <button
                             disabled={Boolean(busy)}
-                            onClick={() => runAction(account.disabled ? 'enable' : 'disable', { account: account.key })}
+                            onClick={() => runAction(account.disabled ? 'enable' : 'disable', { account: account.accountRef })}
                             className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                               account.disabled
                                 ? 'border-emerald-300 text-emerald-700'
@@ -587,13 +777,20 @@ export default function AdminPage() {
                           >
                             {account.disabled ? '重新啟用' : '停用'}
                           </button>
-                          {account.role === 'user' && (
+                          <button
+                            disabled={Boolean(busy)}
+                            onClick={() => runAction('logout-all-devices', { account: account.accountRef })}
+                            className="rounded-lg border border-violet-300 px-3 py-1.5 text-xs font-semibold text-violet-700"
+                          >
+                            登出所有裝置
+                          </button>
+                          {(account.role === 'user' || (account.role === 'manager' && !account.hasPassword)) && (
                             <button
                               disabled={Boolean(busy)}
                               onClick={() => { setDeleteTarget(account); setConfirmText(''); }}
                               className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600"
                             >
-                              刪除
+                              永久刪除
                             </button>
                           )}
                         </div>
@@ -606,8 +803,57 @@ export default function AdminPage() {
 
             {tab === 'reports' && (
               <section>
-                <h1 className="text-2xl font-bold">檢舉中心</h1>
-                <p className="mt-1 text-sm text-zinc-500">待處理檢舉會優先顯示，可直接停用被檢舉帳號。</p>
+                <h1 className="text-2xl font-bold">回報與檢舉中心</h1>
+                <p className="mt-1 text-sm text-zinc-500">流程問題會附上 traceId、頁面與裝置；使用者檢舉可直接處理帳號。</p>
+                <h2 className="mt-5 text-sm font-bold text-zinc-800">流程問題回報</h2>
+                <div className="mt-3 space-y-3">
+                  {[...data.issues]
+                    .sort((a, b) => Number(a.resolved) - Number(b.resolved))
+                    .map((issue) => (
+                      <div key={issue.id} className={`rounded-2xl border bg-white p-4 ${
+                        issue.resolved ? 'border-zinc-200 opacity-70' : 'border-sky-200'
+                      }`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-bold">回報人：{accountName(issue.reporterId)}</p>
+                            <p className="mt-1 break-all text-xs text-zinc-400">
+                              {fmtTime(issue.createdAt)} · {issue.page}
+                            </p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${
+                            issue.resolved ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
+                          }`}>
+                            {issue.resolved ? '已處理' : '待處理'}
+                          </span>
+                        </div>
+                        <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-700">{issue.description}</p>
+                        <div className="mt-3 grid gap-1 text-xs text-zinc-500 sm:grid-cols-2">
+                          <p>Trace：<span className="break-all font-mono text-zinc-800">{issue.traceId ?? '—'}</span></p>
+                          <p>局：<span className="break-all font-mono text-zinc-800">{issue.requestId ?? '—'}</span></p>
+                          <p>聊天室：<span className="break-all font-mono text-zinc-800">{issue.threadId ?? '—'}</span></p>
+                          <p>錯誤：<span className="break-all text-amber-700">{issue.lastErrorCode ?? '—'}</span></p>
+                        </div>
+                        <details className="mt-2 text-xs text-zinc-400">
+                          <summary className="cursor-pointer">裝置資訊</summary>
+                          <p className="mt-1 break-all">{issue.userAgent}</p>
+                        </details>
+                        <button
+                          disabled={Boolean(busy)}
+                          onClick={() => runAction(
+                            issue.resolved ? 'reopen-issue' : 'resolve-issue',
+                            { issueId: issue.id },
+                          )}
+                          className="mt-3 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold"
+                        >
+                          {issue.resolved ? '重新開啟' : '標記已處理'}
+                        </button>
+                      </div>
+                    ))}
+                  {data.issues.length === 0 && (
+                    <p className="rounded-2xl bg-white p-5 text-center text-sm text-zinc-400">目前沒有流程問題回報。</p>
+                  )}
+                </div>
+                <h2 className="mt-6 text-sm font-bold text-zinc-800">使用者檢舉</h2>
                 <div className="mt-4 space-y-3">
                   {[...data.reports]
                     .sort((a, b) => Number(a.resolved) - Number(b.resolved))
@@ -642,7 +888,7 @@ export default function AdminPage() {
                             {target && !target.disabled && target.role !== 'admin' && (
                               <button
                                 disabled={Boolean(busy)}
-                                onClick={() => runAction('disable', { account: target.key })}
+                                onClick={() => runAction('disable', { account: target.accountRef })}
                                 className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-700"
                               >
                                 停用對方
@@ -799,17 +1045,11 @@ export default function AdminPage() {
                       清除局與聊天資料
                     </button>
                   </div>
-                  <div className="rounded-2xl border border-red-200 bg-white p-5">
-                    <h2 className="font-bold">清空所有幹部密碼</h2>
-                    <p className="mt-2 text-sm text-zinc-500">所有幹部必須重新使用啟用碼設定密碼，A000 不受影響。</p>
-                    <p className="mt-2 text-xs font-mono text-red-600">確認文字：RESET MANAGERS</p>
-                    <button
-                      disabled={Boolean(busy)}
-                      onClick={() => runDanger('reset-all-managers', 'RESET MANAGERS')}
-                      className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                    >
-                      清空幹部密碼
-                    </button>
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50 p-5">
+                    <h2 className="font-bold text-sky-900">幹部密碼與啟用碼</h2>
+                    <p className="mt-2 text-sm text-sky-700">
+                      第二階段已停用共用啟用碼與批次清空；請到「帳號管理」對指定幹部重設或重發一次性啟用碼。
+                    </p>
                   </div>
                   <div className="rounded-2xl border border-red-300 bg-red-50 p-5">
                     <h2 className="font-bold text-red-800">刪除所有客戶帳號</h2>
@@ -833,9 +1073,10 @@ export default function AdminPage() {
       {deleteTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
-            <h2 className="text-lg font-bold">永久刪除客戶帳號</h2>
+            <h2 className="text-lg font-bold">永久刪除帳號</h2>
             <p className="mt-2 text-sm text-zinc-500">
-              將刪除 {deleteTarget.nickname}（{deleteTarget.key}）與相關資料。
+              將永久刪除 {deleteTarget.nickname}（{deleteTarget.key}）。
+              {deleteTarget.role === 'manager' && ' 若已有任何歷史紀錄，伺服器會拒絕並要求改用封存。'}
             </p>
             <p className="mt-3 text-xs text-zinc-500">請輸入帳號 <b>{deleteTarget.key}</b>：</p>
             <input
@@ -854,8 +1095,8 @@ export default function AdminPage() {
                 disabled={confirmText !== deleteTarget.key}
                 onClick={async () => {
                   const target = deleteTarget;
-                  const success = await runAction('delete', {
-                    account: target.key,
+                  const success = await runAction(deleteTarget.role === 'manager' ? 'delete-manager' : 'delete', {
+                    account: target.accountRef,
                     confirmation: confirmText,
                   });
                   if (success) {
@@ -872,16 +1113,17 @@ export default function AdminPage() {
         </div>
       )}
 
-      {tempPassword && (
+      {oneTimeSecret && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
-            <h2 className="text-lg font-bold">臨時密碼已建立</h2>
-            <p className="mt-2 text-sm text-zinc-500">帳號：{tempPassword.key}</p>
+            <h2 className="text-lg font-bold">{oneTimeSecret.label}已建立</h2>
+            <p className="mt-2 text-sm text-zinc-500">帳號：{oneTimeSecret.key}</p>
+            <p className="mt-1 text-xs text-amber-600">關閉後不會再次顯示，請立即安全交付給本人。</p>
             <code className="mt-4 block select-all rounded-xl bg-zinc-100 p-4 text-center text-xl font-bold tracking-wider">
-              {tempPassword.value}
+              {oneTimeSecret.value}
             </code>
             <button
-              onClick={() => setTempPassword(null)}
+              onClick={() => setOneTimeSecret(null)}
               className="mt-4 w-full rounded-xl bg-zinc-900 py-2.5 text-sm font-bold text-white"
             >
               關閉

@@ -2,13 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAccount, createCustomer, verifyPassword, setInitialPassword,
   adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone, isTestManagerKey,
+  activateManagerWithCode,
 } from '@/lib/auth-store';
-import { signSession, sessionCookieHeader, clearSessionCookieHeader, getSessionFromRequest } from '@/lib/session';
+import { signSession, sessionCookieHeader, clearSessionCookieHeader } from '@/lib/session';
+import { requireActiveSession } from '@/lib/active-session';
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
 import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-store';
 import { sendOtpSms, isSmsConfigured } from '@/lib/sms';
 import { registrationConsentError, TERMS_VERSION } from '@/lib/legal';
 import crypto from 'crypto';
+import { deviceCookieHeader, recordDeviceSession } from '@/lib/device-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,15 +43,37 @@ function secretEqual(a: string, b: string | undefined): boolean {
 
 // GET：回傳目前 session 身份（供前端校正 currentUserId）
 export async function GET(req: NextRequest) {
-  const session = await getSessionFromRequest(req);
-  if (!session) return NextResponse.json({ user: null }, { status: 401 });
-  return NextResponse.json({ user: { id: session.userId, role: session.role, tier: session.tier } });
+  const auth = await requireActiveSession(req);
+  if (!auth.ok) return auth.response;
+  return NextResponse.json({
+    user: {
+      id: auth.session.userId,
+      role: auth.session.role,
+      tier: auth.session.tier,
+      nickname: auth.account?.nickname,
+    },
+  });
 }
 
-async function withSession(user: { id: string; role: 'user' | 'manager' | 'guest' | 'admin'; tier: string; nickname?: string }) {
-  const token = await signSession({ userId: user.id, role: user.role, tier: user.tier });
+async function withSession(req: NextRequest, user: {
+  id: string;
+  role: 'user' | 'manager' | 'guest' | 'admin';
+  tier: string;
+  nickname?: string;
+  sessionVersion?: number;
+}) {
+  const token = await signSession({
+    userId: user.id,
+    role: user.role,
+    tier: user.tier,
+    sessionVersion: user.sessionVersion ?? 0,
+  });
   const res = NextResponse.json({ ok: true, user });
   res.headers.set('Set-Cookie', sessionCookieHeader(token));
+  if (user.role !== 'guest') {
+    const device = await recordDeviceSession(req, user.id, user.sessionVersion ?? 0);
+    res.headers.append('Set-Cookie', deviceCookieHeader(device.id));
+  }
   return res;
 }
 
@@ -59,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     // 訪客：唯讀 session
     if (action === 'guest') {
-      return withSession({ id: 'u-099', role: 'guest', tier: 'guest', nickname: '訪客' });
+      return withSession(req, { id: 'u-099', role: 'guest', tier: 'guest', nickname: '訪客' });
     }
 
     // 登出
@@ -145,7 +170,7 @@ export async function POST(req: NextRequest) {
         termsVersion: TERMS_VERSION,
         acceptedAt,
       });
-      return withSession({ id: acc.userId, role: 'user', tier: acc.tier, nickname: acc.nickname });
+      return withSession(req, { id: acc.userId, role: 'user', tier: acc.tier, nickname: acc.nickname, sessionVersion: acc.sessionVersion });
     }
 
     // 忘記密碼：手機 + 簡訊驗證碼 + 新密碼（僅限客戶）
@@ -180,7 +205,7 @@ export async function POST(req: NextRequest) {
 
       const acc = await getAccount(key);
       if (!acc) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
-      if (acc.disabled) return NextResponse.json({ error: '此帳號已被停用' }, { status: 403 });
+      if (acc.disabled || acc.archived) return NextResponse.json({ error: '此帳號已被停用' }, { status: 403 });
 
       // 管理員(A000)首次登入 → 需 ADMIN_SECRET 啟用（只有你手上有），再自設密碼
       if (acc.role === 'admin' && acc.hash === null) {
@@ -190,11 +215,25 @@ export async function POST(req: NextRequest) {
         { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
         const activated = await setInitialPassword(key, pw);
         if (!activated) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
-        return withSession({ id: activated.userId, role: 'admin', tier: activated.tier, nickname: activated.nickname });
+        return withSession(req, { id: activated.userId, role: 'admin', tier: activated.tier, nickname: activated.nickname, sessionVersion: activated.sessionVersion });
       }
 
       // 幹部首次登入 → 以此次密碼設定並寫死（需啟用碼，防止外人搶註可枚舉的 A00x 帳號）
       if (acc.role === 'manager' && acc.hash === null) {
+        { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
+        if (acc.activationHash) {
+          const activated = await activateManagerWithCode(key, String(body.activationCode ?? ''), pw);
+          if (!activated) {
+            return NextResponse.json({ error: '請輸入幹部啟用碼', needActivation: true }, { status: 403 });
+          }
+          return withSession(req, {
+            id: activated.userId,
+            role: 'manager',
+            tier: activated.tier,
+            nickname: activated.nickname,
+            sessionVersion: activated.sessionVersion,
+          });
+        }
         // 測試幹部(A011~A020) 用獨立啟用碼 MANAGER_TEST_ACTIVATION_CODE；正式幹部(A001~A010) 維持 MANAGER_ACTIVATION_CODE
         const required = isTestManagerKey(key) ? process.env.MANAGER_TEST_ACTIVATION_CODE : process.env.MANAGER_ACTIVATION_CODE;
         if (required) {
@@ -205,15 +244,14 @@ export async function POST(req: NextRequest) {
           // 未設定啟用碼：生產或任何 Vercel 部署一律拒絕首次設密（fail-safe，避免環境判定失準造成搶註）
           return NextResponse.json({ error: '幹部啟用尚未開放，請聯絡管理員' }, { status: 403 });
         }
-        { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
         const activated = await setInitialPassword(key, pw);
         if (!activated) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
-        return withSession({ id: activated.userId, role: 'manager', tier: activated.tier, nickname: activated.nickname });
+        return withSession(req, { id: activated.userId, role: 'manager', tier: activated.tier, nickname: activated.nickname, sessionVersion: activated.sessionVersion });
       }
 
       if (!verifyPassword(acc, pw)) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
       await clearRateLimit('login-acc', key); // 成功登入 → 清掉該帳號失敗計數
-      return withSession({ id: acc.userId, role: acc.role, tier: acc.tier, nickname: acc.nickname });
+      return withSession(req, { id: acc.userId, role: acc.role, tier: acc.tier, nickname: acc.nickname, sessionVersion: acc.sessionVersion });
     }
 
     return NextResponse.json({ error: 'unknown action' }, { status: 400 });

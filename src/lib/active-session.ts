@@ -34,6 +34,10 @@ function accountDisabled(): NextResponse {
   return NextResponse.json({ error: '此帳號已被停用' }, { status: 403 });
 }
 
+function sessionExpired(): NextResponse {
+  return NextResponse.json({ error: '登入狀態已失效，請重新登入' }, { status: 401 });
+}
+
 export async function requireActiveSession(req: Request): Promise<ActiveSessionResult> {
   const session = await getSessionFromRequest(req);
   if (!session) return { ok: false, response: unauthorized() };
@@ -44,7 +48,10 @@ export async function requireActiveSession(req: Request): Promise<ActiveSessionR
   // 每次寫入最多做一次帳號查詢（呼叫端如需 account 直接用回傳值，不要再查第二次）。
   const account = await getAccountByUserId(session.userId);
   if (!account) return { ok: false, response: unauthorized() }; // 已刪除/不存在 → 失效 session（401，不洩漏存在與否）
-  if (account.disabled) return { ok: false, response: accountDisabled() }; // 已停用 → 403
+  if (account.disabled || account.archived) return { ok: false, response: accountDisabled() }; // 已停用/封存 → 403
+  if ((session.sessionVersion ?? 0) !== (account.sessionVersion ?? 0)) {
+    return { ok: false, response: sessionExpired() };
+  }
 
   return { ok: true, session, account, isGuest: false };
 }

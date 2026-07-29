@@ -3,14 +3,20 @@ import {
   listAccounts,
   adminResetPassword,
   adminResetCustomerPassword,
-  resetAllManagerPasswords,
   deleteAllCustomers,
   setAccountDisabled,
   deleteAccount,
   getAccount,
+  createManagerAccount,
+  regenerateManagerActivation,
+  updateManagerNickname,
+  setManagerArchived,
+  deleteUnactivatedManager,
+  bumpAccountSessionVersion,
+  getAccountByUserId,
 } from '@/lib/auth-store';
 import { requireActiveSession } from '@/lib/active-session';
-import { deleteUserData, clearShared, getCollection } from '@/lib/sync-store';
+import { deleteUserData, clearShared, getCollection, mergeShared } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { listReports, setReportResolved } from '@/lib/report-store';
 import { buildAdminDashboard, type AdminAccountSummary } from '@/lib/admin-dashboard';
@@ -18,6 +24,9 @@ import { listAdminAudit, recordAdminAudit } from '@/lib/admin-audit-store';
 import { getRedis, isRedisConfigured, keyPrefix } from '@/lib/kv';
 import { isSessionSecretConfigured } from '@/lib/session';
 import { isSmsConfigured } from '@/lib/sms';
+import { listFlowTraces } from '@/lib/flow-trace-store';
+import { listIssueReports, setIssueResolved } from '@/lib/issue-store';
+import { listDeviceSummaries, removeDevicesForUser } from '@/lib/device-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,16 +67,26 @@ function safeAccount(account: {
   nickname: string;
   hash: string | null;
   disabled?: boolean;
+  archived?: boolean;
+  activationHash?: string;
+  activationCreatedAt?: string;
   createdAt: string;
 }): AdminAccountSummary {
+  const maskedKey = account.role === 'user' && /^\d{8,15}$/.test(account.key)
+    ? `${account.key.slice(0, 3)}****${account.key.slice(-3)}`
+    : account.key;
   return {
-    key: account.key,
+    key: maskedKey,
+    accountRef: account.userId,
     role: account.role,
     tier: account.tier,
     userId: account.userId,
     nickname: account.nickname,
     hasPassword: account.hash !== null,
     disabled: Boolean(account.disabled),
+    archived: Boolean(account.archived),
+    hasActivationCode: Boolean(account.activationHash),
+    activationCreatedAt: account.activationCreatedAt,
     createdAt: account.createdAt,
   };
 }
@@ -161,6 +180,9 @@ export async function GET(req: NextRequest) {
     invitations,
     chatMessages,
     auditLogs,
+    traceEvents,
+    issues,
+    devices,
     system,
   ] = await Promise.all([
     listAccounts().then((list) => list.map(safeAccount)),
@@ -170,6 +192,9 @@ export async function GET(req: NextRequest) {
     getCollection('invitations'),
     getCollection('chatMessages'),
     listAdminAudit(),
+    listFlowTraces({ limit: 1000 }),
+    listIssueReports(),
+    listDeviceSummaries(),
     getSystemStatus(),
   ]);
 
@@ -183,7 +208,7 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json(
-    { accounts, reports, dashboard, system, auditLogs },
+    { accounts, reports, dashboard, system, auditLogs, traceEvents, issues, devices },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }
@@ -216,11 +241,51 @@ export async function POST(req: NextRequest) {
     const account = stringValue(body.account);
     const confirmation = stringValue(body.confirmation);
 
+    if (action === 'create-manager') {
+      const nickname = stringValue(body.nickname).trim();
+      if (!nickname || nickname.length > 60) {
+        return NextResponse.json({ error: '請輸入 1～60 字的幹部名稱' }, { status: 400 });
+      }
+      const created = await createManagerAccount(nickname);
+      await mergeShared({
+        registeredUsers: [{
+          id: created.account.userId,
+          lineUserId: created.account.userId,
+          nickname: created.account.nickname,
+          avatarUrl: '',
+          cardImageUrl: '',
+          bio: '',
+          defaultArea: '信義區',
+          interests: [],
+          tier: 'vip',
+          role: 'manager',
+          credits: 0,
+          monthlyRequestsLeft: 0,
+          lineOAFollowed: false,
+          createdAt: created.account.createdAt,
+        }],
+      });
+      await audit(admin, action, created.account.key, `userId=${created.account.userId}`);
+      return NextResponse.json({
+        ok: true,
+        account: created.account.key,
+        activationCode: created.activationCode,
+      });
+    }
+
     if (action === 'resolve-report' || action === 'reopen-report') {
       const reportId = stringValue(body.reportId);
       if (!reportId) return NextResponse.json({ error: '缺少檢舉編號' }, { status: 400 });
       const ok = await setReportResolved(reportId, action === 'resolve-report');
       if (ok) await audit(admin, action, reportId);
+      return NextResponse.json({ ok });
+    }
+
+    if (action === 'resolve-issue' || action === 'reopen-issue') {
+      const issueId = stringValue(body.issueId);
+      if (!issueId) return NextResponse.json({ error: '缺少問題編號' }, { status: 400 });
+      const ok = await setIssueResolved(issueId, action === 'resolve-issue');
+      if (ok) await audit(admin, action, issueId);
       return NextResponse.json({ ok });
     }
 
@@ -242,12 +307,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'reset-all-managers') {
-      if (confirmation !== 'RESET MANAGERS') {
-        return NextResponse.json({ error: '確認文字錯誤' }, { status: 400 });
-      }
-      const count = await resetAllManagerPasswords();
-      await audit(admin, action, undefined, `count=${count}`);
-      return NextResponse.json({ ok: true, count });
+      return NextResponse.json(
+        { error: '第二階段已改用每位幹部獨立啟用碼，請在帳號管理逐一重發' },
+        { status: 409 },
+      );
     }
 
     if (action === 'delete-all-customers') {
@@ -264,34 +327,129 @@ export async function POST(req: NextRequest) {
     }
 
     if (!account) return NextResponse.json({ error: '缺少帳號' }, { status: 400 });
+    const targetAccount = await getAccount(account) ?? await getAccountByUserId(account);
+    if (!targetAccount) return NextResponse.json({ error: '找不到帳號' }, { status: 404 });
+    const accountKey = targetAccount.key;
+    const auditTarget = targetAccount.role === 'user' ? targetAccount.userId : targetAccount.key;
+
+    if (action === 'edit-manager') {
+      const nickname = stringValue(body.nickname).trim();
+      const updated = await updateManagerNickname(accountKey, nickname);
+      if (!updated) return NextResponse.json({ error: '更新失敗' }, { status: 400 });
+      const profiles = await getCollection('registeredUsers');
+      const profile = profiles.find((item) => item.id === updated.userId);
+      if (profile) {
+        await mergeShared({ registeredUsers: [{ ...profile, nickname: updated.nickname }] });
+      }
+      await audit(admin, action, auditTarget, '更新顯示名稱');
+      return NextResponse.json({ ok: true });
+    }
+
+    if (action === 'regenerate-manager-activation') {
+      const activationCode = await regenerateManagerActivation(accountKey);
+      if (!activationCode) {
+        return NextResponse.json({ error: '無法產生啟用碼' }, { status: 400 });
+      }
+      await audit(admin, action, auditTarget, '已撤銷舊碼並產生新碼');
+      return NextResponse.json({ ok: true, account: accountKey, activationCode });
+    }
+
+    if (action === 'archive-manager' || action === 'unarchive-manager') {
+      const archived = action === 'archive-manager';
+      const ok = await setManagerArchived(accountKey, archived);
+      if (ok) await audit(admin, action, auditTarget);
+      return NextResponse.json({ ok });
+    }
+
+    if (action === 'logout-all-devices') {
+      const target = await bumpAccountSessionVersion(accountKey);
+      if (!target || target.role === 'admin') {
+        return NextResponse.json({ error: '無法登出此帳號裝置' }, { status: 400 });
+      }
+      const count = await removeDevicesForUser(target.userId);
+      await removeSubscriptionsForUser(target.userId);
+      await audit(admin, action, auditTarget, `count=${count}`);
+      return NextResponse.json({ ok: true, count });
+    }
+
+    if (action === 'delete-manager') {
+      const expectedConfirmation = targetAccount.role === 'user'
+        ? safeAccount(targetAccount).key
+        : accountKey;
+      if (confirmation !== expectedConfirmation) {
+        return NextResponse.json({ error: '確認文字錯誤' }, { status: 400 });
+      }
+      const target = await getAccount(accountKey);
+      if (!target || target.role !== 'manager' || target.hash !== null) {
+        return NextResponse.json({ error: '僅可刪除尚未啟用的幹部' }, { status: 400 });
+      }
+      const [requests, responses, invitations, messages, escorts, auditLogs, traces, issues] = await Promise.all([
+        getCollection('requests'),
+        getCollection('responses'),
+        getCollection('invitations'),
+        getCollection('chatMessages'),
+        getCollection('escorts'),
+        listAdminAudit(200),
+        listFlowTraces({ limit: 1000 }),
+        listIssueReports(1000),
+      ]);
+      const hasHistory = requests.some((item) => item.creatorId === target.userId)
+        || responses.some((item) => item.userId === target.userId || item.dispatcherId === target.userId)
+        || invitations.some((item) =>
+          item.fromUserId === target.userId
+          || item.toUserId === target.userId
+          || item.dispatcherId === target.userId)
+        || messages.some((item) => item.senderId === target.userId)
+        || escorts.some((item) => item.managerId === target.userId)
+        || auditLogs.some((item) => item.target === accountKey || item.target === target.userId)
+        || traces.some((item) => item.actorUserId === target.userId)
+        || issues.some((item) => item.reporterId === target.userId);
+      if (hasHistory) {
+        return NextResponse.json({ error: '此幹部已有歷史紀錄，請改用封存' }, { status: 409 });
+      }
+      const removed = await deleteUnactivatedManager(accountKey);
+      if (!removed) return NextResponse.json({ error: '刪除失敗' }, { status: 400 });
+      await deleteUserData(removed.userId);
+      await removeSubscriptionsForUser(removed.userId);
+      await audit(admin, action, accountKey, `userId=${removed.userId}`);
+      return NextResponse.json({ ok: true });
+    }
 
     if (action === 'reset') {
-      const target = await getAccount(account);
+      const target = await getAccount(accountKey);
       if (target?.role === 'admin') {
         return NextResponse.json({ error: '不可重設管理員密碼' }, { status: 400 });
       }
       if (target?.role === 'user') {
-        const tempPassword = await adminResetCustomerPassword(account);
+        const tempPassword = await adminResetCustomerPassword(accountKey);
         if (!tempPassword) return NextResponse.json({ error: '重設失敗' }, { status: 400 });
-        await audit(admin, action, account, '客戶臨時密碼已產生');
+        await audit(admin, action, auditTarget, '客戶臨時密碼已產生');
         return NextResponse.json({ ok: true, tempPassword });
       }
-      const ok = await adminResetPassword(account);
-      if (ok) await audit(admin, action, account);
+      if (target?.role === 'manager') {
+        const activationCode = await regenerateManagerActivation(accountKey);
+        if (!activationCode) {
+          return NextResponse.json({ error: '重設失敗' }, { status: 400 });
+        }
+        await audit(admin, action, auditTarget, '密碼已清除並產生一次性啟用碼');
+        return NextResponse.json({ ok: true, account: accountKey, activationCode });
+      }
+      const ok = await adminResetPassword(accountKey);
+      if (ok) await audit(admin, action, auditTarget);
       return NextResponse.json({ ok });
     }
 
     if (action === 'disable' || action === 'enable') {
-      const ok = await setAccountDisabled(account, action === 'disable');
-      if (ok) await audit(admin, action, account);
+      const ok = await setAccountDisabled(accountKey, action === 'disable');
+      if (ok) await audit(admin, action, auditTarget);
       return NextResponse.json({ ok });
     }
 
     if (action === 'delete') {
-      if (confirmation !== account) {
+      if (confirmation !== safeAccount(targetAccount).key) {
         return NextResponse.json({ error: '確認文字錯誤' }, { status: 400 });
       }
-      const removed = await deleteAccount(account);
+      const removed = await deleteAccount(accountKey);
       if (!removed) {
         return NextResponse.json(
           { error: '此帳號不可刪除（僅限客戶）' },
@@ -300,7 +458,7 @@ export async function POST(req: NextRequest) {
       }
       await deleteUserData(removed.userId);
       await removeSubscriptionsForUser(removed.userId);
-      await audit(admin, action, account, `userId=${removed.userId}`);
+      await audit(admin, action, auditTarget, `userId=${removed.userId}`);
       return NextResponse.json({ ok: true, deletedUserId: removed.userId });
     }
 

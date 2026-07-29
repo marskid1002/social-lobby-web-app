@@ -22,6 +22,11 @@ export interface Account {
   hash: string | null;      // null = 尚未設定密碼（幹部/管理員首次登入前）
   createdAt: string;
   disabled?: boolean;       // true = 已停用（登入被擋）
+  archived?: boolean;       // true = 已封存（不可登入，保留歷史關聯）
+  activationSalt?: string;  // 幹部一次性啟用碼 salt（不保存明文）
+  activationHash?: string;  // 幹部一次性啟用碼雜湊
+  activationCreatedAt?: string;
+  sessionVersion?: number;
   termsVersion?: string;    // 客戶註冊時同意的平台規範版本
   termsAcceptedAt?: string; // 由 server 產生的同意時間
   ageConfirmedAt?: string;  // 由 server 產生的年滿 18 歲確認時間
@@ -183,6 +188,138 @@ export async function setInitialPassword(key: string, password: string): Promise
   return acc;
 }
 
+const ACTIVATION_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+
+function createActivationSecret(): { code: string; salt: string; hash: string } {
+  const bytes = crypto.randomBytes(12);
+  let code = '';
+  for (let index = 0; index < bytes.length; index++) {
+    code += ACTIVATION_CHARS[bytes[index] % ACTIVATION_CHARS.length];
+  }
+  const salt = crypto.randomBytes(16).toString('hex');
+  return { code, salt, hash: hashPassword(code, salt) };
+}
+
+export async function createManagerAccount(nickname: string): Promise<{
+  account: Account;
+  activationCode: string;
+}> {
+  const accounts = await readAccounts();
+  await ensureManagerAccounts(accounts);
+  let key = '';
+  for (let number = 1; number <= 9999; number++) {
+    const candidate = `A${String(number).padStart(3, '0')}`;
+    if (!accounts[candidate]) {
+      key = candidate;
+      break;
+    }
+  }
+  if (!key) throw new Error('manager account capacity reached');
+  const secret = createActivationSecret();
+  const now = new Date().toISOString();
+  const account: Account = {
+    key,
+    role: 'manager',
+    tier: 'vip',
+    userId: `m-${crypto.randomUUID()}`,
+    nickname: nickname.trim().slice(0, 60) || '新幹部',
+    salt: '',
+    hash: null,
+    activationSalt: secret.salt,
+    activationHash: secret.hash,
+    activationCreatedAt: now,
+    sessionVersion: 1,
+    createdAt: now,
+  };
+  accounts[key] = account;
+  await writeAccounts(accounts);
+  return { account, activationCode: secret.code };
+}
+
+export async function regenerateManagerActivation(key: string): Promise<string | null> {
+  const accounts = await readAccounts();
+  const account = accounts[normalizeKey(key)];
+  if (!account || account.role !== 'manager' || account.archived) return null;
+  const secret = createActivationSecret();
+  account.hash = null;
+  account.salt = '';
+  account.activationSalt = secret.salt;
+  account.activationHash = secret.hash;
+  account.activationCreatedAt = new Date().toISOString();
+  account.sessionVersion = (account.sessionVersion ?? 0) + 1;
+  await writeAccounts(accounts);
+  return secret.code;
+}
+
+export async function activateManagerWithCode(
+  key: string,
+  activationCode: string,
+  password: string,
+): Promise<Account | null> {
+  const accounts = await readAccounts();
+  const account = accounts[normalizeKey(key)];
+  if (
+    !account
+    || account.role !== 'manager'
+    || account.hash
+    || account.disabled
+    || account.archived
+    || !account.activationHash
+    || !account.activationSalt
+  ) return null;
+  const candidate = hashPassword(activationCode, account.activationSalt);
+  const expected = Buffer.from(account.activationHash, 'hex');
+  const actual = Buffer.from(candidate, 'hex');
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
+  account.salt = crypto.randomBytes(16).toString('hex');
+  account.hash = hashPassword(password, account.salt);
+  delete account.activationSalt;
+  delete account.activationHash;
+  delete account.activationCreatedAt;
+  await writeAccounts(accounts);
+  return account;
+}
+
+export async function updateManagerNickname(key: string, nickname: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  const account = accounts[normalizeKey(key)];
+  const safeNickname = nickname.trim().slice(0, 60);
+  if (!account || account.role !== 'manager' || !safeNickname) return null;
+  account.nickname = safeNickname;
+  await writeAccounts(accounts);
+  return account;
+}
+
+export async function setManagerArchived(key: string, archived: boolean): Promise<boolean> {
+  const accounts = await readAccounts();
+  const account = accounts[normalizeKey(key)];
+  if (!account || account.role !== 'manager') return false;
+  account.archived = archived;
+  if (archived) account.disabled = true;
+  account.sessionVersion = (account.sessionVersion ?? 0) + 1;
+  await writeAccounts(accounts);
+  return true;
+}
+
+export async function bumpAccountSessionVersion(key: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  const account = accounts[normalizeKey(key)];
+  if (!account) return null;
+  account.sessionVersion = (account.sessionVersion ?? 0) + 1;
+  await writeAccounts(accounts);
+  return account;
+}
+
+export async function deleteUnactivatedManager(key: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  const normalized = normalizeKey(key);
+  const account = accounts[normalized];
+  if (!account || account.role !== 'manager' || account.hash !== null) return null;
+  delete accounts[normalized];
+  await writeAccounts(accounts);
+  return account;
+}
+
 // 清空「所有幹部」密碼（role==='manager'），讓他們用啟用碼重新設定。回傳被清空的帳號數。
 // 用於正式發放幹部帳號前，把先前測試設過的密碼一次清乾淨。
 export async function resetAllManagerPasswords(): Promise<number> {
@@ -222,6 +359,7 @@ export async function adminResetPassword(key: string): Promise<boolean> {
   if (!acc) return false;
   acc.hash = null;
   acc.salt = '';
+  acc.sessionVersion = (acc.sessionVersion ?? 0) + 1;
   await writeAccounts(accounts);
   return true;
 }
@@ -239,6 +377,7 @@ export async function adminResetCustomerPassword(key: string): Promise<string | 
   for (let i = 0; i < 8; i++) pw += chars[bytes[i] % chars.length];
   acc.salt = crypto.randomBytes(16).toString('hex');
   acc.hash = hashPassword(pw, acc.salt);
+  acc.sessionVersion = (acc.sessionVersion ?? 0) + 1;
   await writeAccounts(accounts);
   return pw;
 }
@@ -250,6 +389,7 @@ export async function setCustomerPassword(key: string, password: string): Promis
   if (!acc || acc.role !== 'user') return false;
   acc.salt = crypto.randomBytes(16).toString('hex');
   acc.hash = hashPassword(password, acc.salt);
+  acc.sessionVersion = (acc.sessionVersion ?? 0) + 1;
   await writeAccounts(accounts);
   return true;
 }
@@ -285,6 +425,7 @@ export async function setAccountDisabled(key: string, disabled: boolean): Promis
   const acc = accounts[normalizeKey(key)];
   if (!acc || acc.role === 'admin') return false;
   acc.disabled = disabled;
+  acc.sessionVersion = (acc.sessionVersion ?? 0) + 1;
   await writeAccounts(accounts);
   return true;
 }

@@ -106,11 +106,28 @@ export default function ChatPage({ params }: ChatPageProps) {
   // 代談用：從網址 ?req= 取「這是哪一個局」的對話。用來把「同幹部同客戶、不同局」的對話分開。
   // 沒有 req（例如私人邀請或舊連結）時不套用此過濾，維持原本行為（向後相容）。
   const req = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('req') : null;
+  const openedFromPush = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('src') === 'push';
   // 只有 g- 後面真的對應到一個局(request/response)才算群組聊天；
   // 否則（例如參與者 id 恰好以 g- 開頭的自建小姐）當一般 1:1，避免走錯分支導致聊天壞掉。
   const gReqId = id.startsWith('g-') ? id.slice(2) : null;
   const isGroup = !!gReqId && (state.requests.some((r) => r.id === gReqId) || state.responses.some((r) => r.requestId === gReqId));
   const requestId = isGroup ? gReqId : null;
+
+  useEffect(() => {
+    const relatedRequestId = req ?? requestId;
+    if (!relatedRequestId || !threadId || !currentUser) return;
+    const eventTypes = openedFromPush
+      ? ['notification.opened', 'chat.entered']
+      : ['chat.entered'];
+    for (const eventType of eventTypes) {
+      fetch('/api/trace', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ eventType, requestId: relatedRequestId, threadId }),
+      }).catch(() => undefined);
+    }
+  }, [currentUser, openedFromPush, req, requestId, threadId]);
 
   // ── Group chat logic ──────────────────────────────────────────────────────
   const groupRequest = requestId ? state.requests.find((r) => r.id === requestId) : null;

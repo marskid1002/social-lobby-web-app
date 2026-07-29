@@ -2,12 +2,16 @@ type Item = { id: string; [key: string]: unknown };
 
 export interface AdminAccountSummary {
   key: string;
+  accountRef?: string;
   role: string;
   tier: string;
   userId: string;
   nickname: string;
   hasPassword: boolean;
   disabled: boolean;
+  archived?: boolean;
+  hasActivationCode?: boolean;
+  activationCreatedAt?: string;
   createdAt: string;
 }
 
