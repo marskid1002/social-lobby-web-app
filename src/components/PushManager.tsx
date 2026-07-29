@@ -43,7 +43,7 @@ async function registerAndSubscribe(userId: string): Promise<boolean> {
       body: JSON.stringify({ userId, subscription: sub }),
     });
     if (!res.ok) {
-      // 後端沒存成功 → 之後 /api/notify 撈不到訂閱，等於收不到推播。回報失敗而非假成功。
+      // 後端沒存成功 → 伺服器之後找不到這個裝置的訂閱，等於收不到推播。回報失敗而非假成功。
       console.warn('[push] 後端儲存訂閱失敗:', res.status);
       return false;
     }

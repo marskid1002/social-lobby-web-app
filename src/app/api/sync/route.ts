@@ -6,6 +6,7 @@ import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
 import { buildChatAccessIndex, canReadChatThread } from '@/lib/chat-authz';
 import { getManagerUserIds } from '@/lib/auth-store';
 import { recordAcceptedSyncWrites } from '@/lib/flow-trace';
+import { deliverAuthorizedPushes, planAuthorizedSyncPushes } from '@/lib/push-authz';
 
 export const dynamic = 'force-dynamic';
 
@@ -269,10 +270,20 @@ export async function POST(req: NextRequest) {
     const cols: Record<string, { id: string; [k: string]: unknown }[]> = {};
     await Promise.all([...need].map(async (k) => { cols[k] = await getCollection(k as SharedKey); }));
     // request_posted 通知收件人須為 server 權威幹部帳號；僅在 patch 含 updates 時多讀一次帳號
-    const managerUserIds = Array.isArray(patch.updates) ? await getManagerUserIds() : [];
+    const managerUserIds =
+      Array.isArray(patch.updates) || Array.isArray(patch.requests)
+        ? await getManagerUserIds()
+        : [];
     const authzPatch = authorizeWrites(patch, session, buildIndex(cols, managerUserIds));
 
     const merged = await mergeShared(authzPatch);
+    const pushJobs = planAuthorizedSyncPushes({
+      patch: authzPatch,
+      existing: cols,
+      managerUserIds,
+      session,
+    });
+    await deliverAuthorizedPushes(pushJobs, session);
     await recordAcceptedSyncWrites({
       patch: authzPatch,
       existing: cols,

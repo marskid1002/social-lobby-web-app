@@ -240,14 +240,15 @@ test('Route：guest 在 sync/notify/upload/report 仍被拒 403', { skip }, asyn
 
 // ── 正常啟用帳號在其餘寫入端點也不被 F 擋（非 401/403）─────────────────────────
 
-test('Route：正常帳號在 notify/upload/report/billing 不被 F 擋（非 401/403）', { skip }, async () => {
+test('Route：正常帳號通過 F；舊 notify target API 另由 G 禁止', { skip }, async () => {
   const token = await signSession(managerSession('u-023')); // A002，未停用
 
-  await test('POST /api/notify 非 401/403（auth 通過）', async () => {
+  await test('POST /api/notify 通過 auth 後禁止直接指定收件人', async () => {
     const { POST } = await import('@/app/api/notify/route');
     const res = await POST(postReq('http://x/api/notify', token, { title: 't', body: 'b', userIds: [] }));
     assert.notEqual(res.status, 401);
-    assert.notEqual(res.status, 403);
+    assert.equal(res.status, 403);
+    assert.deepEqual(res.body, { error: 'direct push targets are not allowed' });
   });
   await test('POST /api/upload 缺欄位→400（auth 已通過、未觸發 Blob）', async () => {
     const { POST } = await import('@/app/api/upload/route');

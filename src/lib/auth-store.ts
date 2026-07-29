@@ -416,7 +416,9 @@ export async function listAccounts(): Promise<Account[]> {
 export async function getManagerUserIds(): Promise<string[]> {
   const accounts = await readAccounts();
   if (await ensureManagerAccounts(accounts)) await writeAccounts(accounts);
-  return Object.values(accounts).filter((a) => a.role === 'manager').map((a) => a.userId);
+  return Object.values(accounts)
+    .filter((a) => a.role === 'manager' && !a.disabled && !a.archived)
+    .map((a) => a.userId);
 }
 
 // 停用/啟用帳號（admin 帳號不可停用）

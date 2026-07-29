@@ -15,7 +15,6 @@ import {
 } from '@/lib/mock';
 import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, MeetRecord, MomentPost, PlazaComment } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
-import { sendPushNotification } from '@/lib/notify';
 
 const STORAGE_KEY = 'sl_state_v3';
 const PRIVATE_INVITE_CREDIT_COST = 3;
@@ -729,15 +728,6 @@ export function useAppState() {
       updates: [...managerNotifs, ...prev.updates],
     }));
 
-    // 推播給幹部（背景通知）
-    const poster = getState().users.find((u) => u.id === posterId);
-    sendPushNotification(
-      managerIds,
-      '有新的局邀請',
-      `${poster?.nickname ?? '某位用戶'} 發布了新的局，快安排出席`,
-      '/lobby/explore'
-    );
-
     return newReq;
   }, []);
 
@@ -823,15 +813,6 @@ export function useAppState() {
           )
         : prev.users,
     }));
-
-    // 推播通知給收件方
-    const senderUser = getState().users.find((u) => u.id === getState().currentUserId);
-    sendPushNotification(
-      toUserId,
-      '你收到一則邀請',
-      `${senderUser?.nickname ?? '某人'} 傳送了${isPrivate ? '私人邀請' : '邀請'}`,
-      '/inbox'
-    );
 
     // Auto-accept private invites after 1.5s
     if (isPrivate) {
@@ -962,13 +943,6 @@ export function useAppState() {
       updates: [notif, ...prev.updates],
     }));
 
-    const joiner = getState().users.find((u) => u.id === escortId);
-    sendPushNotification(
-      request.creatorId,
-      '有人想加入你的局',
-      `${joiner?.nickname ?? '某人'} 對你的需求感興趣`,
-      `/requests/${requestId}`
-    );
   }, []);
 
   // 幹部派工：以指定女伴身分對某個局建立 'interested' 回應，並通知發起人。
@@ -1019,13 +993,6 @@ export function useAppState() {
       return { ...prev, responses, updates: [notif, ...prev.updates] };
     });
 
-    const girl = getState().users.find((u) => u.id === girlId);
-    sendPushNotification(
-      request.creatorId,
-      '有人想加入你的局',
-      `${girl?.nickname ?? '某位女伴'} 願意出席你的邀約`,
-      `/requests/${requestId}`
-    );
   }, []);
 
   // Creator accepts an 'interested' joiner: flips to 'joining', creates invitation + chat.
