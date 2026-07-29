@@ -177,9 +177,10 @@ export default function ChatPage({ params }: ChatPageProps) {
   const filterMessages = (msgs: ChatMessage[]) =>
     sessionStart ? msgs.filter((m) => m.createdAt >= sessionStart) : msgs;
 
-  // req 存在時只顯示該局的訊息；但「沒有標記局的舊訊息」仍顯示（向後相容，避免舊聊天記錄消失）
+  // req 存在時只顯示該局的訊息；舊的無 requestId 訊息不可混進每一個新局。
+  // 無 req 的私人/舊聊天仍可查看舊訊息。
   const threadMessages = filterMessages(
-    state.chatMessages.filter((m) => m.threadId === threadId && (!req || m.requestId === req || !m.requestId))
+    state.chatMessages.filter((m) => m.threadId === threadId && (!req || m.requestId === req))
   );
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>(threadMessages);
   const [inputText, setInputText] = useState('');
@@ -213,6 +214,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox] = useState<string | null>(null); // 點圖放大
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [sendBusy, setSendBusy] = useState(false);
   const [photoError, setPhotoError] = useState('');
 
   useEffect(() => {
@@ -273,14 +275,22 @@ export default function ChatPage({ params }: ChatPageProps) {
     scrollMessagesToBottom(el);
   }, [vp]);
 
-  function handleSend() {
+  async function handleSend() {
     const text = inputText.trim();
-    if (!text || isChatLocked) return;
-    setHasSentMessage(true);
-    stickToBottomRef.current = true; // 自己送出必定跟到最新
-    const newMsg = sendChatMessage(threadId, text, undefined, undefined, req ?? undefined);
-    setLocalMessages((prev) => [...prev, newMsg]);
-    setInputText('');
+    if (!text || isChatLocked || sendBusy) return;
+    setSendBusy(true);
+    setPhotoError('');
+    try {
+      const newMsg = await sendChatMessage(threadId, text, undefined, undefined, req ?? undefined);
+      setHasSentMessage(true);
+      stickToBottomRef.current = true; // 自己送出必定跟到最新
+      setLocalMessages((prev) => prev.some((message) => message.id === newMsg.id) ? prev : [...prev, newMsg]);
+      setInputText('');
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : '訊息傳送失敗');
+    } finally {
+      setSendBusy(false);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -297,8 +307,8 @@ export default function ChatPage({ params }: ChatPageProps) {
       const url = await uploadChatImage(file);
       setHasSentMessage(true);
       stickToBottomRef.current = true; // 自己送出照片必定跟到最新
-      const newMsg = sendChatMessage(threadId, '', undefined, url, req ?? undefined);
-      setLocalMessages((prev) => [...prev, newMsg]);
+      const newMsg = await sendChatMessage(threadId, '', undefined, url, req ?? undefined);
+      setLocalMessages((prev) => prev.some((message) => message.id === newMsg.id) ? prev : [...prev, newMsg]);
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : '照片上傳失敗');
       setTimeout(() => setPhotoError(''), 6000);
@@ -307,13 +317,21 @@ export default function ChatPage({ params }: ChatPageProps) {
     }
   }
 
-  function handleXiaomeiSend() {
+  async function handleXiaomeiSend() {
     const text = xiaomeiInput.trim();
-    if (!text) return;
-    stickToBottomRef.current = true; // 自己送出必定跟到最新
-    const newMsg = sendChatMessage(threadId, text, otherUserId, undefined, req ?? undefined);
-    setLocalMessages((prev) => [...prev, newMsg]);
-    setXiaomeiInput('');
+    if (!text || sendBusy) return;
+    setSendBusy(true);
+    setPhotoError('');
+    try {
+      stickToBottomRef.current = true; // 自己送出必定跟到最新
+      const newMsg = await sendChatMessage(threadId, text, otherUserId, undefined, req ?? undefined);
+      setLocalMessages((prev) => prev.some((message) => message.id === newMsg.id) ? prev : [...prev, newMsg]);
+      setXiaomeiInput('');
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : '訊息傳送失敗');
+    } finally {
+      setSendBusy(false);
+    }
   }
 
   function handleXiaomeiKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -491,6 +509,9 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
 
         {/* Input */}
+        {photoError && (
+          <p className="shrink-0 bg-white px-4 pt-2 text-xs text-red-500 text-center break-words">⚠️ {photoError}</p>
+        )}
         <div
           className="shrink-0 flex items-center gap-2 px-4 pt-3 bg-white/90 backdrop-blur-md border-t border-brand-lavender"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
@@ -506,13 +527,13 @@ export default function ChatPage({ params }: ChatPageProps) {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="輸入訊息…"
+                placeholder={sendBusy ? '傳送中…' : '輸入訊息…'}
                 aria-label="輸入訊息"
                 className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
                 onClick={handleSend}
-                disabled={!inputText.trim()}
+                disabled={!inputText.trim() || sendBusy}
                 aria-label="發送"
                 className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-brand-sky text-brand-ink shadow-sm transition-all active:scale-95 disabled:opacity-40"
               >
@@ -656,7 +677,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           />
           <button
             onClick={handleXiaomeiSend}
-            disabled={!xiaomeiInput.trim()}
+            disabled={!xiaomeiInput.trim() || sendBusy}
             aria-label="發送"
             className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-pink-300 text-brand-ink shadow-sm transition-all active:scale-95 disabled:opacity-40"
           >
@@ -900,13 +921,13 @@ export default function ChatPage({ params }: ChatPageProps) {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={photoBusy ? '照片上傳中…' : '輸入訊息…'}
+                placeholder={photoBusy ? '照片上傳中…' : sendBusy ? '傳送中…' : '輸入訊息…'}
                 aria-label="輸入訊息"
                 className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
                 onClick={handleSend}
-                disabled={!inputText.trim()}
+                disabled={!inputText.trim() || sendBusy}
                 aria-label="發送"
                 className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full bg-brand-sky text-brand-ink shadow-sm transition-all active:scale-95 disabled:opacity-40"
               >

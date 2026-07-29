@@ -42,6 +42,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     recordRequestViewer,
   } = useAppState();
   const [toast, setToast] = useState('');
+  const [acceptingResponseId, setAcceptingResponseId] = useState<string | null>(null);
 
   const rejectTargetId  = useRef<string | null>(null);
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
@@ -122,9 +123,17 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     showToast('已送出加入請求 ⏳');
   }
 
-  function handleAccept(responseId: string) {
-    acceptResponder(responseId);
-    showToast('已接受！聊天已開啟 ✨');
+  async function handleAccept(responseId: string) {
+    if (acceptingResponseId) return;
+    setAcceptingResponseId(responseId);
+    try {
+      await acceptResponder(responseId);
+      showToast('已接受！聊天室建立完成 ✨');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '聊天室建立失敗，請稍後再試');
+    } finally {
+      setAcceptingResponseId(null);
+    }
   }
 
   function handleRejectTap(responseId: string) {
@@ -280,14 +289,14 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     <div className="flex gap-1.5 shrink-0">
                       <button
                         onClick={() => !isAtCap && handleAccept(resp.id)}
-                        disabled={isAtCap}
+                        disabled={isAtCap || acceptingResponseId !== null}
                         className={`text-xs px-3 py-1.5 rounded-xl font-semibold transition-all ${
-                          isAtCap
+                          isAtCap || acceptingResponseId !== null
                             ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed'
                             : 'bg-brand-sky text-brand-ink active:scale-95'
                         }`}
                       >
-                        接受
+                        {acceptingResponseId === resp.id ? '建立中…' : '接受'}
                       </button>
                       <button
                         onClick={() => handleRejectTap(resp.id)}

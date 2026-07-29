@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -13,8 +13,36 @@ function getThreadId(a: string, b: string) {
 }
 
 export default function InboxPage() {
-  const { state, currentUser, clearInboxUnread, markUpdatesRead, confirmMeetup } = useAppState();
+  const { state, currentUser, clearInboxUnread, markUpdatesRead, confirmMeetup, refreshShared } = useAppState();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedMatchId = searchParams.get('match');
+  const [matchRefreshAttempts, setMatchRefreshAttempts] = useState(0);
+  const requestedMatch = requestedMatchId
+    ? state.invitations.find((invitation) => invitation.id === requestedMatchId && invitation.status === 'accepted')
+    : undefined;
+  const requestedMatchReady = requestedMatchId ? Boolean(requestedMatch) : true;
+
+  useEffect(() => {
+    if (!requestedMatchId || requestedMatchReady || matchRefreshAttempts >= 10) return;
+    const timer = window.setTimeout(async () => {
+      await refreshShared();
+      setMatchRefreshAttempts((attempts) => attempts + 1);
+    }, matchRefreshAttempts === 0 ? 0 : 1000);
+    return () => window.clearTimeout(timer);
+  }, [requestedMatchId, requestedMatchReady, matchRefreshAttempts, refreshShared]);
+
+  useEffect(() => {
+    if (!requestedMatchId || !requestedMatch || !currentUser) return;
+    const otherUserId = requestedMatch.fromUserId === currentUser.id
+      ? requestedMatch.toUserId
+      : requestedMatch.fromUserId;
+    if (!otherUserId) return;
+    const requestQuery = requestedMatch.requestId
+      ? `?req=${encodeURIComponent(requestedMatch.requestId)}`
+      : '';
+    router.replace(`/chat/${encodeURIComponent(getThreadId(currentUser.id, otherUserId))}${requestQuery}`);
+  }, [requestedMatchId, requestedMatch, currentUser, router]);
 
   const role = currentUser?.role;
   const isEscort = role === 'escort';
@@ -152,7 +180,9 @@ export default function InboxPage() {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const isEmpty = matchCards.length === 0 && allNotifs.length === 0;
+  const matchIsLoading = Boolean(requestedMatchId && !requestedMatchReady && matchRefreshAttempts < 10);
+  const matchLoadFailed = Boolean(requestedMatchId && !requestedMatchReady && matchRefreshAttempts >= 10);
+  const isEmpty = matchCards.length === 0 && allNotifs.length === 0 && !matchIsLoading && !matchLoadFailed;
 
   if (isEmpty) {
     return (
@@ -184,6 +214,23 @@ export default function InboxPage() {
 
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
+      {matchIsLoading && (
+        <div className="rounded-2xl border border-brand-lavender bg-white p-4 text-center shadow-card">
+          <p className="text-sm font-semibold text-brand-ink">聊天室建立中…</p>
+          <p className="mt-1 text-xs text-zinc-400">正在取得最新資料，請稍候</p>
+        </div>
+      )}
+      {matchLoadFailed && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center">
+          <p className="text-sm font-semibold text-red-600">聊天室載入失敗</p>
+          <button
+            onClick={() => setMatchRefreshAttempts(0)}
+            className="mt-2 rounded-xl bg-white px-4 py-2 text-xs font-semibold text-red-500"
+          >
+            重新嘗試
+          </button>
+        </div>
+      )}
 
       {/* ── Match cards — one per request ── */}
       {matchCards.map((card) => {

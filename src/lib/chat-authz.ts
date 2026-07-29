@@ -22,6 +22,7 @@ export function canonicalThreadId(a: string, b: string): string {
 
 export interface ChatAccess {
   direct: Map<string, string>; // 1:1/代談 threadId -> 對方 userId（供封鎖判定）
+  directRequestIds: Map<string, Set<string | null>>; // threadId -> 合法 invitation.requestId（私人邀請為 null）
   group: Set<string>;          // 群組 threadId（g-{requestId}）
 }
 
@@ -30,10 +31,10 @@ export interface ChatAccessOpts {
   now?: number;       // 目前時間（ms）；writable 時據此判斷 chatExpiresAt
 }
 
-const notExpired = (exp: string | undefined, now: number): boolean => {
-  if (!exp) return true;
+const hasValidWritableExpiry = (exp: string | undefined, now: number): boolean => {
+  if (!exp) return false;
   const t = Date.parse(exp);
-  return Number.isNaN(t) || now <= t; // 無法解析的時間視為未過期（不因壞資料誤鎖）
+  return Number.isFinite(t) && now <= t;
 };
 
 /**
@@ -46,8 +47,9 @@ export function buildChatAccessIndex(
   opts: ChatAccessOpts = {},
 ): ChatAccess {
   const direct = new Map<string, string>();
+  const directRequestIds = new Map<string, Set<string | null>>();
   const group = new Set<string>();
-  if (!me) return { direct, group };
+  if (!me) return { direct, directRequestIds, group };
   const now = opts.now ?? 0;
 
   // 1:1 / 代談：invitation 的 {from,to} 即該聊天室兩端成員
@@ -57,9 +59,14 @@ export function buildChatAccessIndex(
     if (from !== me && to !== me) continue;
     if (opts.writable) {
       if (str(inv.status) !== 'accepted') continue;             // 寫入須已接受
-      if (!notExpired(str(inv.chatExpiresAt), now)) continue;    // 過期禁新寫（讀取端不帶 writable，故歷史仍可讀）
+      if (inv.meetupConfirmed === true) continue;                // 已確認見面即關閉新寫入
+      if (!hasValidWritableExpiry(str(inv.chatExpiresAt), now)) continue;
     }
-    direct.set(canonicalThreadId(from, to), from === me ? to : from);
+    const threadId = canonicalThreadId(from, to);
+    direct.set(threadId, from === me ? to : from);
+    const requestIds = directRequestIds.get(threadId) ?? new Set<string | null>();
+    requestIds.add(str(inv.requestId) ?? null);
+    directRequestIds.set(threadId, requestIds);
   }
 
   // 群組：g-{requestId}，成員 = 局 creator ∪ 該局 joining 回應者
@@ -74,16 +81,21 @@ export function buildChatAccessIndex(
   }
   for (const rid of memberReqIds) {
     if (opts.writable) {
-      // 群組寫入：若該局已有 accepted 群組 invitation 且「全部過期」→ 鎖；否則放行（僅過期，不判 allConfirmed）
+      // 群組寫入：至少要有一筆尚未確認見面、期限合法且未過期的 accepted 群組 invitation。
       const gInvites = (data.invitations ?? []).filter(
-        (i) => str(i.requestId) === rid && str(i.status) === 'accepted' && !!str(i.groupThreadId),
+        (i) => str(i.requestId) === rid && str(i.status) === 'accepted' && str(i.groupThreadId) === `g-${rid}`,
       );
-      if (gInvites.length && !gInvites.some((i) => notExpired(str(i.chatExpiresAt), now))) continue;
+      const hasActiveInvite = gInvites.some(
+        (i) => i.meetupConfirmed !== true && hasValidWritableExpiry(str(i.chatExpiresAt), now),
+      );
+      // 舊群組資料可能沒有 groupThreadId；保留既有 request/response 成員判斷，
+      // 但只要已有群組 invitation，就必須通過關閉狀態與期限檢查。
+      if (gInvites.length > 0 && !hasActiveInvite) continue;
     }
     group.add(`g-${rid}`);
   }
 
-  return { direct, group };
+  return { direct, directRequestIds, group };
 }
 
 /** me 與哪些人有 active 封鎖（雙向）。active !== false 視為生效（與 scopeForSession 一致，壞資料 fail-safe）。 */
@@ -113,8 +125,14 @@ export function canWriteChatMessage(
   const tid = str(msg.threadId);
   if (!tid) return false;
   const peer = access.direct.get(tid);
-  if (peer !== undefined) return !blockedPeers.has(peer);      // 直接 1:1/代談：與對方無 active 封鎖才可寫
-  return access.group.has(tid);                               // 群組：成員即可（封鎖不套用於群組）
+  if (peer !== undefined) {
+    const requestId = str(msg.requestId) ?? null;
+    if (!access.directRequestIds.get(tid)?.has(requestId)) return false;
+    return !blockedPeers.has(peer);                            // 直接 1:1/代談：與對方無 active 封鎖才可寫
+  }
+  if (!access.group.has(tid)) return false;
+  const groupRequestId = tid.startsWith('g-') ? tid.slice(2) : '';
+  return !!groupRequestId && str(msg.requestId) === groupRequestId;
 }
 
 /** me 是否可讀取此 threadId 的訊息（成員精確等值比對；不解析 threadId、不用 includes/startsWith）。 */

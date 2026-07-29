@@ -455,6 +455,11 @@ async function pollShared() {
   } catch {}
 }
 
+/** 由通知落地頁主動刷新一次權威共享資料。 */
+export async function refreshShared(): Promise<void> {
+  await pollShared();
+}
+
 function startSync() {
   if (syncStarted || typeof window === 'undefined') return;
   syncStarted = true;
@@ -1003,65 +1008,29 @@ export function useAppState() {
 
   // Creator accepts an 'interested' joiner: flips to 'joining', creates invitation + chat.
   // For requests with peopleCount > 1, uses a shared group thread (g-{requestId}).
-  const acceptResponder = useCallback((responseId: string) => {
-    setState((prev) => {
-      const target = prev.responses.find((r) => r.id === responseId);
-      if (!target || target.responseStatus !== 'interested') return prev;
-
-      const req = prev.requests.find((r) => r.id === target.requestId);
-      if (!req) return prev;
-
-      // #5 派工無上限：不再以 peopleCount 擋接受、也不自動關閉需求
-
-      const now = new Date().toISOString();
-      const chatExpiresAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(); // 聊天視窗 30 天（demo：避免跨天測試就過期鎖住）
-
-      // #7 幹部代談：若此加入是幹部派工，聊天對象為該幹部（1:1），否則為女伴本人
-      const chatPartnerId = target.dispatcherId ?? target.userId;
-
-      const newInvite: Invitation = {
-        id: `i-accept-${Date.now()}`,
-        requestId: target.requestId,
-        fromUserId: chatPartnerId,     // 代談幹部（或女伴）
-        toUserId: prev.currentUserId,  // creator（客戶）
-        status: 'accepted',
-        createdAt: now,
-        respondedAt: now,
-        chatExpiresAt,
-        dispatcherId: target.dispatcherId,
-      };
-
-      // 通知聊天對象（幹部或女伴）聊天室已開啟
-      const partnerNotif: UpdateEvent = {
-        id: `ue-accept-${Date.now()}`,
-        userId: chatPartnerId,
-        actorId: prev.currentUserId,
-        eventType: 'invite_accepted',
-        refRequestId: target.requestId,
-        createdAt: now,
-        read: false,
-      };
-
-      const updatedResponses = prev.responses.map((r) =>
-        r.id === responseId ? { ...r, responseStatus: 'joining' as const } : r
-      );
-
-      const creatorUser = prev.users.find((u) => u.id === prev.currentUserId);
-      sendPushNotification(
-        chatPartnerId,
-        '客戶已同意入局！',
-        `${creatorUser?.nickname ?? '某位客戶'} 已同意，聊天室已開啟`,
-        '/inbox'
-      );
-
-      return {
-        ...prev,
-        responses: updatedResponses,
-        invitations: [...prev.invitations, newInvite],
-        updates: [partnerNotif, ...prev.updates],
-        inboxUnread: true,
-      };
+  const acceptResponder = useCallback(async (responseId: string) => {
+    const res = await fetch('/api/matches/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ responseId }),
     });
+    const body = await res.json().catch(() => ({})) as {
+      error?: string;
+      response?: Response;
+      invitation?: Invitation;
+      update?: UpdateEvent;
+    };
+    if (!res.ok || !body.response || !body.invitation) {
+      throw new Error(body.error || '聊天室建立失敗，請稍後再試');
+    }
+
+    // server 已完成落盤後，才把權威結果套回客戶端；不再先產生本機假聊天室。
+    applyServerShared({
+      responses: [body.response],
+      invitations: [body.invitation],
+      ...(body.update ? { updates: [body.update] } : {}),
+    });
+    return body.invitation;
   }, []);
 
   // Record that an escort viewed this request detail (FOMO tracking).
@@ -1197,49 +1166,22 @@ export function useAppState() {
     listeners.forEach((l) => l());
   }, []);
 
-  const sendChatMessage = useCallback((threadId: string, text: string, overrideSenderId?: string, imageUrl?: string, requestId?: string) => {
-    const senderId = overrideSenderId ?? getState().currentUserId;
-    const newMsg: ChatMessage = {
-      id: `cm-${Date.now()}`,
-      threadId,
-      senderId,
-      text,
-      ...(imageUrl ? { imageUrl } : {}),
-      ...(requestId ? { requestId } : {}),
-      createdAt: new Date().toISOString(),
-    };
-    setState((prev) => ({
-      ...prev,
-      chatMessages: [...prev.chatMessages, newMsg],
-    }));
-
-    // 推播給聊天室的「其他參與者」（排除送出者）
-    const s = getState();
-    let recipients: string[] = [];
-    const gReqId = threadId.startsWith('g-') ? threadId.slice(2) : null;
-    const gReq = gReqId ? s.requests.find((r) => r.id === gReqId) : null;
-    // 只有 g- 後面真的對應到一個局（request/response）才算群組；否則（例如 id 恰好以 g- 開頭的自建小姐）當 1:1
-    if (gReqId && (gReq || s.responses.some((r) => r.requestId === gReqId))) {
-      const joinerIds = s.responses
-        .filter((r) => r.requestId === gReqId && r.responseStatus === 'joining')
-        .map((r) => r.userId);
-      recipients = [...(gReq ? [gReq.creatorId] : []), ...joinerIds];
-    } else {
-      // 1:1：threadId 是兩個 user id 排序組成；用邊界比對取另一方（支援 c-<uuid> 客戶）
-      const other = otherIdFromThread(threadId, senderId);
-      recipients = other ? [other] : [];
+  const sendChatMessage = useCallback(async (threadId: string, text: string, overrideSenderId?: string, imageUrl?: string, requestId?: string) => {
+    // 正式流程不允許前端冒用 senderId；overrideSenderId 僅為舊 demo 介面保留，server 仍以 session 為準。
+    if (overrideSenderId && overrideSenderId !== getState().currentUserId) {
+      throw new Error('示範身分不可送出正式訊息');
     }
-    recipients = [...new Set(recipients)].filter((id) => id !== senderId);
-    if (recipients.length) {
-      const sender = s.users.find((u) => u.id === senderId);
-      const preview = imageUrl ? '傳來一張照片 📷' : (text.length > 40 ? text.slice(0, 40) + '…' : text);
-      sendPushNotification(
-        recipients,
-        `${sender?.nickname ?? '對方'} 傳來訊息`,
-        preview,
-        `/chat/${threadId}${requestId ? `?req=${requestId}` : ''}`
-      );
+    const res = await fetch('/api/chat/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ threadId, text, imageUrl, requestId }),
+    });
+    const body = await res.json().catch(() => ({})) as { error?: string; message?: ChatMessage };
+    if (!res.ok || !body.message) {
+      throw new Error(body.error || '訊息傳送失敗');
     }
+    const newMsg = body.message;
+    applyServerShared({ chatMessages: [newMsg] });
     return newMsg;
   }, []);
 
@@ -1482,6 +1424,7 @@ export function useAppState() {
     blockUser,
     unblockUser,
     markUpdatesRead,
+    refreshShared,
     reset,
     sendChatMessage,
     confirmMeetup,
