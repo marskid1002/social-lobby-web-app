@@ -3,6 +3,7 @@ import { getShared, mergeShared, clearShared, getCollection, getResetMarks, SHAR
 import { getSessionFromRequest, type SessionPayload } from '@/lib/session';
 import { requireActiveSession } from '@/lib/active-session';
 import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
+import { buildChatAccessIndex, canReadChatThread } from '@/lib/chat-authz';
 import { getManagerUserIds } from '@/lib/auth-store';
 
 export const dynamic = 'force-dynamic';
@@ -77,28 +78,23 @@ export function scopeForSession(all: SharedState, s: SessionPayload): SharedStat
 
   const updates = (all.updates ?? []).filter((u) => asRec(u).userId === me && ok(asRec(u).actorId));
 
+  // D：以「真實 server 關係」算出 me 合法所屬的聊天室集合（1:1 由 invitation 兩端、群組由 creator/joining）；
+  // 讀取端不帶 writable（歷史含已過期/非 accepted 仍可讀），並對 threadId 做「精確等值」比對，
+  // 杜絕舊 includes/startsWith 的子字串碰撞（u-01 不得看到只屬於 u-010 的聊天室）。
+  const chatAccess = buildChatAccessIndex(me, {
+    invitations: all.invitations ?? [],
+    responses: all.responses ?? [],
+    requests: all.requests ?? [],
+  });
   const chatMessages = (all.chatMessages ?? []).filter((m) => {
-    // 防污染資料造成整個 GET 拋例外：非物件、senderId 非字串、threadId 非字串/空 → 一律不下發
+    // 防污染資料造成整個 GET 拋例外：非物件、senderId 非字串、threadId 非字串/空 → 一律不下發（GET 仍 200）
     if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
     const x = asRec(m);
     if (typeof x.senderId !== 'string') return false; // senderId 型別錯 → 不下發
-    if (!ok(x.senderId)) return false; // 封鎖對象的訊息不下發
+    if (!ok(x.senderId)) return false; // 封鎖對象的訊息不下發（既有行為保留；不刪歷史）
     const tid = typeof x.threadId === 'string' ? x.threadId : ''; // 非字串 threadId → 視為空
-    if (!tid) return false; // 空 threadId → 不下發（避免 startsWith/includes 在 null/undefined 上拋例外）
-    if (tid.startsWith('g-')) {
-      const reqId = tid.slice(2);
-      const req = requests.find((r) => r.id === reqId);
-      // 只有 g- 後面真的對應到一個局才算群組；否則（例如參與者 id 恰好以 g- 開頭的自建小姐）落到 1:1 判斷
-      const isRealGroup = !!req || responses.some((r) => asRec(r).requestId === reqId);
-      if (isRealGroup) {
-        if (req && asRec(req).creatorId === me) return true;
-        return responses.some((r) => {
-          const y = asRec(r);
-          return y.requestId === reqId && y.userId === me && y.responseStatus === 'joining';
-        });
-      }
-    }
-    return tid.includes(me);
+    if (!tid) return false; // 空/未知 threadId → 不下發
+    return canReadChatThread(tid, chatAccess); // 精確成員比對；非成員不得收到
   });
 
   return {
@@ -265,6 +261,8 @@ export async function POST(req: NextRequest) {
     const need = new Set<string>(['escorts', 'requests', 'responses']); // 關係依賴＋managed girls：恆需
     if (Array.isArray(patch.invitations) || Array.isArray(patch.updates)) need.add('invitations'); // updates 的 invite_* 需比對邀請
     if (Array.isArray(patch.updates)) need.add('updates'); // updates append-only 需既有 id
+    // D：chatMessages 授權需 invitations（成員）＋blocks（封鎖）＋chatMessages（append-only 既有 id）
+    if (Array.isArray(patch.chatMessages)) { need.add('invitations'); need.add('blocks'); need.add('chatMessages'); }
     for (const k of ['blocks', 'momentPosts', 'plazaComments'] as const) if (Array.isArray(patch[k])) need.add(k);
     const cols: Record<string, { id: string; [k: string]: unknown }[]> = {};
     await Promise.all([...need].map(async (k) => { cols[k] = await getCollection(k as SharedKey); }));

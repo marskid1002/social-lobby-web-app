@@ -18,6 +18,7 @@ function emptyShared(over = {}) {
 }
 const session = (id, role = 'user', tier = 'standard') => ({ userId: id, role, tier });
 const CA = '2026-01-01T00:00:00.000Z';
+const FE = '2999-01-01T00:00:00.000Z'; // 未過期
 
 test('匯入到真正的 production 函式', () => {
   assert.equal(typeof scopeForSession, 'function');
@@ -27,11 +28,13 @@ test('匯入到真正的 production 函式', () => {
 test('scopeForSession：污染 chatMessages 不拋例外、污染不下發、合法保留', () => {
   const me = 'c-me';
   const all = emptyShared({
+    // D：合法可見需真實關係——建立 me↔u-999 的 accepted invitation（thread=c-me-u-999）
+    invitations: [{ id: 'iv', fromUserId: me, toUserId: 'u-999', requestId: null, status: 'accepted', chatExpiresAt: FE, createdAt: CA }],
     chatMessages: [
       { id: 'poison-null-thread', threadId: null, senderId: me, text: 'x', createdAt: CA },
       { id: 'poison-undef-thread', senderId: me, text: 'x', createdAt: CA },
       { id: 'poison-num-thread', threadId: 123, senderId: me, text: 'x', createdAt: CA },
-      { id: 'poison-null-sender', threadId: `${me}-x`, senderId: null, text: 'x', createdAt: CA },
+      { id: 'poison-null-sender', threadId: `${me}-u-999`, senderId: null, text: 'x', createdAt: CA },
       { id: 'legit', threadId: `${me}-u-999`, senderId: me, text: 'hi', createdAt: CA },
       null,
       'not-an-object',
@@ -55,6 +58,8 @@ test('scopeForSession：合法 1:1 與群組 chatMessage 的可見性維持原�
   const all = emptyShared({
     requests: [{ id: reqId, creatorId: me, area: '信義區', requestType: 'drinking', peopleCount: 1, status: 'open', createdAt: CA }],
     responses: [{ id: 'resp-1', requestId: reqId, userId: 'u-501', dispatcherId: mgr, responseStatus: 'joining', createdAt: CA }],
+    // D：代談 1:1 成員以 invitation 兩端為權威（from=幹部 mgr、to=客戶 me）→ thread=canonical(me,mgr)
+    invitations: [{ id: 'iv', fromUserId: mgr, toUserId: me, requestId: reqId, dispatcherId: mgr, status: 'accepted', chatExpiresAt: FE, createdAt: CA }],
     chatMessages: [
       { id: 'oneone', threadId: `${me}-${mgr}`, senderId: mgr, text: '代談', createdAt: CA },
       { id: 'group', threadId: `g-${reqId}`, senderId: 'u-501', text: '群組', createdAt: CA },

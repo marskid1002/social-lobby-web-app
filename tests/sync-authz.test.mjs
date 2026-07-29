@@ -236,9 +236,16 @@ test('M6：既有 owner=me 只重建允許欄位、凍結身份；他人 existin
   assert.deepEqual(run({ registeredUsers: [{ id: 'other' }, { id: 'A' }] }, usr('A')).registeredUsers.map((u) => u.id), ['A']);
 });
 
-// ══ chatMessages（規格十）══
-test('chatMessages：只保留 senderId===me', () => {
-  assert.deepEqual(ids(run({ chatMessages: [{ id: 'm1', threadId: 'A-x', senderId: 'A', text: 'hi', createdAt: CA }, { id: 'm2', threadId: 'A-x', senderId: 'B', text: 'x', createdAt: CA }] }, usr('A')).chatMessages), ['m1']);
+// ══ chatMessages（規格十 / D：senderId===me + 聊天室成員）══
+test('chatMessages：senderId===me 且必須是聊天室合法成員（1:1 由 invitation 兩端）', () => {
+  const cols = { invitations: [{ id: 'iv', fromUserId: 'A', toUserId: 'x', requestId: null, status: 'accepted', chatExpiresAt: '2999-01-01T00:00:00.000Z', createdAt: CA }] };
+  // A 為 A-x 成員：senderId===A 通過；senderId===B（非本人）丟棄
+  assert.deepEqual(ids(run({ chatMessages: [
+    { id: 'm1', threadId: 'A-x', senderId: 'A', text: 'hi', createdAt: CA },
+    { id: 'm2', threadId: 'A-x', senderId: 'B', text: 'x', createdAt: CA },
+  ] }, usr('A'), cols).chatMessages), ['m1']);
+  // 無任何關係（threadId 非成員）→ 即使 senderId===me 也丟棄（D 收緊：不再只看 senderId）
+  assert.deepEqual(run({ chatMessages: [{ id: 'm3', threadId: 'A-x', senderId: 'A', text: 'hi', createdAt: CA }] }, usr('A')).chatMessages, []);
 });
 
 // ══ full snapshot（F）══

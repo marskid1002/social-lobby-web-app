@@ -12,6 +12,7 @@
  * route 端負責批次預讀 server 集合＋幹部名單並建成 ServerIndex 傳入，本模組不碰 Redis。
  */
 import type { SessionPayload } from './session';
+import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage } from './chat-authz';
 
 type Item = Record<string, unknown>;
 
@@ -24,6 +25,7 @@ export interface ServerIndex {
   blocks: Map<string, Item>;
   momentPosts: Map<string, Item>;
   plazaComments: Map<string, Item>;
+  chatMessages: Map<string, Item>; // D：既有訊息 id（append-only 用）
   managerUserIds: Set<string>;
 }
 
@@ -31,6 +33,7 @@ export function emptyIndex(): ServerIndex {
   return {
     escorts: new Map(), requests: new Map(), responses: new Map(), invitations: new Map(),
     updateIds: new Set(), blocks: new Map(), momentPosts: new Map(), plazaComments: new Map(),
+    chatMessages: new Map(),
     managerUserIds: new Set(),
   };
 }
@@ -48,7 +51,7 @@ const RESP_DISPATCH: [string, string][] = [['withdrawn', 'interested'], ['declin
 const RESP_CREATOR: [string, string][] = [['interested', 'joining'], ['interested', 'declined'], ['joining', 'declined']]; // 接受/婉拒/取消已接受
 const trans = (pairs: [string, string][], from: string | undefined, to: string | undefined) => !!from && !!to && pairs.some(([a, b]) => a === from && b === to);
 
-export function authorizeWrites(rawPatch: Record<string, unknown>, session: SessionPayload, idx: ServerIndex): Record<string, unknown> {
+export function authorizeWrites(rawPatch: Record<string, unknown>, session: SessionPayload, idx: ServerIndex, now: number = Date.now()): Record<string, unknown> {
   const me = session.userId;
   const isManager = session.role === 'manager';
   const out: Record<string, unknown> = { ...rawPatch };
@@ -299,8 +302,31 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
   }
   // registeredUsers：owner 即 id，只能寫自己（economic/role/tier 由 route.sanitizePatch 另處理）
   if ('registeredUsers' in out) out.registeredUsers = asArr(out.registeredUsers).filter((u) => s(u.id) === me);
-  // chatMessages：維持既有 senderId===me 防護（D 聊天成員授權不在本輪）
-  if ('chatMessages' in out) out.chatMessages = asArr(out.chatMessages).filter((m) => s(m.senderId) === me);
+
+  // ── D：chatMessages — 成員授權 + 封鎖 + 過期 + append-only ──
+  // 成員以「同批 effective 關係」（server ∪ 本批已通過 B 授權）為權威：
+  //   effInvites/effResponses 已於上方建好；requests 取 server ∪ 本批已授權。
+  // 既有 message id 一律凍結為 server 版（append-only：不得改 senderId/threadId/text/createdAt/imageUrl）。
+  if ('chatMessages' in out) {
+    const access = buildChatAccessIndex(
+      me,
+      {
+        invitations: [...effInvites.values()],
+        responses: [...effResponses.values()],
+        requests: [...idx.requests.values(), ...asArr(out.requests)],
+      },
+      { writable: true, now },
+    );
+    const effBlocks = new Map(idx.blocks);
+    for (const b of asArr(out.blocks)) { const id = s(b.id); if (id) effBlocks.set(id, b); }
+    const blockedPeers = activeBlockPeers(me, [...effBlocks.values()]);
+    out.chatMessages = asArr(out.chatMessages).flatMap((m) => {
+      const id = s(m.id); if (!id) return [];
+      const existing = idx.chatMessages.get(id);
+      if (existing) return [existing];                              // append-only：既有沿用 server 版（凍結內容/身份/thread）
+      return canWriteChatMessage(m, me, access, blockedPeers) ? [m] : [];
+    });
+  }
 
   return out;
 }
@@ -316,6 +342,7 @@ export function buildIndex(cols: Record<string, Item[]>, managerUserIds: string[
   fill(idx.blocks, cols.blocks);
   fill(idx.momentPosts, cols.momentPosts);
   fill(idx.plazaComments, cols.plazaComments);
+  fill(idx.chatMessages, cols.chatMessages);
   for (const it of cols.updates ?? []) { const id = s(it.id); if (id) idx.updateIds.add(id); }
   for (const uid of managerUserIds) idx.managerUserIds.add(uid);
   return idx;
