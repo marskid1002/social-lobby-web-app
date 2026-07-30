@@ -153,7 +153,7 @@ export default function LoginPage() {
   }
 
   const inputCls =
-    'w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-base text-brand-ink focus:outline-none focus:border-brand-sky md:text-sm';
+    'w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky';
   const otpBtnCls =
     'shrink-0 px-3 rounded-xl bg-brand-sky text-brand-ink text-xs font-bold active:scale-[0.98] transition-transform disabled:opacity-50 whitespace-nowrap';
 
@@ -202,8 +202,8 @@ export default function LoginPage() {
 
             {mode === 'login' && (
               <form onSubmit={handleLogin} className="flex flex-col gap-2.5">
-                <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="帳號" className={inputCls} aria-label="帳號" autoComplete="username" />
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼" className={inputCls} aria-label="密碼" autoComplete="current-password" />
+                <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="帳號" className={inputCls} aria-label="帳號" />
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼" className={inputCls} aria-label="密碼" />
                 {needActivation && (
                   <input
                     value={activationCode}
