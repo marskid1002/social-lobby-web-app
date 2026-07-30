@@ -12,7 +12,8 @@ type Mode = 'login' | 'register' | 'reset';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { registerCustomer, loginCustomer, switchUser } = useAppState();
+  // 登入頁尚未有有效 session，不得啟動需要授權的跨裝置資料同步。
+  const { registerCustomer, loginCustomer, switchUser } = useAppState({ sync: false });
 
   const [mode, setMode] = useState<Mode>('login');
   const [account, setAccount] = useState(''); // 手機 或 A001

@@ -16,6 +16,7 @@ import {
 import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, MeetRecord, MomentPost, PlazaComment } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
 import { chatExpiresAtFrom } from '@/lib/chat-lifetime';
+import { shouldRedirectExpiredSession } from '@/lib/session-redirect';
 
 const STORAGE_KEY = 'sl_state_v3';
 const PRIVATE_INVITE_CREDIT_COST = 3;
@@ -303,7 +304,7 @@ function emitSyncError(msg: string): void {
 }
 
 function redirectExpiredSession(res: globalThis.Response): boolean {
-  if (res.status !== 401 || typeof window === 'undefined') return false;
+  if (typeof window === 'undefined' || !shouldRedirectExpiredSession(res.status, window.location.pathname)) return false;
   // 透過 /logout 清除 HttpOnly cookie，再回登入頁；舊裝置不只 API 失效，也會離開操作畫面。
   window.location.replace('/logout');
   return true;
@@ -519,15 +520,16 @@ function setState(updater: (prev: AppState) => AppState) {
   listeners.forEach((l) => l());
 }
 
-export function useAppState() {
+export function useAppState(options: { sync?: boolean } = {}) {
   const [, forceRender] = useState(0);
+  const sync = options.sync !== false;
 
   useEffect(() => {
     const listener = () => forceRender((n) => n + 1);
     listeners.add(listener);
-    startSync(); // 啟動跨裝置同步（單例，內部自我防重）
+    if (sync) startSync(); // 公開登入頁不得啟動需要 session 的跨裝置同步
     return () => { listeners.delete(listener); };
-  }, []);
+  }, [sync]);
 
   const state = getState();
 
