@@ -61,10 +61,11 @@ function parseReq(url, init) {
 // 建立乾淨沙盒：清空相關 env → 套 overrides；mock fetch/console；跑 fn；最後完整還原。
 async function withSandbox(overrides, fetchImpl, fn) {
   const snap = snapshotEnv();
-  const origFetch = global.fetch, origLog = console.log, origErr = console.error;
+  const origFetch = global.fetch, origLog = console.log, origInfo = console.info, origErr = console.error;
   const logs = [], errs = [], requests = [];
   let fetchCalls = 0;
   console.log = (...a) => logs.push(a.map(String).join(' '));
+  console.info = (...a) => logs.push(a.map(String).join(' '));
   console.error = (...a) => errs.push(a.map(String).join(' '));
   global.fetch = async (url, init) => {
     fetchCalls++;
@@ -80,7 +81,7 @@ async function withSandbox(overrides, fetchImpl, fn) {
     out: () => logs.concat(errs).join('\n'),
   };
   try { return await fn(ctx); }
-  finally { console.log = origLog; console.error = origErr; global.fetch = origFetch; restoreEnv(snap); }
+  finally { console.log = origLog; console.info = origInfo; console.error = origErr; global.fetch = origFetch; restoreEnv(snap); }
 }
 function assertNoLeak(ctx) {
   const out = ctx.out();
@@ -200,8 +201,18 @@ test('6b) production 設定完整 + reset：用 RESET 模板、仍只打 send-ot
     assert.ok(req.url.endsWith('/api/sms/send-otp'));
     assert.equal(req.params.otp_template_id, TPL_RESET, 'reset 須用 MSGDOGS_OTP_TEMPLATE_RESET');
     assert.deepEqual(JSON.parse(req.params.variable_data), { code: OTP });
+    assert.match(ctx.out(), /providerCode 200/);
     assertNoLeak(ctx);
   });
+});
+
+test('6d) 09／886／+886 不會重複加國碼，送出一律為 8869xxxxxxxx', async () => {
+  for (const input of [PHONE, `886${PHONE.slice(1)}`, `+886${PHONE.slice(1)}`]) {
+    await withSandbox(FULL, null, async (ctx) => {
+      assert.equal(await sms.sendOtpSms(input, OTP, 'reset'), true);
+      assert.equal(ctx.last().params.mobile, `886${PHONE.slice(1)}`);
+    });
+  }
 });
 
 test('6c) MSGDOGS_MODE=single 仍不得走 send-single（模式已被移除）', async () => {
@@ -391,4 +402,26 @@ test('13c) development + console：send-otp register 仍回 devCode', async () =
     assert.equal(typeof res.body?.devCode, 'string');
     assert.ok(/^\d{4,8}$/.test(res.body.devCode));
   });
+});
+
+test('13d) reset：MsgDogs 執行期失敗時，存在與不存在帳號皆回相同 generic 200', async () => {
+  await withSandbox(
+    FULL,
+    async () => jsonResponse({ error: true, code: 503, msg: 'temporary failure' }, 200),
+    async (ctx) => {
+      const { POST } = await import('@/app/api/auth/route');
+      const authStore = await import('@/lib/auth-store');
+      const existPhone = uniqPhone();
+      await authStore.createCustomer(existPhone, 'Pw!23456', 'existing');
+      const notExistPhone = uniqPhone();
+      const r1 = await POST(authPost({ action: 'send-otp', purpose: 'reset', phone: existPhone }));
+      const r2 = await POST(authPost({ action: 'send-otp', purpose: 'reset', phone: notExistPhone }));
+      assert.equal(r1.status, 200);
+      assert.equal(r2.status, 200);
+      assert.deepEqual(r1.body, { ok: true });
+      assert.deepEqual(r2.body, { ok: true });
+      assert.equal(ctx.calls(), 1, '不存在帳號不發簡訊，但對外結果不可區分');
+      assertNoLeak(ctx);
+    },
+  );
 });

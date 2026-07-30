@@ -14,6 +14,15 @@
 
 import crypto from 'crypto';
 import type { OtpPurpose } from './otp-store';
+import { normalizeTaiwanMobile, toTaiwanInternationalMobile } from './phone';
+
+export interface SmsSendResult {
+  ok: boolean;
+  provider: 'console' | 'msgdogs' | 'unconfigured';
+  httpStatus?: number;
+  providerCode?: string;
+  failureCode?: string;
+}
 
 // 集中的「正式環境」判斷（health 與 sms 共用同一套，避免各自不一致）。
 // 任一成立即視為正式：NODE_ENV=production 或 VERCEL_ENV=production。
@@ -37,7 +46,18 @@ export function isSmsConfigured(): boolean {
 }
 
 export async function sendOtpSms(phone: string, code: string, purpose: OtpPurpose): Promise<boolean> {
+  return (await sendOtpSmsDetailed(phone, code, purpose)).ok;
+}
+
+export async function sendOtpSmsDetailed(
+  phone: string,
+  code: string,
+  purpose: OtpPurpose,
+): Promise<SmsSendResult> {
   const provider = (process.env.SMS_PROVIDER || 'console').toLowerCase();
+  if (!normalizeTaiwanMobile(phone)) {
+    return { ok: false, provider: provider === 'msgdogs' ? 'msgdogs' : 'unconfigured', failureCode: 'invalid_mobile' };
+  }
 
   // ── 正式環境：fail-closed ──────────────────────────────────────────────────
   // 絕不 fallback 到 console、絕不把手機/OTP/payload 寫入 log；未設定完整一律回 false。
@@ -45,12 +65,12 @@ export async function sendOtpSms(phone: string, code: string, purpose: OtpPurpos
     if (provider !== 'msgdogs') {
       // 未設定 / console / 未知值 → 不發送、不印 OTP，只記一般設定錯誤（不含手機/OTP/payload）
       console.error('[sms] production SMS provider is not configured');
-      return false;
+      return { ok: false, provider: 'unconfigured', failureCode: 'provider_not_configured' };
     }
     if (!isSmsConfigured()) {
       // msgdogs 但缺必要金鑰 → 不呼叫 fetch，只指出「缺少設定」（不含 secret/手機/OTP）
       console.error('[sms] production SMS provider is missing required credentials');
-      return false;
+      return { ok: false, provider: 'msgdogs', failureCode: 'provider_credentials_missing' };
     }
     return sendViaMsgDogs(phone, code, purpose);
   }
@@ -59,13 +79,13 @@ export async function sendOtpSms(phone: string, code: string, purpose: OtpPurpos
   if (provider === 'console') {
     // 測試模式：不真的發送，只把驗證碼印到後端 log（僅限非正式環境）
     console.log(`[sms:test] → ${phone}｜驗證碼 ${code}（${purpose}）`);
-    return true;
+    return { ok: true, provider: 'console' };
   }
   if (provider === 'msgdogs') {
     return sendViaMsgDogs(phone, code, purpose);
   }
   console.error(`[sms] 未知的 SMS_PROVIDER: ${provider}`);
-  return false;
+  return { ok: false, provider: 'unconfigured', failureCode: 'unknown_provider' };
 }
 
 // ── MsgDogs（簡訊狗）──────────────────────────────────────────────────────────
@@ -93,12 +113,10 @@ function msgdogsSign(params: Record<string, string>, secret: string): string {
  * 若你的帳號要吃本地格式，設 MSGDOGS_PHONE_FORMAT=raw 即用原樣數字。
  */
 function formatMobile(phone: string): string {
-  const digits = phone.replace(/[^0-9]/g, '');
+  const local = normalizeTaiwanMobile(phone);
+  if (!local) return '';
   const fmt = (process.env.MSGDOGS_PHONE_FORMAT || 'tw886').toLowerCase();
-  if (fmt === 'raw') return digits;
-  if (digits.startsWith('886')) return digits;
-  if (digits.startsWith('0')) return `886${digits.slice(1)}`;
-  return digits;
+  return fmt === 'raw' ? local : toTaiwanInternationalMobile(local);
 }
 
 // 依用途讀取 MsgDogs OTP 模板 ID（一律讀環境變數、不寫死；register / reset 分開）。
@@ -110,24 +128,27 @@ function otpTemplateId(purpose: OtpPurpose): string {
 }
 
 // 只走 MsgDogs OTP 專用通道（/api/sms/send-otp）；不再有單條簡訊通道或自訂內文模式。
-async function sendViaMsgDogs(phone: string, code: string, purpose: OtpPurpose): Promise<boolean> {
+async function sendViaMsgDogs(phone: string, code: string, purpose: OtpPurpose): Promise<SmsSendResult> {
   const merchant = process.env.MSGDOGS_MERCHANT_CODE;
   const secret = process.env.MSGDOGS_SECRET_KEY; // = accessKey
   if (!merchant || !secret) {
     console.error('[sms] 缺少 MSGDOGS_MERCHANT_CODE / MSGDOGS_SECRET_KEY');
-    return false;
+    return { ok: false, provider: 'msgdogs', failureCode: 'provider_credentials_missing' };
   }
 
   const template = otpTemplateId(purpose);
   if (!template) {
     // 缺少該用途的 OTP 模板 ID → 不呼叫 fetch（正式環境已由 isSmsConfigured 擋在前，這裡是雙保險）
     console.error('[sms] 缺少 MsgDogs OTP 模板 ID（MSGDOGS_OTP_TEMPLATE_REGISTER / _RESET）');
-    return false;
+    return { ok: false, provider: 'msgdogs', failureCode: 'provider_template_missing' };
   }
 
   const base = (process.env.MSGDOGS_BASE_URL || 'https://www.msgdogs.com').replace(/\/$/, '');
   const timestamp = String(Math.floor(Date.now() / 1000)); // 官方範例用 time()（秒）
   const mobile = formatMobile(phone);
+  if (!mobile) {
+    return { ok: false, provider: 'msgdogs', failureCode: 'invalid_mobile' };
+  }
 
   // OTP 模板（如 1088）內文只有 ${code}，故 variable_data 只帶 { code }，不帶 tag。
   const url = `${base}/api/sms/send-otp`;
@@ -159,14 +180,39 @@ async function sendViaMsgDogs(phone: string, code: string, purpose: OtpPurpose):
     const data = (await res.json().catch(() => null)) as
       | { error?: boolean; code?: number; msg?: string | null }
       | null;
+    const providerCode = safeProviderCode(data?.code);
     const ok = Boolean(res.ok && data && data.error === false && data.code === 200);
     // 只記錄非敏感的 HTTP status 與 provider 錯誤碼；不 stringify 完整 response（可能回顯內容），
     // 更不記錄手機、OTP、payload、sign 或 secret。
-    if (!ok) console.error('[sms] MsgDogs send failed', 'http', res.status, 'providerCode', data?.code ?? 'n/a');
-    return ok;
+    if (ok) {
+      console.info('[sms] MsgDogs response', 'purpose', purpose, 'http', res.status, 'providerCode', providerCode);
+    } else {
+      console.error('[sms] MsgDogs send failed', 'purpose', purpose, 'http', res.status, 'providerCode', providerCode);
+    }
+    return {
+      ok,
+      provider: 'msgdogs',
+      httpStatus: res.status,
+      providerCode,
+      ...(!ok ? { failureCode: 'provider_rejected' } : {}),
+    };
   } catch (e) {
     // 只記錄錯誤分類名稱，不輸出可能含 URL/payload 的完整錯誤物件
     console.error('[sms] MsgDogs request threw', e instanceof Error ? e.name : 'unknown');
-    return false;
+    return {
+      ok: false,
+      provider: 'msgdogs',
+      failureCode: e instanceof Error ? `request_${safeFailureName(e.name)}` : 'request_unknown',
+    };
   }
+}
+
+function safeProviderCode(value: unknown): string {
+  const text = typeof value === 'number' || typeof value === 'string' ? String(value) : 'n/a';
+  return /^[A-Za-z0-9_.-]{1,32}$/.test(text) ? text : 'invalid';
+}
+
+function safeFailureName(value: string): string {
+  const normalized = value.replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 32);
+  return normalized || 'error';
 }

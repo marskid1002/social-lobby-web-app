@@ -48,7 +48,7 @@ async function sandbox(fn) {
   for (const k of ENV_KEYS) delete process.env[k]; // dev、無 Redis、無啟用碼、非 Vercel
   try { return await fn(); } finally { restoreEnv(snap); }
 }
-let seq = 900000000;
+let seq = 90000000;
 function authPost(body) {
   return new Request('http://localhost/api/auth', {
     method: 'POST',

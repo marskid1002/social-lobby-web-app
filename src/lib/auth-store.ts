@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getRedis, kvKey } from './kv';
+import { normalizeTaiwanMobile, taiwanMobileStorageAliases } from './phone';
 
 /**
  * 帳號儲存層（帳號 + 密碼）。
@@ -97,13 +98,31 @@ export function hashPassword(password: string, salt: string): string {
 }
 
 export function normalizePhone(phone: string): string {
-  return phone.replace(/[^0-9]/g, '');
+  return normalizeTaiwanMobile(phone);
 }
 
 export function normalizeKey(key: string): string {
   const k = (key ?? '').trim();
   // 幹部/管理員帳號＝A + 3~4 位數字（A000~A020 為既有；A999/A1000 為額外測試帳號）；其餘視為手機
   return /^A\d{3,4}$/i.test(k) ? k.toUpperCase() : normalizePhone(k);
+}
+
+function findAccountEntry(
+  accounts: AccountsMap,
+  rawKey: string,
+): { storageKey: string; account: Account } | null {
+  const normalized = normalizeKey(rawKey);
+  if (!normalized) return null;
+  const exact = accounts[normalized];
+  if (exact) return { storageKey: normalized, account: exact };
+  if (/^A\d{3,4}$/.test(normalized)) return null;
+
+  // 舊版可能以 8869xxxxxxxx 保存。現在不搬動或覆寫既有資料，只在查找時相容。
+  for (const alias of taiwanMobileStorageAliases(normalized)) {
+    const account = accounts[alias];
+    if (account) return { storageKey: alias, account };
+  }
+  return null;
 }
 
 // 測試用幹部帳號（A011~A020 及額外的 A999/A1000）：首次登入啟用碼與正式幹部(A001~A010)分開，
@@ -137,7 +156,7 @@ async function ensureManagerAccounts(accounts: AccountsMap): Promise<boolean> {
 export async function getAccount(key: string): Promise<Account | null> {
   const accounts = await readAccounts();
   if (await ensureManagerAccounts(accounts)) await writeAccounts(accounts);
-  return accounts[normalizeKey(key)] ?? null;
+  return findAccountEntry(accounts, key)?.account ?? null;
 }
 
 // 以 app 內 userId（非登入 key）反查帳號；供 API 驗證「此 session 對應的帳號是否已被停用」。
@@ -158,6 +177,8 @@ export async function createCustomer(
   const accounts = await readAccounts();
   await ensureManagerAccounts(accounts);
   const key = normalizePhone(phone);
+  if (!key) throw new Error('invalid Taiwan mobile');
+  if (findAccountEntry(accounts, key)) throw new Error('account already exists');
   const salt = crypto.randomBytes(16).toString('hex');
   const account: Account = {
     key, role: 'user', tier: 'standard',
@@ -355,7 +376,7 @@ export async function deleteAllCustomers(): Promise<{ key: string; userId: strin
 // 管理員重設密碼（清空，讓該帳號下次登入重新設定）——用於幹部/管理員（有啟用碼重設流程）
 export async function adminResetPassword(key: string): Promise<boolean> {
   const accounts = await readAccounts();
-  const acc = accounts[normalizeKey(key)];
+  const acc = findAccountEntry(accounts, key)?.account;
   if (!acc) return false;
   acc.hash = null;
   acc.salt = '';
@@ -368,7 +389,7 @@ export async function adminResetPassword(key: string): Promise<boolean> {
 // 故直接設一組可用的新密碼，由管理員轉告客戶登入）。
 export async function adminResetCustomerPassword(key: string): Promise<string | null> {
   const accounts = await readAccounts();
-  const acc = accounts[normalizeKey(key)];
+  const acc = findAccountEntry(accounts, key)?.account;
   if (!acc) return null;
   // 8 碼英數臨時密碼，避開易混淆字元（0/o/1/l/i）
   const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -385,7 +406,7 @@ export async function adminResetCustomerPassword(key: string): Promise<string | 
 // 客戶用簡訊驗證碼重設密碼（僅限客戶帳號；幹部/管理員請走啟用碼重設）。
 export async function setCustomerPassword(key: string, password: string): Promise<boolean> {
   const accounts = await readAccounts();
-  const acc = accounts[normalizeKey(key)];
+  const acc = findAccountEntry(accounts, key)?.account;
   if (!acc || acc.role !== 'user') return false;
   acc.salt = crypto.randomBytes(16).toString('hex');
   acc.hash = hashPassword(password, acc.salt);
@@ -424,7 +445,7 @@ export async function getManagerUserIds(): Promise<string[]> {
 // 停用/啟用帳號（admin 帳號不可停用）
 export async function setAccountDisabled(key: string, disabled: boolean): Promise<boolean> {
   const accounts = await readAccounts();
-  const acc = accounts[normalizeKey(key)];
+  const acc = findAccountEntry(accounts, key)?.account;
   if (!acc || acc.role === 'admin') return false;
   acc.disabled = disabled;
   acc.sessionVersion = (acc.sessionVersion ?? 0) + 1;
@@ -435,10 +456,10 @@ export async function setAccountDisabled(key: string, disabled: boolean): Promis
 // 真刪除帳號（僅限客戶；幹部/管理員請用停用/重設）。回傳被刪的帳號供級聯清資料。
 export async function deleteAccount(key: string): Promise<Account | null> {
   const accounts = await readAccounts();
-  const k = normalizeKey(key);
-  const acc = accounts[k];
+  const entry = findAccountEntry(accounts, key);
+  const acc = entry?.account;
   if (!acc || acc.role !== 'user') return null;
-  delete accounts[k];
+  delete accounts[entry.storageKey];
   await writeAccounts(accounts);
   return acc;
 }

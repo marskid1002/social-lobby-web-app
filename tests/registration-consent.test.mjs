@@ -76,7 +76,7 @@ async function sandbox(fn) {
   }
 }
 
-let seq = 970000000;
+let seq = 97000000;
 function authPost(body) {
   return new Request('http://localhost/api/auth', {
     method: 'POST',

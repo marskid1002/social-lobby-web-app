@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAppState } from '@/lib/state';
 import TermsConsent from '@/components/legal/terms-consent';
 import { TERMS_VERSION } from '@/lib/legal';
+import { isTaiwanMobile, normalizeTaiwanMobile } from '@/lib/phone';
 
 type Mode = 'login' | 'register' | 'reset';
 
@@ -47,7 +48,7 @@ export default function LoginPage() {
   async function sendOtp(purpose: 'register' | 'reset') {
     setError('');
     setInfo('');
-    if (phone.replace(/\D/g, '').length < 8) { setError('請輸入有效手機號碼'); return; }
+    if (!isTaiwanMobile(phone)) { setError('請輸入有效台灣手機號碼'); return; }
     setOtpBusy(true);
     try {
       const res = await fetch('/api/auth', {
@@ -130,7 +131,7 @@ export default function LoginPage() {
       if (!res.ok || !data.ok) { setError(data.error ?? '重設失敗'); return; }
       setInfo('密碼已重設，請用新密碼登入');
       setMode('login');
-      setAccount(phone);
+      setAccount(normalizeTaiwanMobile(phone));
       setPassword('');
       setCode('');
     } catch { setError('連線失敗'); } finally { setBusy(false); }
@@ -159,7 +160,7 @@ export default function LoginPage() {
   // 手機 + 發送驗證碼 一組（註冊/重設共用）。用一般函式回傳 JSX（非內嵌元件），避免輸入時失焦。
   const otpRow = (purpose: 'register' | 'reset') => (
     <>
-      <input type="tel" inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="手機號碼" className={inputCls} aria-label="手機號碼" />
+      <input type="tel" inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="手機號碼（09 或 +886）" className={inputCls} aria-label="手機號碼" />
       <div className="flex gap-2">
         <input value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" placeholder="簡訊驗證碼" className={inputCls} aria-label="簡訊驗證碼" />
         <button type="button" onClick={() => sendOtp(purpose)} disabled={otpBusy || cooldown > 0} className={otpBtnCls}>

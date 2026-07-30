@@ -8,10 +8,12 @@ import { signSession, sessionCookieHeader, clearSessionCookieHeader } from '@/li
 import { requireActiveSession } from '@/lib/active-session';
 import { rateLimit, clearRateLimit, clientIp } from '@/lib/rate-limit';
 import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-store';
-import { sendOtpSms, isSmsConfigured } from '@/lib/sms';
+import { sendOtpSmsDetailed, isSmsConfigured, type SmsSendResult } from '@/lib/sms';
 import { registrationConsentError, TERMS_VERSION } from '@/lib/legal';
 import crypto from 'crypto';
 import { deviceCookieHeader, recordDeviceSession } from '@/lib/device-store';
+import { isTaiwanMobile } from '@/lib/phone';
+import { recordFlowTrace } from '@/lib/flow-trace-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +33,27 @@ export function passwordRuleError(pw: string): string | null {
 
 function isProd(): boolean {
   return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
+}
+
+async function recordSmsResult(
+  result: SmsSendResult,
+  purpose: OtpPurpose,
+  actorUserId?: string,
+): Promise<void> {
+  await recordFlowTrace({
+    eventType: 'sms.otp',
+    outcome: result.ok ? 'success' : 'failure',
+    actorUserId,
+    entityId: purpose,
+    code: result.providerCode ?? result.failureCode,
+    detail: [
+      `provider=${result.provider}`,
+      `purpose=${purpose}`,
+      `http=${result.httpStatus ?? 'n/a'}`,
+    ].join(';'),
+  }).catch((error) => {
+    console.error('[sms trace]', error instanceof Error ? error.name : 'UnknownError');
+  });
 }
 
 // 機密字串 constant-time 比較（避免 timing side-channel，與密碼/OTP 比對風格一致）
@@ -112,7 +135,7 @@ export async function POST(req: NextRequest) {
     if (action === 'send-otp') {
       const purpose: OtpPurpose = body.purpose === 'register' ? 'register' : 'reset';
       const phone = normalizePhone(body.phone ?? '');
-      if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
+      if (!isTaiwanMobile(phone)) return NextResponse.json({ error: '請輸入有效台灣手機號碼' }, { status: 400 });
 
       // 防簡訊轟炸/燒錢：同 IP 每小時 20 次、同號 60 秒冷卻、同號每日 5 次
       const rlIp = await rateLimit('otp-ip', ip, 20, 60 * 60);
@@ -136,14 +159,20 @@ export async function POST(req: NextRequest) {
       // 註冊一律發碼；忘記密碼對「查無此號/非客戶」回 ok 但不發（不洩漏是否註冊）
       const shouldSend = purpose === 'register' ? true : Boolean(existing && existing.role === 'user');
       const code = generateCode();
+      let delivered = false;
       if (shouldSend) {
-        const sent = await sendOtpSms(phone, code, purpose);
-        if (!sent) return NextResponse.json({ error: '簡訊發送失敗，請稍後再試' }, { status: 500 });
-        await saveOtp(purpose, phone, code);
+        const delivery = await sendOtpSmsDetailed(phone, code, purpose);
+        await recordSmsResult(delivery, purpose, existing?.userId);
+        delivered = delivery.ok;
+        if (delivered) await saveOtp(purpose, phone, code);
+        // 忘記密碼必須永遠回相同結果：供應商執行期失敗不可洩漏此手機是否有帳號。
+        if (!delivery.ok && purpose === 'register') {
+          return NextResponse.json({ error: '簡訊發送失敗，請稍後再試' }, { status: 500 });
+        }
       }
       const res: { ok: true; devCode?: string } = { ok: true };
       // 本地/非生產且真的發碼：把碼回傳前端方便測試（生產絕不回傳）
-      if (!isProd() && shouldSend) res.devCode = code;
+      if (!isProd() && shouldSend && delivered) res.devCode = code;
       return NextResponse.json(res);
     }
 
@@ -155,7 +184,7 @@ export async function POST(req: NextRequest) {
 
       const phone = normalizePhone(body.phone ?? '');
       const pw = String(body.password ?? '');
-      if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
+      if (!isTaiwanMobile(phone)) return NextResponse.json({ error: '請輸入有效台灣手機號碼' }, { status: 400 });
       { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: e }, { status: 400 }); }
       {
         const e = registrationConsentError(body);
@@ -180,13 +209,13 @@ export async function POST(req: NextRequest) {
 
       const phone = normalizePhone(body.phone ?? '');
       const pw = String(body.password ?? '');
-      if (phone.length < 8) return NextResponse.json({ error: '請輸入有效手機號碼' }, { status: 400 });
+      if (!isTaiwanMobile(phone)) return NextResponse.json({ error: '請輸入有效台灣手機號碼' }, { status: 400 });
       { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: e }, { status: 400 }); }
       const otp = await verifyOtp('reset', phone, String(body.code ?? ''));
       // 統一錯誤訊息（不透露「碼不存在 vs 碼錯誤」，避免據此列舉手機是否為客戶）
       if (!otp.ok) return NextResponse.json({ error: '驗證碼錯誤或已過期' }, { status: 400 });
       const ok = await setCustomerPassword(phone, pw);
-      if (!ok) return NextResponse.json({ error: '此帳號無法用簡訊重設密碼' }, { status: 400 });
+      if (!ok) return NextResponse.json({ error: '驗證碼錯誤或已過期' }, { status: 400 });
       return NextResponse.json({ ok: true });
     }
 
