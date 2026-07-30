@@ -6,6 +6,8 @@ import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { useState } from 'react';
+import { RequestHeartSlots } from '@/components/RequestHeartSlots';
+import { confirmedCountForRequest } from '@/lib/request-attendance';
 
 const TYPE_LABELS: Record<string, string> = {
   after_party: 'After Party',
@@ -49,6 +51,11 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
     request.requestViewers?.length ?? 0
   );
   const showCounts = views > 0 || joinAskCount > 0 || joinersCount > 0;
+  const confirmedCount = confirmedCountForRequest(
+    request.id,
+    state.responses,
+    state.invitations,
+  );
 
   function handleClose() {
     closeRequest(request.id);
@@ -84,6 +91,12 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
 
       {/* Row 3: note */}
       <p className="text-sm text-zinc-700 line-clamp-2 mb-2">{request.note}</p>
+
+      <RequestHeartSlots
+        total={request.peopleCount}
+        confirmed={confirmedCount}
+        className="mb-3"
+      />
 
       {/* Row 4: demand signal counts (hidden when all zero) */}
       {showCounts && (

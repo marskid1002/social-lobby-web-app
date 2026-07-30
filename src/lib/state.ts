@@ -17,6 +17,7 @@ import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Fo
 import type { TeaserMessage } from '@/lib/mock/chat';
 import { chatExpiresAtFrom } from '@/lib/chat-lifetime';
 import { shouldRedirectExpiredSession } from '@/lib/session-redirect';
+import { activeConfirmedGirlIds } from '@/lib/request-attendance';
 
 const STORAGE_KEY = 'sl_state_v3';
 const PRIVATE_INVITE_CREDIT_COST = 3;
@@ -905,6 +906,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     const request = s.requests.find((r) => r.id === requestId);
     if (!request) return;
     const escortId = s.currentUserId;
+    if (activeConfirmedGirlIds(s.responses, s.invitations).has(escortId)) return;
 
     // Guard: don't double-respond (allow re-join after withdrawal by reactivating)
     const existing = s.responses.find(
@@ -963,6 +965,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     const s = getState();
     const request = s.requests.find((r) => r.id === requestId);
     if (!request) return;
+    if (activeConfirmedGirlIds(s.responses, s.invitations).has(girlId)) return;
 
     // 防止重複派工：若該女伴已 interested / joining 則略過
     const existing = s.responses.find(
@@ -1204,6 +1207,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
       error?: string;
       invitation?: Invitation;
       response?: Response;
+      request?: Request;
     };
     if (!res.ok || !body.invitation) {
       throw new Error(body.error || '無法儲存聊天室決定');
@@ -1211,6 +1215,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     applyServerShared({
       invitations: [body.invitation],
       ...(body.response ? { responses: [body.response] } : {}),
+      ...(body.request ? { requests: [body.request] } : {}),
     });
     return body.invitation;
   }, []);

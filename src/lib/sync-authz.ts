@@ -14,6 +14,7 @@
 import type { SessionPayload } from './session';
 import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage } from './chat-authz';
 import { chatExpiresAtFrom } from './chat-lifetime';
+import { activeConfirmedGirlIds } from './request-attendance';
 
 type Item = Record<string, unknown>;
 
@@ -84,6 +85,11 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
     const id = s(e.id); if (!id) continue;
     if (s(e.managerId) === me || s(idx.escorts.get(id)?.managerId) === me) { if (e.removed === true) managed.delete(id); else managed.add(id); }
   }
+  const busyGirls = activeConfirmedGirlIds(
+    [...idx.responses.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
+    [...idx.invitations.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
+    now,
+  );
 
   // ── 2) presence / photoOverrides / photoGalleries：僅 manager 且 item.id ∈ managedGirlIds ──
   for (const k of ['presence', 'photoOverrides', 'photoGalleries'] as const) {
@@ -143,6 +149,9 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         if (!(isSelf || isOwnDispatcher || isCreator || canRedispatch)) return []; // 無任何關係 → 丟棄
         const from = s(existing.responseStatus), to = s(r.responseStatus);
         const merged: Item = { ...existing }; // 凍結 id/requestId/userId
+        if (to === 'interested' && from !== 'interested' && busyGirls.has(exUser ?? '')) {
+          return [merged];
+        }
         if (isSelf && trans(RESP_SELF, from, to)) {
           merged.responseStatus = to;
           if (from === 'withdrawn' && to === 'interested' && typeof r.createdAt === 'string') merged.createdAt = r.createdAt; // 重新加入刷新
@@ -160,12 +169,12 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       const reqId = s(r.requestId); if (!reqExists(reqId)) return [];
       const uid = s(r.userId), disp = s(r.dispatcherId);
       const ca = typeof r.createdAt === 'string' ? { createdAt: r.createdAt } : {};
-      if (uid === me && !disp) {                                             // 本人加入（不得帶 dispatcher）
+      if (uid === me && !disp && !busyGirls.has(me)) {                       // 本人加入（不得帶 dispatcher）
         const built: Item = { id, requestId: reqId, userId: me, responseStatus: 'interested', ...ca };
         if (typeof r.note === 'string') built.note = r.note;
         return [built];
       }
-      if (isManager && disp === me && !!uid && managed.has(uid)) {           // 派工自己旗下 escort
+      if (isManager && disp === me && !!uid && managed.has(uid) && !busyGirls.has(uid)) { // 派工自己旗下 escort
         return [{ id, requestId: reqId, userId: uid, dispatcherId: me, responseStatus: 'interested', ...ca }];
       }
       return [];

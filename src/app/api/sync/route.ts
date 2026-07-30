@@ -7,8 +7,20 @@ import { buildChatAccessIndex, canReadChatThread } from '@/lib/chat-authz';
 import { getManagerUserIds } from '@/lib/auth-store';
 import { recordAcceptedSyncWrites } from '@/lib/flow-trace';
 import { deliverAuthorizedPushes, planAuthorizedSyncPushes } from '@/lib/push-authz';
+import { filledRequestClosures } from '@/lib/request-attendance';
 
 export const dynamic = 'force-dynamic';
+
+async function reconcileFilledRequests(shared: SharedState): Promise<SharedState> {
+  const closures = filledRequestClosures(
+    shared.requests ?? [],
+    shared.responses ?? [],
+    shared.invitations ?? [],
+  );
+  return closures.length > 0
+    ? mergeShared({ requests: closures })
+    : shared;
+}
 
 // 依登入者角色/身份，只回傳其有權看到的資料（私訊、邀請、通知不外洩）
 // 相簿觀看權限：demo 階段已隱藏升級/收費入口（客戶皆為 standard，無法升 vip/premium），
@@ -217,7 +229,7 @@ export async function GET(req: NextRequest) {
     const auth = await requireActiveSession(req);
     if (!auth.ok) return auth.response;
     const session = auth.session;
-    const shared = await getShared();
+    const shared = await reconcileFilledRequests(await getShared());
     const resetAt = await getResetMarks();
     return NextResponse.json({ ...scopeForSession(shared, session), resetAt }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
@@ -276,7 +288,8 @@ export async function POST(req: NextRequest) {
         : [];
     const authzPatch = authorizeWrites(patch, session, buildIndex(cols, managerUserIds));
 
-    const merged = await mergeShared(authzPatch);
+    let merged = await mergeShared(authzPatch);
+    merged = await reconcileFilledRequests(merged);
     const pushJobs = planAuthorizedSyncPushes({
       patch: authzPatch,
       existing: cols,

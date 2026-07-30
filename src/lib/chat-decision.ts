@@ -1,5 +1,9 @@
 import type { SessionPayload } from './session';
 import { directInvitationThreadId } from './chat-authz';
+import {
+  activeConfirmedGirlIds,
+  confirmedCountForRequest,
+} from './request-attendance';
 
 type Item = { id: string; [key: string]: unknown };
 export type ChatDecision = 'confirmed' | 'declined';
@@ -10,6 +14,7 @@ export interface DecideChatInput {
   decision: ChatDecision;
   invitations: Item[];
   responses: Item[];
+  requests: Item[];
   now?: number;
 }
 
@@ -19,6 +24,7 @@ export type DecideChatResult =
       ok: true;
       invitation: Item;
       response?: Item;
+      request?: Item;
       requestId: string;
       threadId: string;
       customerUserId: string;
@@ -88,6 +94,37 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
   if (!requestId || !threadId || !customerUserId) {
     return { ok: false, status: 409, error: 'invalid dispatch chat' };
   }
+  const request = input.requests.find((item) => item.id === requestId);
+  if (!request) {
+    return { ok: false, status: 409, error: 'request not found' };
+  }
+
+  let updatedRequest: Item | undefined;
+  if (input.decision === 'confirmed') {
+    const girlId = str(storedResponse.userId);
+    if (!girlId) {
+      return { ok: false, status: 409, error: 'dispatch girl not found' };
+    }
+    const otherInvitations = input.invitations.filter((item) => item.id !== invitation.id);
+    if (activeConfirmedGirlIds(input.responses, otherInvitations, now).has(girlId)) {
+      return { ok: false, status: 409, error: 'girl already confirmed elsewhere' };
+    }
+
+    const peopleCount = Number(request.peopleCount);
+    if (Number.isInteger(peopleCount) && peopleCount > 0) {
+      const confirmedCount = confirmedCountForRequest(
+        requestId,
+        input.responses,
+        otherInvitations,
+      );
+      if (confirmedCount >= peopleCount) {
+        return { ok: false, status: 409, error: 'request is already full' };
+      }
+      if (confirmedCount + 1 >= peopleCount && request.status !== 'closed') {
+        updatedRequest = { ...request, status: 'closed' };
+      }
+    }
+  }
 
   const decidedAt = new Date(now).toISOString();
   const updatedInvitation: Item = {
@@ -104,6 +141,7 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
     ok: true,
     invitation: updatedInvitation,
     response: updatedResponse,
+    request: updatedRequest,
     requestId,
     threadId,
     customerUserId,

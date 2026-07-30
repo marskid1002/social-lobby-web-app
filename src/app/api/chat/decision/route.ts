@@ -21,9 +21,10 @@ export async function POST(req: NextRequest) {
     } | null;
     const invitationId = typeof body?.invitationId === 'string' ? body.invitationId : '';
     const decision = body?.decision as ChatDecision;
-    const [invitations, responses] = await Promise.all([
+    const [invitations, responses, requests] = await Promise.all([
       getCollection('invitations'),
       getCollection('responses'),
+      getCollection('requests'),
     ]);
     const result = planChatDecision({
       session: auth.session,
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
       decision,
       invitations,
       responses,
+      requests,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
@@ -40,6 +42,7 @@ export async function POST(req: NextRequest) {
       await mergeShared({
         invitations: [result.invitation],
         ...(result.response ? { responses: [result.response] } : {}),
+        ...(result.request ? { requests: [result.request] } : {}),
       });
       const traceId = result.requestId
         ? await getOrCreateTraceId(result.requestId)
@@ -72,6 +75,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       invitation: result.invitation,
       response: result.response,
+      request: result.request,
       alreadyDecided: result.alreadyDecided,
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

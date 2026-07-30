@@ -9,6 +9,8 @@ import { zhTW } from 'date-fns/locale';
 import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
 import { getRequestGradient, getRequestAccentColor, REQUEST_TYPE_LABELS } from '@/lib/utils';
+import { RequestHeartSlots } from '@/components/RequestHeartSlots';
+import { confirmedGirlIdsForRequest } from '@/lib/request-attendance';
 
 const SECTION_B_LIMIT: Record<string, number> = {
   guest: 3,   // 訪客只看 3 位，其餘馬賽克
@@ -79,6 +81,12 @@ function MyRequestCard({
 
         <p className="text-sm text-brand-ink leading-snug line-clamp-2 mb-3">{request.note}</p>
 
+        <RequestHeartSlots
+          total={request.peopleCount}
+          confirmed={responders.length}
+          className="mb-3"
+        />
+
         {visibleResponders.length > 0 && (
           <div className="flex items-center gap-2 mb-3">
             <div className="flex -space-x-2">
@@ -93,8 +101,8 @@ function MyRequestCard({
             </div>
             <span className="text-xs text-zinc-500">
               {extraCount > 0
-                ? `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已加入`
-                : `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 已加入`}
+                ? `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已上台`
+                : `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 已上台`}
             </span>
           </div>
         )}
@@ -204,9 +212,13 @@ function ExploreContent() {
 
   // Split: at-cap = joiners >= peopleCount OR closed
   const withJoinerCount = myRequests.map((req) => {
-    const joiners = state.responses
-      .filter((r) => r.requestId === req.id && r.responseStatus === 'joining')
-      .map((r) => state.users.find((u) => u.id === r.userId))
+    const confirmedGirlIds = confirmedGirlIdsForRequest(
+      req.id,
+      state.responses,
+      state.invitations,
+    );
+    const joiners = confirmedGirlIds
+      .map((userId) => state.users.find((u) => u.id === userId))
       .filter((u): u is User => !!u);
     const interested = state.responses.filter(
       (r) => r.requestId === req.id && r.responseStatus === 'interested'

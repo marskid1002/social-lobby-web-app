@@ -7,6 +7,8 @@ import { RequestCard } from '@/components/RequestCard';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { MapPin, Clock, Users } from 'lucide-react';
+import { RequestHeartSlots } from '@/components/RequestHeartSlots';
+import { confirmedCountForRequest } from '@/lib/request-attendance';
 
 const TYPE_FILTERS = [
   { value: null,          label: '全部' },
@@ -91,6 +93,7 @@ export default function RequestsPage() {
   const baseRequests = state.requests.filter(
     (r) => r.status === 'open' &&
            new Date(r.expiresAt) > now &&
+           confirmedCountForRequest(r.id, state.responses, state.invitations) < r.peopleCount &&
            r.creatorId !== state.currentUserId
   );
 
@@ -98,7 +101,7 @@ export default function RequestsPage() {
   const joinerCounts = Object.fromEntries(
     baseRequests.map((r) => [
       r.id,
-      state.responses.filter((resp) => resp.requestId === r.id && resp.responseStatus === 'joining').length,
+      confirmedCountForRequest(r.id, state.responses, state.invitations),
     ])
   );
 
@@ -200,6 +203,11 @@ export default function RequestsPage() {
                     </span>
                   </div>
                   <p className="text-sm text-brand-ink line-clamp-2 mb-3 leading-snug">{req.note}</p>
+                  <RequestHeartSlots
+                    total={req.peopleCount}
+                    confirmed={joinerCounts[req.id] ?? 0}
+                    className="mb-3"
+                  />
                   <div className="flex items-center gap-3 mb-3">
                     {creator && <img src={creator.avatarUrl} alt={creator.nickname} className="w-6 h-6 rounded-full object-cover" />}
                     <span className="text-xs text-zinc-500 flex-1">{creator?.nickname}</span>

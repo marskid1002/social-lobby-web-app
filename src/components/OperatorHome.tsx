@@ -6,6 +6,11 @@ import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { X, Check, UserCog, Camera } from 'lucide-react';
+import { RequestHeartSlots } from '@/components/RequestHeartSlots';
+import {
+  activeConfirmedGirlIds,
+  confirmedCountForRequest,
+} from '@/lib/request-attendance';
 
 
 const TYPE_LABELS: Record<string, string> = {
@@ -131,6 +136,7 @@ export function OperatorHome() {
   // 幹部自建的小姐（B）：名單以 managerId === 本人 動態產生（一開始為空，全部由幹部自建）
   const rosterGirls = state.users.filter((u) => u.role === 'escort' && u.managerId === state.currentUserId);
   const currentRosterIds = rosterGirls.map((u) => u.id);
+  const busyGirlIds = activeConfirmedGirlIds(state.responses, state.invitations);
 
   function handleAddEscort() {
     const name = newEscortName.trim();
@@ -146,6 +152,9 @@ export function OperatorHome() {
   const incomingRequests = state.requests
     .filter((r) => {
       if (r.status !== 'open') return false;
+      if (confirmedCountForRequest(r.id, state.responses, state.invitations) >= r.peopleCount) {
+        return false;
+      }
       const creator = state.users.find((u) => u.id === r.creatorId);
       if (!creator) return false;
       return creator.role === 'user' || creator.role === 'manager';
@@ -175,18 +184,20 @@ export function OperatorHome() {
   const alreadyDispatched = dispatchSheet ? dispatchedGirlIds(dispatchSheet) : [];
 
   function toggleGirl(girlId: string) {
+    if (busyGirlIds.has(girlId)) return;
     setSelectedGirls((prev) =>
       prev.includes(girlId) ? prev.filter((id) => id !== girlId) : [...prev, girlId]
     );
   }
 
   function handleDispatch() {
-    if (!dispatchSheet || selectedGirls.length === 0) return;
-    const names = selectedGirls
+    const eligibleGirls = selectedGirls.filter((girlId) => !busyGirlIds.has(girlId));
+    if (!dispatchSheet || eligibleGirls.length === 0) return;
+    const names = eligibleGirls
       .map((id) => state.users.find((u) => u.id === id)?.nickname)
       .filter(Boolean)
       .join('、');
-    selectedGirls.forEach((girlId) => dispatchGirl(dispatchSheet, girlId));
+    eligibleGirls.forEach((girlId) => dispatchGirl(dispatchSheet, girlId));
     setDispatchSheet(null);
     setSelectedGirls([]);
     setToast(`✅ 已安排 ${names} 出席，通知已發送`);
@@ -234,6 +245,7 @@ export function OperatorHome() {
           {incomingRequests.map((req) => {
             const creator = state.users.find((u) => u.id === req.creatorId);
             const dispatchedCount = dispatchedGirlIds(req.id).length;
+            const confirmedCount = confirmedCountForRequest(req.id, state.responses, state.invitations);
             const isFull = isRequestClosed(req); // #5 只有已關閉才鎖定
             const typeColor = TYPE_COLORS[req.requestType] ?? '#DED9E5';
             const typeLabel = TYPE_LABELS[req.requestType] ?? req.requestType;
@@ -263,6 +275,12 @@ export function OperatorHome() {
                 </div>
 
                 <p className="text-sm text-zinc-700 line-clamp-2 mb-3">{req.note}</p>
+
+                <RequestHeartSlots
+                  total={req.peopleCount}
+                  confirmed={confirmedCount}
+                  className="mb-3"
+                />
 
                 <div className="flex gap-2">
                   <button
@@ -392,22 +410,25 @@ export function OperatorHome() {
                 if (!user) return null;
                 const isOnline = state.onlineUserIds.includes(user.id);
                 const isAlready = alreadyDispatched.includes(user.id);
+                const isBusy = busyGirlIds.has(user.id);
                 const isSelected = selectedGirls.includes(user.id);
                 return (
                   <button
                     key={user.id}
-                    onClick={() => !isAlready && toggleGirl(user.id)}
-                    disabled={isAlready}
+                    onClick={() => !isAlready && !isBusy && toggleGirl(user.id)}
+                    disabled={isAlready || isBusy}
                     className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
                       isSelected
                         ? 'border-purple-400 bg-purple-50'
                         : 'border-transparent bg-brand-snow'
-                    } ${isAlready ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    } ${isAlready || isBusy ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-brand-ink">{user.nickname}</p>
-                      {isAlready ? (
+                      {isBusy ? (
+                        <p className="text-xs text-pink-500 font-semibold">已確認上台</p>
+                      ) : isAlready ? (
                         <p className="text-xs text-purple-500 font-semibold">已安排</p>
                       ) : (
                         <p className="text-xs text-zinc-400">{isOnline ? '🟢 上線' : '⚪ 離線'}</p>
