@@ -36,7 +36,7 @@ test('長度邊界：<6 或 >128 → 錯誤；符號類別各自訊息', () => {
 
 // ── Route reject 接線（不進 withSession）─────────────────────────────────────
 
-const ENV_KEYS = ['NODE_ENV', 'VERCEL_ENV', 'VERCEL', 'MANAGER_ACTIVATION_CODE', 'SESSION_SECRET',
+const ENV_KEYS = ['NODE_ENV', 'VERCEL_ENV', 'VERCEL', 'SESSION_SECRET',
   'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'REDIS_URL', 'KV_URL'];
 const REDIS = !!(process.env.KV_REST_API_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_URL);
 const skip = REDIS ? '偵測到 Redis 環境變數：跳過 route 測試以免污染' : false;
@@ -81,11 +81,11 @@ test('register：複雜密碼通過複雜度、續往 OTP（OTP 錯 → 400 但�
   });
 });
 
-test('manager 首次登入：弱密碼 → 400（首次設密接線）', { skip }, async () => {
+test('manager 沒有個人啟用碼時，本機環境也不可直接設定密碼', { skip }, async () => {
   await sandbox(async () => {
-    // 本地 dev：MANAGER_ACTIVATION_CODE 未設、非 prod、非 Vercel → 跳過啟用碼，直接走密碼規則
     const res = await route.POST(authPost({ action: 'login', account: 'A012', password: 'weak' }));
-    assert.equal(res.status, 400);
-    assert.ok(String(res.body?.error || '').includes('密碼'), '應回首次設密的複雜度錯誤');
+    assert.equal(res.status, 403);
+    assert.equal(res.body?.needActivation, true);
+    assert.match(String(res.body?.error || ''), /個人一次性啟用碼/);
   });
 });

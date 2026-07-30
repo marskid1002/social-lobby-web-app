@@ -1,7 +1,4 @@
-// 幹部啟用碼分流測試：測試幹部(A011~A020) 用 MANAGER_TEST_ACTIVATION_CODE、
-// 正式幹部(A001~A010) 用 MANAGER_ACTIVATION_CODE，兩者互不接受對方的碼。
-// 載入真正的 production isTestManagerKey 與 /api/auth POST；只驗 reject 路徑（避開 withSession）。不連真實 Redis。
-//
+// 幹部首次登入只接受 A000 為該帳號產生的個人一次性啟用碼。
 // 執行：node --experimental-transform-types --import ./tests/register-loader.mjs --test tests/manager-activation.test.mjs
 
 import test from 'node:test';
@@ -10,72 +7,135 @@ import assert from 'node:assert/strict';
 const route = await import('@/app/api/auth/route');
 const authStore = await import('@/lib/auth-store');
 
-// ── isTestManagerKey 邊界 ─────────────────────────────────────────────────────
-test('isTestManagerKey：A011~A020 及 A999/A1000 為 true，其餘為 false', () => {
-  for (const k of ['A011', 'A012', 'A015', 'A019', 'A020', 'a012', 'A999', 'A1000', 'a1000']) assert.equal(authStore.isTestManagerKey(k), true, k);
-  for (const k of ['A001', 'A010', 'A021', 'A000', 'A100', 'A998', 'A1001', '0912345678', '']) assert.equal(authStore.isTestManagerKey(k), false, k);
-});
+const ENV_KEYS = [
+  'NODE_ENV',
+  'VERCEL_ENV',
+  'VERCEL',
+  'MANAGER_ACTIVATION_CODE',
+  'MANAGER_TEST_ACTIVATION_CODE',
+  'SESSION_SECRET',
+  'KV_REST_API_URL',
+  'KV_REST_API_TOKEN',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+  'REDIS_URL',
+  'KV_URL',
+];
+const REDIS = Boolean(
+  process.env.KV_REST_API_URL
+  || process.env.KV_URL
+  || process.env.UPSTASH_REDIS_REST_URL
+  || process.env.REDIS_URL
+);
+const skip = REDIS ? '本機連到 Redis，避免測試碰正式帳號資料' : false;
 
-// ── Route：啟用碼分流（皆為 reject 路徑）────────────────────────────────────────
-const ENV_KEYS = ['NODE_ENV', 'VERCEL_ENV', 'VERCEL', 'MANAGER_ACTIVATION_CODE', 'MANAGER_TEST_ACTIVATION_CODE',
-  'SESSION_SECRET', 'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'REDIS_URL', 'KV_URL'];
-const REDIS = !!(process.env.KV_REST_API_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_URL);
-const skip = REDIS ? '偵測到 Redis 環境變數：跳過 route 測試以免污染' : false;
-function snapshotEnv() { const s = {}; for (const k of ENV_KEYS) s[k] = process.env[k]; return s; }
-function restoreEnv(s) { for (const k of ENV_KEYS) { if (s[k] === undefined) delete process.env[k]; else process.env[k] = s[k]; } }
-let ipSeq = 0;
-async function loginPost(overrides, body) {
-  const snap = snapshotEnv();
-  for (const k of ENV_KEYS) delete process.env[k];
-  for (const [k, v] of Object.entries(overrides)) if (v !== undefined) process.env[k] = v;
-  try {
-    const req = new Request('http://localhost/api/auth', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-forwarded-for': '192.0.2.' + (ipSeq++ % 250) },
-      body: JSON.stringify({ action: 'login', ...body }),
-    });
-    const res = await route.POST(req);
-    return res;
-  } finally { restoreEnv(snap); }
+function snapshotEnv() {
+  const snapshot = {};
+  for (const key of ENV_KEYS) snapshot[key] = process.env[key];
+  return snapshot;
 }
 
-const REAL = 'RealCode!1';
-const TEST = '@Best123';
+function restoreEnv(snapshot) {
+  for (const key of ENV_KEYS) {
+    if (snapshot[key] === undefined) delete process.env[key];
+    else process.env[key] = snapshot[key];
+  }
+}
 
-test('測試幹部 A012：錯誤測試碼 → 403 needActivation，正確測試碼 → 過啟用進到密碼規則(400)', { skip }, async () => {
-  const wrong = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
-    { account: 'A012', password: '@Best123', activationCode: 'nope' });
-  assert.equal(wrong.status, 403); assert.equal(wrong.body?.needActivation, true);
+let ipSequence = 0;
+async function loginPost(body, env = {}) {
+  const snapshot = snapshotEnv();
+  for (const key of ENV_KEYS) delete process.env[key];
+  process.env.SESSION_SECRET = 'manager-activation-test-secret-at-least-32-characters';
+  for (const [key, value] of Object.entries(env)) process.env[key] = value;
+  try {
+    const request = new Request('http://localhost/api/auth', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': `192.0.2.${++ipSequence}`,
+      },
+      body: JSON.stringify({ action: 'login', ...body }),
+    });
+    return await route.POST(request);
+  } finally {
+    restoreEnv(snapshot);
+  }
+}
 
-  // 正確測試碼 + 弱密碼 → 已過啟用碼、卡在密碼複雜度(400)，證明測試碼被接受
-  const ok = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
-    { account: 'A013', password: 'weak', activationCode: TEST });
-  assert.equal(ok.status, 400);
-  assert.ok(String(ok.body?.error || '').includes('密碼'));
-});
-
-test('測試幹部 A012 不接受正式碼 MANAGER_ACTIVATION_CODE → 403', { skip }, async () => {
-  const res = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
-    { account: 'A014', password: '@Best123', activationCode: REAL }); // 用正式碼試測試帳號
-  assert.equal(res.status, 403); assert.equal(res.body?.needActivation, true);
-});
-
-test('新增測試幹部 A016~A020 及 A999/A1000 存在且走測試碼（錯碼→403 needActivation，非 401）', { skip }, async () => {
-  for (const acct of ['A016', 'A017', 'A018', 'A019', 'A020', 'A999', 'A1000']) {
-    const res = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
-      { account: acct, password: '@Best123', activationCode: 'nope' });
-    assert.equal(res.status, 403, `${acct} 應存在且要求啟用碼（403 而非帳號不存在的 401）`);
-    assert.equal(res.body?.needActivation, true, acct);
+test('舊共用啟用碼對既有幹部與測試幹部都完全失效', { skip }, async () => {
+  const env = {
+    MANAGER_ACTIVATION_CODE: 'LegacyRealCode!1',
+    MANAGER_TEST_ACTIVATION_CODE: 'LegacyTestCode!1',
+  };
+  for (const account of ['A001', 'A012', 'A999', 'A1000']) {
+    const activationCode = account === 'A001'
+      ? env.MANAGER_ACTIVATION_CODE
+      : env.MANAGER_TEST_ACTIVATION_CODE;
+    const response = await loginPost({
+      account,
+      password: 'Strong!Pass8',
+      activationCode,
+    }, env);
+    assert.equal(response.status, 403, account);
+    assert.equal(response.body?.needActivation, true, account);
+    assert.match(String(response.body?.error), /個人一次性啟用碼/, account);
+    assert.equal((await authStore.getAccount(account))?.hash, null, account);
   }
 });
 
-test('正式幹部 A001 不接受測試碼，接受正式碼後進到密碼規則(400)', { skip }, async () => {
-  const wrong = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
-    { account: 'A001', password: '@Best123', activationCode: TEST }); // 用測試碼試正式帳號
-  assert.equal(wrong.status, 403); assert.equal(wrong.body?.needActivation, true);
+test('A000 為既有幹部重發個人碼後，只有新碼可完成首次登入', { skip }, async () => {
+  const personalCode = await authStore.regenerateManagerActivation('A002');
+  assert.ok(personalCode);
 
-  const ok = await loginPost({ MANAGER_TEST_ACTIVATION_CODE: TEST, MANAGER_ACTIVATION_CODE: REAL },
-    { account: 'A002', password: 'weak', activationCode: REAL });
-  assert.equal(ok.status, 400);
-  assert.ok(String(ok.body?.error || '').includes('密碼'));
+  const legacy = await loginPost({
+    account: 'A002',
+    password: 'Strong!Pass8',
+    activationCode: 'LegacyRealCode!1',
+  }, { MANAGER_ACTIVATION_CODE: 'LegacyRealCode!1' });
+  assert.equal(legacy.status, 403);
+
+  const success = await loginPost({
+    account: 'A002',
+    password: 'Strong!Pass8',
+    activationCode: personalCode,
+  });
+  assert.equal(success.status, 200);
+  assert.equal((await authStore.getAccount('A002'))?.activationHash, undefined);
+
+  const reused = await loginPost({
+    account: 'A002',
+    password: 'Other!Pass9',
+    activationCode: personalCode,
+  });
+  assert.equal(reused.status, 401);
+});
+
+test('新建幹部的個人碼可用一次；重發後舊碼立即失效', { skip }, async () => {
+  const created = await authStore.createManagerAccount('一次性啟用測試');
+  const oldCode = created.activationCode;
+  const newCode = await authStore.regenerateManagerActivation(created.account.key);
+  assert.ok(newCode);
+  assert.notEqual(newCode, oldCode);
+
+  const oldAttempt = await loginPost({
+    account: created.account.key,
+    password: 'Strong!Pass8',
+    activationCode: oldCode,
+  });
+  assert.equal(oldAttempt.status, 403);
+
+  const weakAttempt = await loginPost({
+    account: created.account.key,
+    password: 'weak',
+    activationCode: newCode,
+  });
+  assert.equal(weakAttempt.status, 400);
+
+  const success = await loginPost({
+    account: created.account.key,
+    password: 'Strong!Pass8',
+    activationCode: newCode,
+  });
+  assert.equal(success.status, 200);
 });

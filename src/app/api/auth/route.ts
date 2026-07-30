@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getAccount, createCustomer, verifyPassword, setInitialPassword,
-  adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone, isTestManagerKey,
+  adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone,
   activateManagerWithCode, bumpAccountSessionVersion,
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader } from '@/lib/session';
@@ -275,35 +275,26 @@ export async function POST(req: NextRequest) {
         return withSession(req, { id: activated.userId, role: 'admin', tier: activated.tier, nickname: activated.nickname, sessionVersion: activated.sessionVersion });
       }
 
-      // 幹部首次登入 → 以此次密碼設定並寫死（需啟用碼，防止外人搶註可枚舉的 A00x 帳號）
+      // 幹部首次登入：只接受 A000 為該帳號個別產生的一次性啟用碼。
       if (acc.role === 'manager' && acc.hash === null) {
+        if (!acc.activationHash || !acc.activationSalt) {
+          return NextResponse.json({
+            error: '請聯絡管理員取得個人一次性啟用碼',
+            needActivation: true,
+          }, { status: 403 });
+        }
         { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
-        if (acc.activationHash) {
-          const activated = await activateManagerWithCode(key, String(body.activationCode ?? ''), pw);
-          if (!activated) {
-            return NextResponse.json({ error: '請輸入幹部啟用碼', needActivation: true }, { status: 403 });
-          }
-          return withSession(req, {
-            id: activated.userId,
-            role: 'manager',
-            tier: activated.tier,
-            nickname: activated.nickname,
-            sessionVersion: activated.sessionVersion,
-          });
+        const activated = await activateManagerWithCode(key, String(body.activationCode ?? ''), pw);
+        if (!activated) {
+          return NextResponse.json({ error: '個人啟用碼錯誤或已失效', needActivation: true }, { status: 403 });
         }
-        // 測試幹部(A011~A020) 用獨立啟用碼 MANAGER_TEST_ACTIVATION_CODE；正式幹部(A001~A010) 維持 MANAGER_ACTIVATION_CODE
-        const required = isTestManagerKey(key) ? process.env.MANAGER_TEST_ACTIVATION_CODE : process.env.MANAGER_ACTIVATION_CODE;
-        if (required) {
-          if (!secretEqual(String(body.activationCode ?? ''), required)) {
-            return NextResponse.json({ error: '請輸入幹部啟用碼', needActivation: true }, { status: 403 });
-          }
-        } else if (isProd() || process.env.VERCEL) {
-          // 未設定啟用碼：生產或任何 Vercel 部署一律拒絕首次設密（fail-safe，避免環境判定失準造成搶註）
-          return NextResponse.json({ error: '幹部啟用尚未開放，請聯絡管理員' }, { status: 403 });
-        }
-        const activated = await setInitialPassword(key, pw);
-        if (!activated) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
-        return withSession(req, { id: activated.userId, role: 'manager', tier: activated.tier, nickname: activated.nickname, sessionVersion: activated.sessionVersion });
+        return withSession(req, {
+          id: activated.userId,
+          role: 'manager',
+          tier: activated.tier,
+          nickname: activated.nickname,
+          sessionVersion: activated.sessionVersion,
+        });
       }
 
       if (!verifyPassword(acc, pw)) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });

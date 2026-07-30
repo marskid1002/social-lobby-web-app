@@ -300,3 +300,20 @@ test('聊天室內容按需載入，並以 requestId 精確隔離', { skip }, as
   assert.equal(detail.status, 200);
   assert.deepEqual(detail.body.messages.map((message) => message.id), ['chat-one']);
 });
+
+test('A000 可為指定既有幹部產生只顯示一次的個人啟用碼', { skip }, async () => {
+  const manager = await authStore.getAccount('A003');
+  assert.ok(manager);
+
+  const response = await adminRequest('POST', {
+    action: 'regenerate-manager-activation',
+    account: manager.userId,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.body?.account, 'A003');
+  assert.ok(String(response.body?.activationCode).length >= 10);
+
+  const stored = await authStore.getAccount('A003');
+  assert.ok(stored?.activationHash);
+  assert.equal(JSON.stringify(stored).includes(response.body.activationCode), false);
+});
