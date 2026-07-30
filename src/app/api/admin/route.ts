@@ -423,6 +423,10 @@ export async function POST(req: NextRequest) {
       if (target?.role === 'user') {
         const tempPassword = await adminResetCustomerPassword(accountKey);
         if (!tempPassword) return NextResponse.json({ error: '重設失敗' }, { status: 400 });
+        await Promise.all([
+          removeDevicesForUser(target.userId),
+          removeSubscriptionsForUser(target.userId),
+        ]);
         await audit(admin, action, auditTarget, '客戶臨時密碼已產生');
         return NextResponse.json({ ok: true, tempPassword });
       }
@@ -441,6 +445,12 @@ export async function POST(req: NextRequest) {
 
     if (action === 'disable' || action === 'enable') {
       const ok = await setAccountDisabled(accountKey, action === 'disable');
+      if (ok && action === 'disable') {
+        await Promise.all([
+          removeDevicesForUser(targetAccount.userId),
+          removeSubscriptionsForUser(targetAccount.userId),
+        ]);
+      }
       if (ok) await audit(admin, action, auditTarget);
       return NextResponse.json({ ok });
     }

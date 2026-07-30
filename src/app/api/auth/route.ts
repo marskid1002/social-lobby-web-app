@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAccount, createCustomer, verifyPassword, setInitialPassword,
   adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone, isTestManagerKey,
-  activateManagerWithCode,
+  activateManagerWithCode, bumpAccountSessionVersion,
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader } from '@/lib/session';
 import { requireActiveSession } from '@/lib/active-session';
@@ -11,9 +11,10 @@ import { generateCode, saveOtp, verifyOtp, type OtpPurpose } from '@/lib/otp-sto
 import { sendOtpSmsDetailed, isSmsConfigured, type SmsSendResult } from '@/lib/sms';
 import { registrationConsentError, TERMS_VERSION } from '@/lib/legal';
 import crypto from 'crypto';
-import { deviceCookieHeader, recordDeviceSession } from '@/lib/device-store';
+import { deviceCookieHeader, recordDeviceSession, removeDevicesForUser } from '@/lib/device-store';
 import { isTaiwanMobile } from '@/lib/phone';
 import { recordFlowTrace } from '@/lib/flow-trace-store';
+import { removeSubscriptionsForUser } from '@/lib/push-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +99,26 @@ async function withSession(req: NextRequest, user: {
     res.headers.append('Set-Cookie', deviceCookieHeader(device.id));
   }
   return res;
+}
+
+async function replaceCustomerSession(req: NextRequest, accountKey: string) {
+  // 一般客戶只允許最新一次登入：先增加 server sessionVersion，讓所有舊 JWT 立即失效。
+  const account = await bumpAccountSessionVersion(accountKey);
+  if (!account || account.role !== 'user') {
+    return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
+  }
+  // 舊裝置不只不能呼叫 API，也不能繼續收到推播；目前裝置進入 App 後會重新綁定 subscription。
+  await Promise.all([
+    removeDevicesForUser(account.userId),
+    removeSubscriptionsForUser(account.userId),
+  ]);
+  return withSession(req, {
+    id: account.userId,
+    role: account.role,
+    tier: account.tier,
+    nickname: account.nickname,
+    sessionVersion: account.sessionVersion,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -216,6 +237,13 @@ export async function POST(req: NextRequest) {
       if (!otp.ok) return NextResponse.json({ error: '驗證碼錯誤或已過期' }, { status: 400 });
       const ok = await setCustomerPassword(phone, pw);
       if (!ok) return NextResponse.json({ error: '驗證碼錯誤或已過期' }, { status: 400 });
+      const resetAccount = await getAccount(phone);
+      if (resetAccount?.role === 'user') {
+        await Promise.all([
+          removeDevicesForUser(resetAccount.userId),
+          removeSubscriptionsForUser(resetAccount.userId),
+        ]);
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -280,6 +308,7 @@ export async function POST(req: NextRequest) {
 
       if (!verifyPassword(acc, pw)) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
       await clearRateLimit('login-acc', key); // 成功登入 → 清掉該帳號失敗計數
+      if (acc.role === 'user') return replaceCustomerSession(req, acc.key);
       return withSession(req, { id: acc.userId, role: acc.role, tier: acc.tier, nickname: acc.nickname, sessionVersion: acc.sessionVersion });
     }
 

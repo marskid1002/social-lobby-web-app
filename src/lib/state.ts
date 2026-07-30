@@ -301,6 +301,13 @@ function emitSyncError(msg: string): void {
   if (typeof window !== 'undefined') syncErrorListeners.forEach((l) => l(msg));
 }
 
+function redirectExpiredSession(res: globalThis.Response): boolean {
+  if (res.status !== 401 || typeof window === 'undefined') return false;
+  // 透過 /logout 清除 HttpOnly cookie，再回登入頁；舊裝置不只 API 失效，也會離開操作畫面。
+  window.location.replace('/logout');
+  return true;
+}
+
 // 將變動的共享集合 POST 到 server；失敗自動重試（最多 3 次），未確認前以本機為準（防靜默遺失，#10）
 function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt = 0) {
   if (typeof window === 'undefined') return;
@@ -349,6 +356,7 @@ function pushSharedPatch(patch: Partial<Record<SharedKey, unknown[]>>, attempt =
   })
     .then(async (res) => {
       if (res.ok) { trackUnconfirmed(patch, false); return; } // 確認送達 → 解除本機保護
+      if (redirectExpiredSession(res)) return;
       // 4xx（如 400 圖片格式不符 / 403 權限）重試也不會過 → 直接對外通報，不再靜默
       let detail = String(res.status);
       try { const j = await res.json(); if (j?.error) detail += ` ${j.error}`; } catch {}
@@ -448,6 +456,7 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
 async function pollShared() {
   try {
     const res = await fetch('/api/sync', { cache: 'no-store' });
+    if (redirectExpiredSession(res)) return;
     if (!res.ok) return;
     const shared = await res.json();
     applyServerShared(shared);

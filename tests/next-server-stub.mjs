@@ -3,6 +3,11 @@
 export class NextRequest {}
 export const NextResponse = {
   json(body, init) {
-    return { body, init, status: (init && init.status) || 200 };
+    return {
+      body,
+      init,
+      status: (init && init.status) || 200,
+      headers: new Headers(init?.headers),
+    };
   },
 };

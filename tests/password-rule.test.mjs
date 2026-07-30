@@ -1,6 +1,5 @@
 // 密碼複雜度規則測試：載入「真正的」production passwordRuleError 與 /api/auth POST（reject 接線）。
-// 不連真實 Redis（沙盒清空 Redis env → 記憶體 fallback）。只驗 reject 路徑（避開 withSession，
-// 因測試用 next/server stub 的 NextResponse 無 headers.set）。
+// 不連真實 Redis（沙盒清空 Redis env → 記憶體 fallback）。
 //
 // 執行：node --experimental-transform-types --import ./tests/register-loader.mjs --test tests/password-rule.test.mjs
 
