@@ -11,7 +11,11 @@ const { authorizeWrites, buildIndex } = await import('@/lib/sync-authz');
 const mgr = (id) => ({ userId: id, role: 'manager', tier: 'vip' });
 const usr = (id) => ({ userId: id, role: 'user', tier: 'standard' });
 const CA = '2026-01-01T00:00:00.000Z';
-const run = (patch, session, cols = {}, managers = []) => authorizeWrites(patch, session, buildIndex(cols, managers));
+const NOW = Date.parse('2026-06-01T00:00:00.000Z');
+const ACCEPTED_AT = new Date(NOW).toISOString();
+const CHAT_EXPIRES_AT = new Date(NOW + 48 * 60 * 60 * 1000).toISOString();
+const run = (patch, session, cols = {}, managers = []) =>
+  authorizeWrites(patch, session, buildIndex(cols, managers), NOW);
 const ids = (arr) => (arr ?? []).map((x) => x.id);
 const one = (arr) => { assert.equal((arr ?? []).length, 1); return arr[0]; };
 
@@ -166,8 +170,12 @@ test('invitations update：toUserId 前向 accept、私人 from auto-accept、co
   ] };
   const t = one(run({ invitations: [{ id: 'g', fromUserId: 'HACK', status: 'accepted', respondedAt: CA, chatExpiresAt: CA }] }, usr('T'), cols).invitations);
   assert.equal(t.status, 'accepted'); assert.equal(t.fromUserId, 'S');
+  assert.equal(t.respondedAt, ACCEPTED_AT); assert.equal(t.chatExpiresAt, CHAT_EXPIRES_AT);
   assert.equal(one(run({ invitations: [{ id: 'g', status: 'accepted' }] }, usr('S'), cols).invitations).status, 'pending'); // 一般邀請 sender 不可自我接受
-  assert.equal(one(run({ invitations: [{ id: 'p', status: 'accepted', chatExpiresAt: CA }] }, usr('S'), cols).invitations).status, 'accepted'); // 私人 auto-accept
+  const privateAccepted = one(run({ invitations: [{ id: 'p', status: 'accepted', chatExpiresAt: CA }] }, usr('S'), cols).invitations);
+  assert.equal(privateAccepted.status, 'accepted'); // 私人 auto-accept
+  assert.equal(privateAccepted.respondedAt, ACCEPTED_AT);
+  assert.equal(privateAccepted.chatExpiresAt, CHAT_EXPIRES_AT);
   assert.equal(one(run({ invitations: [{ id: 'a', meetupConfirmed: true }] }, usr('T'), cols).invitations).meetupConfirmed, true);
   assert.equal(one(run({ invitations: [{ id: 'a', status: 'pending' }] }, usr('T'), cols).invitations).status, 'accepted'); // 反向 accepted→pending 拒絕
 });

@@ -7,10 +7,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { MessageCircle, TrendingUp, MessageSquare, UserCheck, CheckCircle, Users } from 'lucide-react';
 import { getRequestGradient, REQUEST_TYPE_LABELS } from '@/lib/utils';
-
-function getThreadId(a: string, b: string) {
-  return [a, b].sort().join('-');
-}
+import { directInvitationThreadId } from '@/lib/chat-authz';
 
 export default function InboxPage() {
   const { state, currentUser, clearInboxUnread, markUpdatesRead, confirmMeetup, refreshShared } = useAppState();
@@ -42,7 +39,10 @@ export default function InboxPage() {
     const requestQuery = requestedMatch.requestId
       ? `?req=${encodeURIComponent(requestedMatch.requestId)}${openedFromPush ? '&src=push' : ''}`
       : openedFromPush ? '?src=push' : '';
-    router.replace(`/chat/${encodeURIComponent(getThreadId(currentUser.id, otherUserId))}${requestQuery}`);
+    const threadId = requestedMatch.groupThreadId
+      ?? directInvitationThreadId(requestedMatch);
+    if (!threadId) return;
+    router.replace(`/chat/${encodeURIComponent(threadId)}${requestQuery}`);
   }, [requestedMatchId, requestedMatch, currentUser, router, openedFromPush]);
 
   const role = currentUser?.role;
@@ -61,21 +61,24 @@ export default function InboxPage() {
   // Collect all accepted, unconfirmed invitations where current user is a chat participant
   // （涵蓋：客戶=toUserId、代談幹部/女伴=fromUserId、私人邀請雙方）
   const relevantInvites = state.invitations.filter((i) => {
-    if (i.status !== 'accepted' || i.meetupConfirmed) return false;
+    if (i.status !== 'accepted') return false;
+    if (i.meetupConfirmed && !i.managerDecision) return false;
     return i.fromUserId === state.currentUserId || i.toUserId === state.currentUserId;
   });
 
-  // Deduplicate by requestId — one card per request (private invites keep their own card)
-  const seenRequestIds = new Set<string>();
+  // 新派工依 responseId 各自一張卡；舊資料才以「局＋聊天對象」相容去重。
+  const seenMatchKeys = new Set<string>();
   const matchCards: Array<{
     key: string;
     requestId: string | null;
+    responseId?: string;
     threadId: string;
     isGroup: boolean;
     joinerUsers: typeof state.users;
     otherUserId: string;
     gradient: string;
     chatExpiresAt?: string;
+    managerDecision?: 'confirmed' | 'declined';
     inviteId: string; // for 1:1 confirmMeetup
   }> = [];
 
@@ -85,17 +88,24 @@ export default function InboxPage() {
       const otherUserId = inv.fromUserId === state.currentUserId ? inv.toUserId : inv.fromUserId;
       // 以「局 + 對話對象」去重：同一局若有多位代談對象（多位派工被接受），各自保留一張卡與聊天入口，
       // 不要只用 requestId 去重（會把第二位之後的聊天整個藏起來 → 找不到聊天）。
-      const dedupeKey = `${inv.requestId}::${otherUserId}`;
-      if (seenRequestIds.has(dedupeKey)) continue;
-      seenRequestIds.add(dedupeKey);
+      const dedupeKey = inv.responseId
+        ? `${inv.requestId}::response::${inv.responseId}`
+        : `${inv.requestId}::${otherUserId}`;
+      if (seenMatchKeys.has(dedupeKey)) continue;
+      seenMatchKeys.add(dedupeKey);
 
       // isGroup 僅以 invitation.groupThreadId 判定（幹部代談一律 1:1）
       const isGroup = !!inv.groupThreadId;
-      const threadId = isGroup ? inv.groupThreadId! : getThreadId(state.currentUserId, otherUserId);
+      const threadId = isGroup ? inv.groupThreadId! : directInvitationThreadId(inv);
+      if (!threadId) continue;
 
       // All joiners for this request
       const joinerIds = state.responses
-        .filter((r) => r.requestId === inv.requestId && r.responseStatus === 'joining')
+        .filter((r) =>
+          r.requestId === inv.requestId
+          && r.responseStatus === 'joining'
+          && (!inv.responseId || r.id === inv.responseId)
+        )
         .map((r) => r.userId);
       const joinerUsers = joinerIds
         .map((id) => state.users.find((u) => u.id === id))
@@ -104,12 +114,14 @@ export default function InboxPage() {
       matchCards.push({
         key: inv.id,
         requestId: inv.requestId,
+        responseId: inv.responseId,
         threadId,
         isGroup,
         joinerUsers,
         otherUserId,
         gradient: getRequestGradient(inv.requestId),
         chatExpiresAt: inv.chatExpiresAt,
+        managerDecision: inv.managerDecision,
         inviteId: inv.id,
       });
     } else {
@@ -118,12 +130,13 @@ export default function InboxPage() {
       matchCards.push({
         key: inv.id,
         requestId: null,
-        threadId: getThreadId(state.currentUserId, otherId),
+        threadId: directInvitationThreadId(inv),
         isGroup: false,
         joinerUsers: [],
         otherUserId: otherId,
         gradient: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)',
         chatExpiresAt: inv.chatExpiresAt,
+        managerDecision: inv.managerDecision,
         inviteId: inv.id,
       });
     }
@@ -241,7 +254,12 @@ export default function InboxPage() {
         // 代談：這張卡「關於哪位小姐」（由該局＋此對話幹部所派工的回應推出）
         const escortNames = card.requestId
           ? [...new Set(state.responses
-              .filter((r) => r.requestId === card.requestId && r.dispatcherId && (r.dispatcherId === state.currentUserId || r.dispatcherId === card.otherUserId))
+              .filter((r) =>
+                r.requestId === card.requestId
+                && (!card.responseId || r.id === card.responseId)
+                && r.dispatcherId
+                && (r.dispatcherId === state.currentUserId || r.dispatcherId === card.otherUserId)
+              )
               .map((r) => state.users.find((u) => u.id === r.userId)?.nickname)
               .filter(Boolean))]
           : [];
@@ -305,7 +323,11 @@ export default function InboxPage() {
                     </p>
                   )}
                   <p className="text-xs text-brand-ink/50 mt-0.5">
-                    {card.isGroup
+                    {card.managerDecision
+                      ? card.managerDecision === 'confirmed'
+                        ? '💗 幹部已確認小姐上台'
+                        : '💔 幹部已標記為拒絕'
+                      : card.isGroup
                       ? `${card.joinerUsers.length} 位女伴加入 · 群組聊天已開啟`
                       : (() => {
                           const ms = card.chatExpiresAt ? new Date(card.chatExpiresAt).getTime() - Date.now() : 0;
@@ -324,9 +346,9 @@ export default function InboxPage() {
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-white/70 backdrop-blur text-brand-ink font-bold text-sm active:scale-[0.98] transition-all shadow-sm"
                 >
                   <MessageCircle className="w-4 h-4" strokeWidth={2} />
-                  {card.isGroup ? '群組聊天' : '聊天'}
+                  {card.managerDecision ? '查看紀錄' : card.isGroup ? '群組聊天' : '聊天'}
                 </button>
-                {isEscort && !card.isGroup && (
+                {isEscort && !card.isGroup && !card.managerDecision && (
                   <button
                     onClick={handleConfirm}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-brand-ink/80 text-white font-bold text-sm active:scale-[0.98] transition-all"

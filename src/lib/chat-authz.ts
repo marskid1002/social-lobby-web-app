@@ -20,6 +20,23 @@ export function canonicalThreadId(a: string, b: string): string {
   return [a, b].sort().join('-');
 }
 
+type DirectInvitationLike = {
+  fromUserId?: unknown;
+  toUserId?: unknown;
+  chatThreadId?: unknown;
+};
+
+/** 新資料優先使用每筆派工的獨立 thread；舊資料維持雙方 canonical thread。 */
+export function directInvitationThreadId(
+  invitation: DirectInvitationLike | Record<string, unknown>,
+): string {
+  const explicit = str(invitation.chatThreadId);
+  if (explicit) return explicit;
+  const from = str(invitation.fromUserId);
+  const to = str(invitation.toUserId);
+  return from && to && from !== to ? canonicalThreadId(from, to) : '';
+}
+
 export interface ChatAccess {
   direct: Map<string, string>; // 1:1/代談 threadId -> 對方 userId（供封鎖判定）
   directRequestIds: Map<string, Set<string | null>>; // threadId -> 合法 invitation.requestId（私人邀請為 null）
@@ -34,7 +51,7 @@ export interface ChatAccessOpts {
 const hasValidWritableExpiry = (exp: string | undefined, now: number): boolean => {
   if (!exp) return false;
   const t = Date.parse(exp);
-  return Number.isFinite(t) && now <= t;
+  return Number.isFinite(t) && now < t;
 };
 
 /**
@@ -60,9 +77,11 @@ export function buildChatAccessIndex(
     if (opts.writable) {
       if (str(inv.status) !== 'accepted') continue;             // 寫入須已接受
       if (inv.meetupConfirmed === true) continue;                // 已確認見面即關閉新寫入
+      if (str(inv.managerDecision) === 'declined') continue;     // 幹部拒絕才結案；確認上台後仍可對話
       if (!hasValidWritableExpiry(str(inv.chatExpiresAt), now)) continue;
     }
-    const threadId = canonicalThreadId(from, to);
+    const threadId = directInvitationThreadId(inv);
+    if (!threadId) continue;
     direct.set(threadId, from === me ? to : from);
     const requestIds = directRequestIds.get(threadId) ?? new Set<string | null>();
     requestIds.add(str(inv.requestId) ?? null);

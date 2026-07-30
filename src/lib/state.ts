@@ -15,6 +15,7 @@ import {
 } from '@/lib/mock';
 import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, MeetRecord, MomentPost, PlazaComment } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
+import { chatExpiresAtFrom } from '@/lib/chat-lifetime';
 
 const STORAGE_KEY = 'sl_state_v3';
 const PRIVATE_INVITE_CREDIT_COST = 3;
@@ -827,7 +828,7 @@ export function useAppState() {
     if (isPrivate) {
       setTimeout(() => {
         const senderId = getState().currentUserId;
-        const chatExpiresAt = new Date(Date.now() + 30 * 24 * 3_600_000).toISOString(); // 聊天視窗 30 天（demo：避免跨天測試就過期鎖住）
+        const chatExpiresAt = chatExpiresAtFrom(Date.now());
         const acceptedUpdate: UpdateEvent = {
           id: `ue-${Date.now()}`,
           userId: senderId,
@@ -860,7 +861,7 @@ export function useAppState() {
               status: accept ? 'accepted' : 'declined',
               respondedAt: new Date().toISOString(),
               chatExpiresAt: accept
-                ? new Date(Date.now() + 30 * 24 * 3_600_000).toISOString()
+                ? chatExpiresAtFrom(Date.now())
                 : undefined,
             }
           : i
@@ -1079,7 +1080,12 @@ export function useAppState() {
       const inviteFrom = target.dispatcherId ?? target.userId;
       const invitations = wasAccepted
         ? prev.invitations.map((i) =>
-            i.requestId === target.requestId && i.fromUserId === inviteFrom && i.status === 'accepted'
+            i.status === 'accepted'
+              && (
+                i.responseId
+                  ? i.responseId === target.id
+                  : i.requestId === target.requestId && i.fromUserId === inviteFrom
+              )
               ? { ...i, status: 'declined' as const, respondedAt: new Date().toISOString() }
               : i
           )
@@ -1181,6 +1187,30 @@ export function useAppState() {
     const newMsg = body.message;
     applyServerShared({ chatMessages: [newMsg] });
     return newMsg;
+  }, []);
+
+  const decideChat = useCallback(async (
+    invitationId: string,
+    decision: 'confirmed' | 'declined',
+  ) => {
+    const res = await fetch('/api/chat/decision', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invitationId, decision }),
+    });
+    const body = await res.json().catch(() => ({})) as {
+      error?: string;
+      invitation?: Invitation;
+      response?: Response;
+    };
+    if (!res.ok || !body.invitation) {
+      throw new Error(body.error || '無法儲存聊天室決定');
+    }
+    applyServerShared({
+      invitations: [body.invitation],
+      ...(body.response ? { responses: [body.response] } : {}),
+    });
+    return body.invitation;
   }, []);
 
 
@@ -1426,6 +1456,7 @@ export function useAppState() {
     refreshShared,
     reset,
     sendChatMessage,
+    decideChat,
     confirmMeetup,
     confirmGroupAttendance,
     clearInboxUnread,

@@ -57,9 +57,11 @@ export async function POST(req: NextRequest) {
         eventType: 'chat.created',
         actorUserId: auth.session.userId,
         requestId: result.requestId,
-        threadId: typeof result.invitation.groupThreadId === 'string'
-          ? result.invitation.groupThreadId
-          : undefined,
+        threadId: typeof result.invitation.chatThreadId === 'string'
+          ? result.invitation.chatThreadId
+          : typeof result.invitation.groupThreadId === 'string'
+            ? result.invitation.groupThreadId
+            : undefined,
         entityId: result.invitation.id,
         dedupeKey: `chat.created:${result.invitation.id}`,
       }),

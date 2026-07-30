@@ -91,16 +91,21 @@ export interface Response {
 export interface Invitation {
   id: string;
   requestId: string | null;
+  responseId?: string;       // 接受哪一筆加入／派工；每位小姐各自綁定一筆
   fromUserId: string;
   toUserId: string;
   status: InvitationStatus;
   message?: string;
   createdAt: string;         // ISO
   respondedAt?: string;
-  chatExpiresAt?: string;    // ISO — 8h after acceptance; chat locks after this
+  chatExpiresAt?: string;    // ISO — 48h after server acceptance; chat locks after this
   meetupConfirmed?: boolean; // true once user confirms the meetup happened
   groupThreadId?: string;    // set for group requests (g-{requestId}); null for 1:1
+  chatThreadId?: string;     // 每筆派工的獨立聊天室；舊資料未設定時沿用雙方 canonical thread
   dispatcherId?: string;     // 若聊天對象是代談幹部，記錄該幹部 id
+  managerDecision?: 'confirmed' | 'declined';
+  managerDecisionBy?: string;
+  managerDecisionAt?: string;
 }
 
 export interface MeetRecord {
@@ -162,7 +167,7 @@ export interface DirectMessage {
 
 export interface ChatMessage {
   id: string;
-  threadId: string;   // composed as `${userId1}-${userId2}` sorted
+  threadId: string;   // 新派工使用 invitation.chatThreadId；舊 1:1 使用雙方 canonical thread
   senderId: string;
   text: string;
   imageUrl?: string;  // 照片訊息：Blob 圖片網址（有圖時 text 可為空）

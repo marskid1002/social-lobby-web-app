@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const chat = await import('@/lib/chat-authz');
-const { canonicalThreadId, buildChatAccessIndex, canWriteChatMessage, canReadChatThread, activeBlockPeers } = chat;
+const { canonicalThreadId, directInvitationThreadId, buildChatAccessIndex, canWriteChatMessage, canReadChatThread, activeBlockPeers } = chat;
 const { authorizeWrites, buildIndex } = await import('@/lib/sync-authz');
 const { scopeForSession, POST } = await import('@/app/api/sync/route');
 const { signSession } = await import('@/lib/session');
@@ -53,6 +53,41 @@ test('buildChatAccessIndex：1:1 成員來自 invitation 兩端；非參與者�
   assert.equal(aA.direct.get('A-B'), 'B');
   const aC = buildChatAccessIndex('C', { invitations: invs });
   assert.equal(aC.direct.has('A-B'), false); // 第三人不是成員
+});
+
+test('同一局同一幹部的兩位小姐使用不同 chatThreadId，不能退回共用 canonical thread', () => {
+  const invitations = [
+    inv('girl-a', 'manager', 'customer', {
+      requestId: 'request-one',
+      responseId: 'response-a',
+      chatThreadId: 'd-response-a',
+    }),
+    inv('girl-b', 'manager', 'customer', {
+      requestId: 'request-one',
+      responseId: 'response-b',
+      chatThreadId: 'd-response-b',
+    }),
+  ];
+  assert.equal(directInvitationThreadId(invitations[0]), 'd-response-a');
+  const access = buildChatAccessIndex('customer', { invitations }, { writable: true, now: NOW });
+  assert.equal(access.direct.has('d-response-a'), true);
+  assert.equal(access.direct.has('d-response-b'), true);
+  assert.equal(access.direct.has(canonicalThreadId('manager', 'customer')), false);
+
+  assert.deepEqual(
+    Wids({ chatMessages: [cm('a', 'd-response-a', 'customer', { requestId: 'request-one' })] }, usr('customer'), { invitations }),
+    ['a'],
+  );
+  assert.deepEqual(
+    Wids({ chatMessages: [cm('b', 'd-response-b', 'customer', { requestId: 'request-one' })] }, usr('customer'), { invitations }),
+    ['b'],
+  );
+  assert.deepEqual(
+    Wids({
+      chatMessages: [cm('mixed', canonicalThreadId('manager', 'customer'), 'customer', { requestId: 'request-one' })],
+    }, usr('customer'), { invitations }),
+    [],
+  );
 });
 
 test('子字串碰撞：u-01 不得命中只屬於 u-010 的聊天室（讀與寫皆然）', () => {
@@ -170,12 +205,26 @@ test('17) 過期聊天室：禁止新寫入，但歷史仍可讀', () => {
   assert.deepEqual(Wids({ chatMessages: [cm('m', 'A-B', 'A')] }, usr('A'), { invitations: expiredInv }), []);
   // 讀：歷史仍下發（讀取端不套用 writable/過期）
   assert.deepEqual(Rids({ invitations: expiredInv, chatMessages: [cm('old', 'A-B', 'A')] }, usr('A')), ['old']);
+  const exactBoundary = [inv('boundary', 'A', 'B', { chatExpiresAt: new Date(NOW).toISOString() })];
+  assert.deepEqual(Wids({ chatMessages: [cm('at-boundary', 'A-B', 'A')] }, usr('A'), { invitations: exactBoundary }), []);
 });
 
 test('17a) 已確認見面：禁止新寫入，但歷史仍可讀', () => {
   const confirmed = [inv('iv', 'A', 'B', { meetupConfirmed: true })];
   assert.deepEqual(Wids({ chatMessages: [cm('m', 'A-B', 'A')] }, usr('A'), { invitations: confirmed }), []);
   assert.deepEqual(Rids({ invitations: confirmed, chatMessages: [cm('old', 'A-B', 'A')] }, usr('A')), ['old']);
+});
+
+test('17a-2) 幹部確認上台後仍可寫入；幹部拒絕後禁止新寫入但歷史可讀', () => {
+  const confirmed = [inv('confirmed', 'A', 'B', { managerDecision: 'confirmed' })];
+  const declined = [inv('declined', 'A', 'B', { managerDecision: 'declined' })];
+  const confirmedWrite = buildChatAccessIndex('A', { invitations: confirmed }, { writable: true, now: NOW });
+  const declinedWrite = buildChatAccessIndex('A', { invitations: declined }, { writable: true, now: NOW });
+  const declinedRead = buildChatAccessIndex('A', { invitations: declined });
+  const threadId = canonicalThreadId('A', 'B');
+  assert.equal(canWriteChatMessage(cm('confirmed-message', threadId, 'A'), 'A', confirmedWrite, new Set()), true);
+  assert.equal(canWriteChatMessage(cm('declined-message', threadId, 'A'), 'A', declinedWrite, new Set()), false);
+  assert.equal(canReadChatThread(threadId, declinedRead), true);
 });
 
 test('17b) chatExpiresAt 缺失、空字串或格式錯誤：寫入 fail-closed，歷史仍可讀', () => {

@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Clock, CheckCircle, Users, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Send, Clock, CheckCircle, Users, Image as ImageIcon, Heart, HeartCrack } from 'lucide-react';
 import { useAppState, otherIdFromThread } from '@/lib/state';
 import { uploadChatImage } from '@/lib/image';
 import type { ChatMessage } from '@/lib/mock';
+import { directInvitationThreadId } from '@/lib/chat-authz';
 
 interface ChatPageProps {
   params: Promise<{ id: string }>;
@@ -94,7 +95,7 @@ function useKeyboardViewport() {
 export default function ChatPage({ params }: ChatPageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const { state, currentUser, sendChatMessage, confirmMeetup, confirmGroupAttendance } = useAppState();
+  const { state, currentUser, sendChatMessage, decideChat, confirmMeetup, confirmGroupAttendance } = useAppState();
 
   // 安全返回：PWA 從推播進來沒有上一頁記錄時，router.back() 會卡住 → 改導到收件匣
   const goBack = () => {
@@ -151,38 +152,54 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   // ── 1:1 chat logic ────────────────────────────────────────────────────────
   // 用邊界比對從 threadId 取另一方（支援註冊客戶 c-<uuid>，避免 /u-\d+/ 抓不到造成幹部代談失效）
-  const otherUserId = !isGroup ? otherIdFromThread(id, currentUser?.id ?? '') : '';
+  const directInvite = !isGroup
+    ? state.invitations.find((inv) =>
+        inv.status === 'accepted'
+        && (!req || inv.requestId === req)
+        && (inv.fromUserId === state.currentUserId || inv.toUserId === state.currentUserId)
+        && directInvitationThreadId(inv) === threadId
+      )
+    : undefined;
+  const otherUserId = !isGroup
+    ? directInvite
+      ? directInvite.fromUserId === state.currentUserId
+        ? directInvite.toUserId
+        : directInvite.fromUserId
+      : otherIdFromThread(id, currentUser?.id ?? '')
+    : '';
   const otherUser = state.users.find((u) => u.id === otherUserId);
   const isOtherOnline = state.onlineUserIds.includes(otherUserId);
   // 代談：這個聊天室「關於哪位小姐」（由 req 局＋此對話的派工幹部推出；沒有 req 就不顯示）
   const escortNames = req
     ? [...new Set(state.responses
-        .filter((r) => r.requestId === req && r.dispatcherId && (r.dispatcherId === currentUser?.id || r.dispatcherId === otherUserId))
+        .filter((r) =>
+          r.requestId === req
+          && (!directInvite?.responseId || r.id === directInvite.responseId)
+          && r.dispatcherId
+          && (r.dispatcherId === currentUser?.id || r.dispatcherId === otherUserId)
+        )
         .map((r) => state.users.find((u) => u.id === r.userId)?.nickname)
         .filter(Boolean))]
     : [];
   const escortLabel = escortNames.length ? `關於 ${escortNames[0]}${escortNames.length > 1 ? ` 等 ${escortNames.length} 位` : ''}` : '';
 
-  const activeInvite = !isGroup
-    ? state.invitations.find(
-        (inv) =>
-          inv.status === 'accepted' &&
-          !inv.meetupConfirmed &&
-          (!req || inv.requestId === req) &&
-          ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
-            (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
-      )
+  const activeInvite = !isGroup && directInvite
+    && !directInvite.meetupConfirmed
+    && directInvite.managerDecision !== 'declined'
+    ? directInvite
     : null;
 
-  const confirmedInvite = !isGroup
-    ? state.invitations.find(
-        (inv) =>
-          inv.meetupConfirmed &&
-          (!req || inv.requestId === req) &&
-          ((inv.fromUserId === state.currentUserId && inv.toUserId === otherUserId) ||
-            (inv.toUserId === state.currentUserId && inv.fromUserId === otherUserId))
-      )
+  const confirmedInvite = !isGroup && directInvite
+    && (directInvite.meetupConfirmed || directInvite.managerDecision === 'declined')
+    ? directInvite
     : null;
+  const isDispatchManager = Boolean(
+    activeInvite
+    && !activeInvite.managerDecision
+    && currentUser?.role === 'manager'
+    && activeInvite.dispatcherId === currentUser.id
+    && activeInvite.fromUserId === currentUser.id
+  );
 
   const expiresAt = isGroup ? groupChatExpiresAt : activeInvite?.chatExpiresAt;
   const { remaining, expired } = useCountdown(expiresAt);
@@ -232,6 +249,7 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [lightbox, setLightbox] = useState<string | null>(null); // 點圖放大
   const [photoBusy, setPhotoBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
+  const [decisionBusy, setDecisionBusy] = useState(false);
   const [photoError, setPhotoError] = useState('');
 
   useEffect(() => {
@@ -370,6 +388,19 @@ export default function ChatPage({ params }: ChatPageProps) {
     confirmGroupAttendance(requestId);
     setGroupConfirmSuccess(true);
     setTimeout(() => setGroupConfirmSuccess(false), 2000);
+  }
+
+  async function handleManagerDecision(decision: 'confirmed' | 'declined') {
+    if (!activeInvite || !isDispatchManager || decisionBusy) return;
+    setDecisionBusy(true);
+    setPhotoError('');
+    try {
+      await decideChat(activeInvite.id, decision);
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : '無法儲存聊天室決定');
+    } finally {
+      setDecisionBusy(false);
+    }
   }
 
   function formatTime(iso: string) {
@@ -717,6 +748,17 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   // ── Already-met closed state (1:1) ────────────────────────────────────────
   if (confirmedInvite && !activeInvite) {
+    const isManagerDecision = Boolean(confirmedInvite.managerDecision);
+    const wasDeclined = confirmedInvite.managerDecision === 'declined';
+    const decidedAt = confirmedInvite.managerDecisionAt
+      ? new Date(confirmedInvite.managerDecisionAt).toLocaleString('zh-Hant-TW', {
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        })
+      : '';
     return (
       <div style={frameStyle} className="flex h-dvh min-h-0 flex-col overflow-hidden bg-gradient-ice">
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/80 backdrop-blur-md border-b border-brand-lavender shadow-sm shrink-0">
@@ -776,13 +818,21 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
 
         <div className="shrink-0 px-5 py-5 bg-white border-t border-brand-lavender text-center">
-          <div className="w-12 h-12 rounded-full bg-brand-pink flex items-center justify-center mx-auto mb-3">
-            <span className="text-2xl">⭐</span>
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 ${
+            wasDeclined ? 'bg-rose-100 text-rose-500' : 'bg-pink-100 text-pink-500'
+          }`}>
+            {wasDeclined ? <HeartCrack className="w-6 h-6" /> : <Heart className="w-6 h-6 fill-current" />}
           </div>
           <p className="text-sm font-semibold text-brand-ink mb-1">
-            {otherUser?.nickname} 確認你們已見面
+            {isManagerDecision
+              ? wasDeclined ? '幹部已標記為拒絕' : '幹部已確認小姐上台'
+              : `${otherUser?.nickname ?? '對方'} 確認你們已見面`}
           </p>
-          <p className="text-xs text-zinc-400 mb-4">聊天已結束。想再見面嗎？重新發送私人邀請</p>
+          <p className="text-xs text-zinc-400 mb-4">
+            {isManagerDecision
+              ? `${decidedAt ? `操作時間：${decidedAt}。` : ''}聊天室已結案，歷史訊息仍可查看。`
+              : '聊天已結束。想再見面嗎？重新發送私人邀請'}
+          </p>
           <button
             onClick={() => router.push(`/u/${otherUserId}`)}
             className="px-6 py-2.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-95 transition-all shadow-card"
@@ -827,6 +877,41 @@ export default function ChatPage({ params }: ChatPageProps) {
           </span>
         </div>
       </div>
+
+      {isDispatchManager && activeInvite && !expired && (
+        <div className="shrink-0 border-b border-brand-lavender bg-white px-4 py-3">
+          <p className="mb-2 text-center text-xs font-semibold text-zinc-500">
+            請確認這位小姐的安排結果
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleManagerDecision('confirmed')}
+              disabled={decisionBusy}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-pink-500 py-3 text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <Heart className="h-5 w-5 fill-current" />
+              愛心・確認上台
+            </button>
+            <button
+              type="button"
+              onClick={() => handleManagerDecision('declined')}
+              disabled={decisionBusy}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-zinc-700 py-3 text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <HeartCrack className="h-5 w-5" />
+              裂開・拒絕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {directInvite?.managerDecision === 'confirmed' && (
+        <div className="shrink-0 flex items-center justify-center gap-2 border-b border-pink-100 bg-pink-50 px-4 py-2.5 text-xs font-semibold text-pink-600">
+          <Heart className="h-4 w-4 fill-current" />
+          幹部已確認小姐上台，聊天室仍可繼續使用
+        </div>
+      )}
 
       {isEscort && activeInvite && !expired && (
         <button

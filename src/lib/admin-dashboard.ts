@@ -113,14 +113,16 @@ export function buildAdminDashboard(input: {
     const messages = (messagesByRequest.get(requestId) ?? []).sort(byOldest);
     const activeAccepted = accepted.filter((invitation) =>
       invitation.meetupConfirmed !== true
+      && invitation.managerDecision !== 'declined'
       && dateMs(invitation.chatExpiresAt) >= now
     );
     const acceptedMissingExpiry = accepted.filter((invitation) =>
       invitation.meetupConfirmed !== true
+      && invitation.managerDecision !== 'declined'
       && dateMs(invitation.chatExpiresAt) === 0
     );
     const acceptedConfirmed = accepted.filter((invitation) =>
-      invitation.meetupConfirmed === true
+      invitation.meetupConfirmed === true || invitation.managerDecision === 'declined'
     );
 
     let health: AdminFlow['health'] = 'waiting';
@@ -134,7 +136,7 @@ export function buildAdminDashboard(input: {
     } else if (accepted.length > 0 && activeAccepted.length === 0) {
       health = 'healthy';
       issue = acceptedConfirmed.length === accepted.length
-        ? '已確認見面'
+        ? '聊天室已結案'
         : '聊天室已正常到期';
     } else if (accepted.length > 0 && messages.length === 0) {
       issue = '聊天室已建立，尚未有訊息';
@@ -231,6 +233,7 @@ export function buildAdminDashboard(input: {
   const activeChats = input.invitations.filter((invitation) =>
     invitation.status === 'accepted'
     && invitation.meetupConfirmed !== true
+    && invitation.managerDecision !== 'declined'
     && dateMs(invitation.chatExpiresAt) >= now
   ).length;
 

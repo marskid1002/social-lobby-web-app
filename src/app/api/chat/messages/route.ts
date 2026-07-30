@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireActiveSession } from '@/lib/active-session';
 import { getCollection, mergeShared } from '@/lib/sync-store';
 import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
-import { canonicalThreadId } from '@/lib/chat-authz';
+import { directInvitationThreadId } from '@/lib/chat-authz';
 import { sendWebPushToUsers } from '@/lib/push-service';
 import { getOrCreateTraceId, recordFlowTrace } from '@/lib/flow-trace-store';
 
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       if (invitation.groupThreadId === body.threadId) {
         recipients.add(from);
         recipients.add(to);
-      } else if (canonicalThreadId(from, to) === body.threadId) {
+      } else if (directInvitationThreadId(invitation) === body.threadId) {
         if (from === auth.session.userId) recipients.add(to);
         if (to === auth.session.userId) recipients.add(from);
       }

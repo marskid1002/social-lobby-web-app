@@ -1,4 +1,5 @@
 import type { SessionPayload } from './session';
+import { chatExpiresAtFrom } from './chat-lifetime';
 
 type Item = { id: string; [key: string]: unknown };
 
@@ -74,13 +75,31 @@ export function planAcceptMatch(input: AcceptMatchInput): AcceptMatchResult {
     return { ok: false, status: 409, error: 'invalid chat partner' };
   }
 
-  const existingInvitation = input.invitations.find((item) =>
-    item.requestId === requestId
+  // responseId 決定穩定 invitation/thread id；同一幹部派多位小姐也不會互相合併。
+  const suffix = stableSuffix(responseId);
+  const invitationId = `i-accept-${suffix}`;
+  const chatThreadId = `d-${suffix}`;
+  const exactInvitation = input.invitations.find((item) =>
+    (item.id === invitationId || item.responseId === responseId)
+    && item.requestId === requestId
+    && item.fromUserId === partnerUserId
+    && item.toUserId === input.session.userId
+    && item.status === 'accepted'
+  );
+  // 舊資料沒有 responseId/chatThreadId；只有唯一候選時才沿用，避免既有訊息失聯。
+  const legacyInvitations = input.invitations.filter((item) =>
+    !str(item.responseId)
+    && !str(item.chatThreadId)
+    && item.requestId === requestId
     && item.fromUserId === partnerUserId
     && item.toUserId === input.session.userId
     && item.status === 'accepted'
     && item.meetupConfirmed !== true
   );
+  const existingInvitation = exactInvitation
+    ?? (currentStatus === 'joining' && legacyInvitations.length === 1
+      ? legacyInvitations[0]
+      : undefined);
   const response: Item = currentStatus === 'joining'
     ? storedResponse
     : { ...storedResponse, responseStatus: 'joining' };
@@ -98,12 +117,12 @@ export function planAcceptMatch(input: AcceptMatchInput): AcceptMatchResult {
 
   const now = input.now ?? Date.now();
   const iso = new Date(now).toISOString();
-  const chatExpiresAt = new Date(now + 30 * 24 * 60 * 60 * 1000).toISOString();
-  // 以 responseId 產生穩定 id：雙擊、重試或兩台裝置同時接受也只會 upsert 同一筆。
-  const suffix = stableSuffix(responseId);
+  const chatExpiresAt = chatExpiresAtFrom(now);
   const invitation: Item = {
-    id: `i-accept-${suffix}`,
+    id: invitationId,
     requestId,
+    responseId,
+    chatThreadId,
     fromUserId: partnerUserId,
     toUserId: input.session.userId,
     status: 'accepted',

@@ -50,7 +50,7 @@ export async function recordAcceptedSyncWrites(input: {
       eventType: 'chat.created',
       actorUserId: input.session.userId,
       requestId,
-      threadId: text(item.groupThreadId) || undefined,
+      threadId: text(item.chatThreadId) || text(item.groupThreadId) || undefined,
       entityId: item.id,
       dedupeKey: `chat.created:${item.id}`,
     }));

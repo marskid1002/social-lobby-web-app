@@ -151,7 +151,7 @@ test('流程診斷：聊天室與訊息完成 → healthy；相同 thread 不同
   ), true);
 });
 
-test('流程診斷：正常到期或已確認見面的聊天室不應誤報故障', () => {
+test('流程診斷：正常到期、舊確認見面或幹部已拒絕的聊天室不應誤報故障', () => {
   const base = {
     creatorId: 'customer-1',
     status: 'closed',
@@ -164,6 +164,7 @@ test('流程診斷：正常到期或已確認見面的聊天室不應誤報故�
     requests: [
       { ...base, id: 'expired-request' },
       { ...base, id: 'confirmed-request' },
+      { ...base, id: 'declined-request' },
     ],
     responses: [
       {
@@ -176,6 +177,12 @@ test('流程診斷：正常到期或已確認見面的聊天室不應誤報故�
         id: 'confirmed-response',
         requestId: 'confirmed-request',
         responseStatus: 'joining',
+        createdAt: '2026-07-29T10:05:00.000Z',
+      },
+      {
+        id: 'declined-response',
+        requestId: 'declined-request',
+        responseStatus: 'declined',
         createdAt: '2026-07-29T10:05:00.000Z',
       },
     ],
@@ -192,6 +199,14 @@ test('流程診斷：正常到期或已確認見面的聊天室不應誤報故�
         requestId: 'confirmed-request',
         status: 'accepted',
         meetupConfirmed: true,
+        chatExpiresAt: FUTURE,
+        createdAt: '2026-07-29T10:06:00.000Z',
+      },
+      {
+        id: 'declined-invitation',
+        requestId: 'declined-request',
+        status: 'accepted',
+        managerDecision: 'declined',
         chatExpiresAt: FUTURE,
         createdAt: '2026-07-29T10:06:00.000Z',
       },

@@ -13,6 +13,7 @@
  */
 import type { SessionPayload } from './session';
 import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage } from './chat-authz';
+import { chatExpiresAtFrom } from './chat-lifetime';
 
 type Item = Record<string, unknown>;
 
@@ -56,6 +57,8 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
   const me = session.userId;
   const isManager = session.role === 'manager';
   const out: Record<string, unknown> = { ...rawPatch };
+  const acceptedAt = new Date(now).toISOString();
+  const acceptedChatExpiresAt = chatExpiresAtFrom(now);
 
   // ── 1) escorts：create 驗 incoming.managerId===me；update 以 server existing.managerId===me，凍結 id/managerId/createdAt ──
   if ('escorts' in out) {
@@ -193,14 +196,14 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         // toUserId 前向：pending→accepted/declined、accepted→declined
         if (isTo && inS && cur !== inS && ((cur === 'pending' && (inS === 'accepted' || inS === 'declined')) || (cur === 'accepted' && inS === 'declined'))) {
           merged.status = inS;
-          if (typeof i.respondedAt === 'string') merged.respondedAt = i.respondedAt;
-          if (inS === 'accepted' && typeof i.chatExpiresAt === 'string') merged.chatExpiresAt = i.chatExpiresAt;
+          merged.respondedAt = acceptedAt;
+          if (inS === 'accepted') merged.chatExpiresAt = acceptedChatExpiresAt;
         }
         // 私人邀請 auto-accept 窄化例外（N 殘留）：requestId===null 且 fromUserId===me，只允許 pending→accepted
         if (isFrom && reqId == null && cur === 'pending' && inS === 'accepted') {
           merged.status = 'accepted';
-          if (typeof i.respondedAt === 'string') merged.respondedAt = i.respondedAt;
-          if (typeof i.chatExpiresAt === 'string') merged.chatExpiresAt = i.chatExpiresAt;
+          merged.respondedAt = acceptedAt;
+          merged.chatExpiresAt = acceptedChatExpiresAt;
         }
         // confirmMeetup：任一參與者 false/undefined→true（單向）
         if ((isTo || isFrom) && i.meetupConfirmed === true && existing.meetupConfirmed !== true) merged.meetupConfirmed = true;
@@ -229,8 +232,8 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         if (s(mr.responseStatus) !== 'joining') return [];                     // effective response 必須「已被接受(joining)」；同批 interested→joining＋建 invitation 仍可成功
         const built: Item = { id, fromUserId: from, toUserId: me, requestId: rid, status: 'accepted' };
         if (s(mr.dispatcherId)) built.dispatcherId = s(mr.dispatcherId);
-        if (typeof i.respondedAt === 'string') built.respondedAt = i.respondedAt;
-        if (typeof i.chatExpiresAt === 'string') built.chatExpiresAt = i.chatExpiresAt;
+        built.respondedAt = acceptedAt;
+        built.chatExpiresAt = acceptedChatExpiresAt;
         if (typeof i.createdAt === 'string') built.createdAt = i.createdAt;
         return [built];
       }
