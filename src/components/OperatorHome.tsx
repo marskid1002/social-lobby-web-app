@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { X, Check, UserCog, Camera } from 'lucide-react';
+import { X, Check, UserCog, Camera, Trash2 } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import {
   activeConfirmedGirlIds,
@@ -330,17 +330,18 @@ export function OperatorHome() {
           {rosterGirls.map((user) => {
             if (!user) return null;
             const isOnline = state.onlineUserIds.includes(user.id);
+            const isBusy = busyGirlIds.has(user.id);
             const galleryCount = galleryOf(user.id).length;
             return (
               <div key={user.id} className="flex items-center gap-2 px-4 py-3 bg-white border-b border-zinc-100">
                 <div className="relative shrink-0">
                   <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover" />
-                  <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
+                  <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isBusy ? 'bg-pink-500' : isOnline ? 'bg-green-400' : 'bg-zinc-300'}`} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    {isOnline ? '🟢 上線中' : '⚪ 離線'}
+                    {isBusy ? <span className="font-semibold text-pink-500">🔴 上台中・忙碌</span> : isOnline ? '🟢 上線中' : '⚪ 離線'}
                     {galleryCount > 0 && <span className="ml-2 text-brand-sky">相簿 {galleryCount}</span>}
                   </p>
                 </div>
@@ -367,6 +368,22 @@ export function OperatorHome() {
                   aria-label={`以 ${user.nickname} 身份操作`}
                 >
                   <UserCog size={12} />操作
+                </button>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => {
+                    if (window.confirm(`確定刪除人員「${user.nickname}」？歷史紀錄仍會保留。`)) {
+                      removeEscort(user.id);
+                      setToast('已刪除人員');
+                      setTimeout(() => setToast(''), 2500);
+                    }
+                  }}
+                  className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-500 active:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label={`刪除 ${user.nickname}`}
+                  title={isBusy ? '上台中不可刪除' : '刪除人員'}
+                >
+                  <Trash2 size={13} />
                 </button>
               </div>
             );
@@ -566,21 +583,8 @@ export function OperatorHome() {
               </div>
 
               <button
-                onClick={() => {
-                  if (typeof window !== 'undefined' && window.confirm(`確定移除人員「${girl.nickname}」？此動作無法復原。`)) {
-                    removeEscort(girl.id);
-                    setPhotoSheetGirlId(null);
-                    setToast('已移除人員');
-                    setTimeout(() => setToast(''), 2500);
-                  }
-                }}
-                className="shrink-0 mt-5 w-full py-3 rounded-2xl border border-red-200 text-sm font-semibold text-red-500 bg-white active:bg-red-50"
-              >
-                移除此人員
-              </button>
-              <button
                 onClick={() => setPhotoSheetGirlId(null)}
-                className="shrink-0 mt-2 w-full py-3 rounded-2xl border border-brand-lavender text-sm font-semibold text-zinc-500 active:bg-brand-snow"
+                className="shrink-0 mt-5 w-full py-3 rounded-2xl border border-brand-lavender text-sm font-semibold text-zinc-500 active:bg-brand-snow"
               >
                 完成
               </button>

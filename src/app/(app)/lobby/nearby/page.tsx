@@ -2,12 +2,14 @@
 
 import { useAppState, escortPeerIds } from '@/lib/state';
 import { LobbyGrid } from '@/components/LobbyGrid';
+import { activeConfirmedGirlIds } from '@/lib/request-attendance';
 
 export default function NearbyPage() {
   const { state, currentUser } = useAppState();
 
   const myArea = currentUser?.defaultArea;
   const escortIds = escortPeerIds(state); // 只顯示幹部自建的真實小姐
+  const busyGirlIds = activeConfirmedGirlIds(state.responses, state.invitations);
 
   const nearbyUsers = state.users.filter((u) => {
     if (u.id === currentUser?.id) return false;
@@ -18,7 +20,8 @@ export default function NearbyPage() {
   });
 
   function getStatus(userId: string) {
-    return state.onlineStatuses.find((s) => s.userId === userId);
+    const status = state.onlineStatuses.find((s) => s.userId === userId);
+    return status && busyGirlIds.has(userId) ? { ...status, status: 'busy' as const } : status;
   }
 
   return (

@@ -106,6 +106,17 @@ export interface Invitation {
   managerDecision?: 'confirmed' | 'declined';
   managerDecisionBy?: string;
   managerDecisionAt?: string;
+  meetupEndedBy?: string;
+  meetupEndedAt?: string;
+}
+
+export interface ChatRead {
+  id: string;
+  userId: string;
+  threadId: string;
+  requestId?: string;
+  lastReadMessageId?: string;
+  lastReadAt: string;
 }
 
 export interface MeetRecord {

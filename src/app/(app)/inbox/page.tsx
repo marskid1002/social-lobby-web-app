@@ -8,6 +8,7 @@ import { zhTW } from 'date-fns/locale';
 import { MessageCircle, TrendingUp, MessageSquare, UserCheck, CheckCircle, Users } from 'lucide-react';
 import { getRequestGradient, REQUEST_TYPE_LABELS } from '@/lib/utils';
 import { directInvitationThreadId } from '@/lib/chat-authz';
+import { unreadMessagesFor } from '@/lib/chat-unread';
 
 export default function InboxPage() {
   const { state, currentUser, clearInboxUnread, markUpdatesRead, confirmMeetup, refreshShared } = useAppState();
@@ -79,6 +80,7 @@ export default function InboxPage() {
     gradient: string;
     chatExpiresAt?: string;
     managerDecision?: 'confirmed' | 'declined';
+    meetupEndedAt?: string;
     inviteId: string; // for 1:1 confirmMeetup
   }> = [];
 
@@ -122,6 +124,7 @@ export default function InboxPage() {
         gradient: getRequestGradient(inv.requestId),
         chatExpiresAt: inv.chatExpiresAt,
         managerDecision: inv.managerDecision,
+        meetupEndedAt: inv.meetupEndedAt,
         inviteId: inv.id,
       });
     } else {
@@ -137,6 +140,7 @@ export default function InboxPage() {
         gradient: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)',
         chatExpiresAt: inv.chatExpiresAt,
         managerDecision: inv.managerDecision,
+        meetupEndedAt: inv.meetupEndedAt,
         inviteId: inv.id,
       });
     }
@@ -248,6 +252,13 @@ export default function InboxPage() {
 
       {/* ── Match cards — one per request ── */}
       {matchCards.map((card) => {
+        const chatUnreadCount = unreadMessagesFor(
+          state.chatMessages,
+          state.chatReads,
+          state.currentUserId,
+          card.threadId,
+          card.requestId,
+        ).length;
         const request = card.requestId ? state.requests.find((r) => r.id === card.requestId) : null;
         const otherUser = state.users.find((u) => u.id === card.otherUserId);
         const creatorUser = request ? state.users.find((u) => u.id === request.creatorId) : null;
@@ -323,10 +334,12 @@ export default function InboxPage() {
                     </p>
                   )}
                   <p className="text-xs text-brand-ink/50 mt-0.5">
-                    {card.managerDecision
+                    {card.meetupEndedAt
+                      ? '✅ 約會已結束・小姐可再次派工'
+                      : card.managerDecision
                       ? card.managerDecision === 'confirmed'
                         ? '💗 幹部已確認小姐上台'
-                        : '💔 幹部已標記為拒絕'
+                        : '💔 約會失敗'
                       : card.isGroup
                       ? `${card.joinerUsers.length} 位女伴加入 · 群組聊天已開啟`
                       : (() => {
@@ -347,6 +360,11 @@ export default function InboxPage() {
                 >
                   <MessageCircle className="w-4 h-4" strokeWidth={2} />
                   {card.managerDecision ? '查看紀錄' : card.isGroup ? '群組聊天' : '聊天'}
+                  {chatUnreadCount > 0 && (
+                    <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                      {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                    </span>
+                  )}
                 </button>
                 {isEscort && !card.isGroup && !card.managerDecision && (
                   <button

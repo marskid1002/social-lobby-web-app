@@ -49,12 +49,14 @@ export async function POST(req: NextRequest) {
         : `tr-${crypto.randomUUID()}`;
       await recordFlowTrace({
         traceId,
-        eventType: decision === 'confirmed' ? 'chat.confirmed' : 'chat.declined',
+        eventType: decision === 'confirmed'
+          ? 'chat.confirmed'
+          : decision === 'declined' ? 'chat.declined' : 'chat.ended',
         actorUserId: auth.session.userId,
         requestId: result.requestId || undefined,
         threadId: result.threadId || undefined,
         entityId: result.invitation.id,
-        dedupeKey: `chat.decision:${result.invitation.id}`,
+        dedupeKey: `chat.decision:${result.invitation.id}:${decision}`,
       }).catch((error) => {
         console.error('[chat decision trace]', error instanceof Error ? error.name : 'UnknownError');
       });
@@ -62,8 +64,10 @@ export async function POST(req: NextRequest) {
       if (result.customerUserId) {
         await sendWebPushToUsers(
           [result.customerUserId],
-          decision === 'confirmed' ? '小姐已確認上台' : '本次安排未成立',
-          decision === 'confirmed' ? '幹部已確認這位小姐上台。' : '幹部已將這位小姐標記為拒絕。',
+          decision === 'confirmed' ? '約會成功' : decision === 'declined' ? '約會失敗' : '約會結束',
+          decision === 'confirmed'
+            ? '幹部已確認這位小姐上台。'
+            : decision === 'declined' ? '幹部已將本次約會標記為失敗。' : '本次約會已結束。',
           `/chat/${encodeURIComponent(result.threadId)}?req=${encodeURIComponent(result.requestId)}`,
         ).catch((error) => {
           console.error('[chat decision push]', error instanceof Error ? error.name : 'UnknownError');

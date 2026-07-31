@@ -1,6 +1,6 @@
 {
-  "name": "Social Lobby",
-  "short_name": "SocialLobby",
+  "name": "JUGA",
+  "short_name": "JUGA",
   "description": "今晚一起出去吧",
   "start_url": "/",
   "display": "standalone",
@@ -9,16 +9,16 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/icons/icon-192",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icons/icon-512",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

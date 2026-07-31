@@ -4,8 +4,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Home, Sparkles, Bell, User, Plus } from 'lucide-react';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PostRequestSheet } from './PostRequestSheet';
 import { useAppState } from '@/lib/state';
+import { totalUnreadMessages } from '@/lib/chat-unread';
 
 const NAV_ITEMS = [
   { href: '/lobby/explore', icon: Home,        label: '首頁' },
@@ -22,6 +24,12 @@ export function BottomNav() {
   const isEscort = currentUser?.role === 'escort';
   const isGuest = currentUser?.tier === 'guest'; // 訪客唯讀：不顯示發局，避免按了假成功（伺服器會 403）
   const hideFab = isEscort || isGuest;
+  const chatUnreadCount = totalUnreadMessages(
+    state.chatMessages,
+    state.chatReads,
+    state.currentUserId,
+  );
+  const inboxBadgeCount = unreadCount + chatUnreadCount + (state.inboxUnread ? 1 : 0);
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');
@@ -29,9 +37,14 @@ export function BottomNav() {
     return pathname.startsWith(href);
   }
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
-      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-brand-lavender pb-safe z-30">
+      <nav
+        className="fixed inset-x-0 bottom-0 z-[60] mx-auto w-full max-w-[430px] bg-white border-t border-brand-lavender pb-safe"
+        aria-label="主選單"
+      >
         <div className="flex items-end justify-around px-2 pt-2 pb-1">
           {NAV_ITEMS.map((item, i) => {
             if (!item) {
@@ -52,7 +65,7 @@ export function BottomNav() {
               );
             }
             const active = isActive(item.href);
-            const showNotifBadge = item.href === '/inbox' && (state.inboxUnread || unreadCount > 0);
+            const showNotifBadge = item.href === '/inbox' && inboxBadgeCount > 0;
             return (
               <Link
                 key={item.href}
@@ -66,7 +79,9 @@ export function BottomNav() {
                     strokeWidth={active ? 2 : 1.75}
                   />
                   {showNotifBadge && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 border border-white" />
+                    <span className="absolute -top-2.5 -right-3 min-w-4 h-4 rounded-full bg-red-500 border border-white px-1 text-[9px] font-bold leading-[14px] text-center text-white">
+                      {inboxBadgeCount > 99 ? '99+' : inboxBadgeCount}
+                    </span>
                   )}
                 </div>
                 <span className={`text-[10px] ${active ? 'font-semibold text-brand-sky' : 'text-zinc-400'}`}>
@@ -79,6 +94,7 @@ export function BottomNav() {
       </nav>
 
       <PostRequestSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
-    </>
+    </>,
+    document.body,
   );
 }

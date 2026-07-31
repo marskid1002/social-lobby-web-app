@@ -95,7 +95,7 @@ function useKeyboardViewport() {
 export default function ChatPage({ params }: ChatPageProps) {
   const { id } = use(params);
   const router = useRouter();
-  const { state, currentUser, sendChatMessage, decideChat, confirmMeetup, confirmGroupAttendance } = useAppState();
+  const { state, currentUser, sendChatMessage, markChatRead, decideChat, confirmMeetup, confirmGroupAttendance } = useAppState();
 
   // 安全返回：PWA 從推播進來沒有上一頁記錄時，router.back() 會卡住 → 改導到收件匣
   const goBack = () => {
@@ -186,11 +186,12 @@ export default function ChatPage({ params }: ChatPageProps) {
   const activeInvite = !isGroup && directInvite
     && !directInvite.meetupConfirmed
     && directInvite.managerDecision !== 'declined'
+    && !directInvite.meetupEndedAt
     ? directInvite
     : null;
 
   const confirmedInvite = !isGroup && directInvite
-    && (directInvite.meetupConfirmed || directInvite.managerDecision === 'declined')
+    && (directInvite.meetupConfirmed || directInvite.managerDecision === 'declined' || directInvite.meetupEndedAt)
     ? directInvite
     : null;
   const isDispatchManager = Boolean(
@@ -199,6 +200,14 @@ export default function ChatPage({ params }: ChatPageProps) {
     && currentUser?.role === 'manager'
     && activeInvite.dispatcherId === currentUser.id
     && activeInvite.fromUserId === currentUser.id
+  );
+  const canEndMeetup = Boolean(
+    directInvite
+    && directInvite.managerDecision === 'confirmed'
+    && !directInvite.meetupEndedAt
+    && currentUser?.role === 'manager'
+    && directInvite.dispatcherId === currentUser.id
+    && directInvite.fromUserId === currentUser.id
   );
 
   const expiresAt = isGroup ? groupChatExpiresAt : activeInvite?.chatExpiresAt;
@@ -216,6 +225,22 @@ export default function ChatPage({ params }: ChatPageProps) {
   const threadMessages = filterMessages(
     state.chatMessages.filter((m) => m.threadId === threadId && (!req || m.requestId === req))
   );
+  const latestThreadMessageId = threadMessages.at(-1)?.id;
+  const markedReadRef = useRef('');
+  useEffect(() => {
+    const markVisibleMessagesRead = () => {
+      if (!latestThreadMessageId || document.visibilityState !== 'visible') return;
+      const key = `${threadId}::${req ?? ''}::${latestThreadMessageId}`;
+      if (markedReadRef.current === key) return;
+      markedReadRef.current = key;
+      markChatRead(threadId, req ?? undefined).catch(() => {
+        markedReadRef.current = '';
+      });
+    };
+    markVisibleMessagesRead();
+    document.addEventListener('visibilitychange', markVisibleMessagesRead);
+    return () => document.removeEventListener('visibilitychange', markVisibleMessagesRead);
+  }, [latestThreadMessageId, markChatRead, req, threadId]);
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>(threadMessages);
   const [inputText, setInputText] = useState('');
   const [hasSentMessage, setHasSentMessage] = useState(false);
@@ -390,12 +415,14 @@ export default function ChatPage({ params }: ChatPageProps) {
     setTimeout(() => setGroupConfirmSuccess(false), 2000);
   }
 
-  async function handleManagerDecision(decision: 'confirmed' | 'declined') {
-    if (!activeInvite || !isDispatchManager || decisionBusy) return;
+  async function handleManagerDecision(decision: 'confirmed' | 'declined' | 'ended') {
+    const targetInvite = decision === 'ended' ? directInvite : activeInvite;
+    if (!targetInvite || decisionBusy) return;
+    if (decision === 'ended' ? !canEndMeetup : !isDispatchManager) return;
     setDecisionBusy(true);
     setPhotoError('');
     try {
-      await decideChat(activeInvite.id, decision);
+      await decideChat(targetInvite.id, decision);
     } catch (error) {
       setPhotoError(error instanceof Error ? error.message : '無法儲存聊天室決定');
     } finally {
@@ -750,8 +777,10 @@ export default function ChatPage({ params }: ChatPageProps) {
   if (confirmedInvite && !activeInvite) {
     const isManagerDecision = Boolean(confirmedInvite.managerDecision);
     const wasDeclined = confirmedInvite.managerDecision === 'declined';
-    const decidedAt = confirmedInvite.managerDecisionAt
-      ? new Date(confirmedInvite.managerDecisionAt).toLocaleString('zh-Hant-TW', {
+    const wasEnded = Boolean(confirmedInvite.meetupEndedAt);
+    const decisionTimestamp = confirmedInvite.meetupEndedAt ?? confirmedInvite.managerDecisionAt;
+    const decidedAt = decisionTimestamp
+      ? new Date(decisionTimestamp).toLocaleString('zh-Hant-TW', {
           month: 'numeric',
           day: 'numeric',
           hour: '2-digit',
@@ -825,12 +854,12 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
           <p className="text-sm font-semibold text-brand-ink mb-1">
             {isManagerDecision
-              ? wasDeclined ? '幹部已標記為拒絕' : '幹部已確認小姐上台'
+              ? wasDeclined ? '約會失敗' : wasEnded ? '約會已結束' : '約會成功'
               : `${otherUser?.nickname ?? '對方'} 確認你們已見面`}
           </p>
           <p className="text-xs text-zinc-400 mb-4">
             {isManagerDecision
-              ? `${decidedAt ? `操作時間：${decidedAt}。` : ''}聊天室已結案，歷史訊息仍可查看。`
+              ? `${decidedAt ? `操作時間：${decidedAt}。` : ''}${wasEnded ? '小姐已恢復可派工，聊天室保留為歷史紀錄。' : '聊天室已結案，歷史訊息仍可查看。'}`
               : '聊天已結束。想再見面嗎？重新發送私人邀請'}
           </p>
           <button
@@ -891,7 +920,7 @@ export default function ChatPage({ params }: ChatPageProps) {
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-pink-500 py-3 text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50"
             >
               <Heart className="h-5 w-5 fill-current" />
-              愛心・確認上台
+              約會成功
             </button>
             <button
               type="button"
@@ -900,16 +929,28 @@ export default function ChatPage({ params }: ChatPageProps) {
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-zinc-700 py-3 text-sm font-bold text-white transition-all active:scale-[0.98] disabled:opacity-50"
             >
               <HeartCrack className="h-5 w-5" />
-              裂開・拒絕
+              約會失敗
             </button>
           </div>
         </div>
       )}
 
-      {directInvite?.managerDecision === 'confirmed' && (
-        <div className="shrink-0 flex items-center justify-center gap-2 border-b border-pink-100 bg-pink-50 px-4 py-2.5 text-xs font-semibold text-pink-600">
-          <Heart className="h-4 w-4 fill-current" />
-          幹部已確認小姐上台，聊天室仍可繼續使用
+      {directInvite?.managerDecision === 'confirmed' && !directInvite.meetupEndedAt && !expired && (
+        <div className="shrink-0 flex items-center justify-between gap-3 border-b border-pink-100 bg-pink-50 px-4 py-2.5 text-xs font-semibold text-pink-600">
+          <span className="flex items-center gap-2">
+            <Heart className="h-4 w-4 fill-current" />
+            小姐上台中・忙碌
+          </span>
+          {canEndMeetup && (
+            <button
+              type="button"
+              onClick={() => handleManagerDecision('ended')}
+              disabled={decisionBusy}
+              className="rounded-full border border-pink-300 bg-white px-3 py-1.5 font-bold text-pink-600 disabled:opacity-50"
+            >
+              約會結束
+            </button>
+          )}
         </div>
       )}
 

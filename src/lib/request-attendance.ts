@@ -11,6 +11,7 @@ type AttendanceInvitation = {
   status?: unknown;
   managerDecision?: unknown;
   meetupConfirmed?: unknown;
+  meetupEndedAt?: unknown;
   chatExpiresAt?: unknown;
 };
 
@@ -69,6 +70,7 @@ export function activeConfirmedGirlIds(
 
   for (const invitation of invitations) {
     if (!isConfirmed(invitation)) continue;
+    if (text(invitation.meetupEndedAt)) continue;
     const expiresAt = Date.parse(text(invitation.chatExpiresAt));
     if (Number.isFinite(expiresAt) && expiresAt <= now) continue;
     const response = responseById.get(text(invitation.responseId));

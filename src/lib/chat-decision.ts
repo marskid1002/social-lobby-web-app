@@ -6,7 +6,7 @@ import {
 } from './request-attendance';
 
 type Item = { id: string; [key: string]: unknown };
-export type ChatDecision = 'confirmed' | 'declined';
+export type ChatDecision = 'confirmed' | 'declined' | 'ended';
 
 export interface DecideChatInput {
   session: SessionPayload;
@@ -39,7 +39,7 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
   if (!invitationId || invitationId.length > 128) {
     return { ok: false, status: 400, error: 'invalid invitationId' };
   }
-  if (input.decision !== 'confirmed' && input.decision !== 'declined') {
+  if (input.decision !== 'confirmed' && input.decision !== 'declined' && input.decision !== 'ended') {
     return { ok: false, status: 400, error: 'invalid decision' };
   }
   if (input.session.role !== 'manager') {
@@ -58,6 +58,42 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
     return { ok: false, status: 409, error: 'chat is not active' };
   }
 
+  const requestId = str(invitation.requestId);
+  const threadId = directInvitationThreadId(invitation);
+  const customerUserId = str(invitation.toUserId);
+  if (!requestId || !threadId || !customerUserId) {
+    return { ok: false, status: 409, error: 'invalid dispatch chat' };
+  }
+
+  const now = input.now ?? Date.now();
+  if (input.decision === 'ended') {
+    if (str(invitation.meetupEndedAt)) {
+      return {
+        ok: true,
+        invitation,
+        requestId,
+        threadId,
+        customerUserId,
+        alreadyDecided: true,
+      };
+    }
+    if (str(invitation.managerDecision) !== 'confirmed') {
+      return { ok: false, status: 409, error: 'meetup is not confirmed' };
+    }
+    return {
+      ok: true,
+      invitation: {
+        ...invitation,
+        meetupEndedBy: managerId,
+        meetupEndedAt: new Date(now).toISOString(),
+      },
+      requestId,
+      threadId,
+      customerUserId,
+      alreadyDecided: false,
+    };
+  }
+
   const existingDecision = str(invitation.managerDecision);
   if (existingDecision) {
     if (existingDecision !== input.decision) {
@@ -66,16 +102,15 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
     return {
       ok: true,
       invitation,
-      requestId: str(invitation.requestId),
-      threadId: directInvitationThreadId(invitation),
-      customerUserId: str(invitation.toUserId),
+      requestId,
+      threadId,
+      customerUserId,
       alreadyDecided: true,
     };
   }
   if (invitation.meetupConfirmed === true) {
     return { ok: false, status: 409, error: 'chat already confirmed' };
   }
-  const now = input.now ?? Date.now();
   const expiresAt = Date.parse(str(invitation.chatExpiresAt));
   if (!Number.isFinite(expiresAt) || now >= expiresAt) {
     return { ok: false, status: 409, error: 'chat expired' };
@@ -87,12 +122,6 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
     : undefined;
   if (!responseId || !storedResponse || str(storedResponse.dispatcherId) !== managerId) {
     return { ok: false, status: 409, error: 'dispatch response not found' };
-  }
-  const requestId = str(invitation.requestId);
-  const threadId = directInvitationThreadId(invitation);
-  const customerUserId = str(invitation.toUserId);
-  if (!requestId || !threadId || !customerUserId) {
-    return { ok: false, status: 409, error: 'invalid dispatch chat' };
   }
   const request = input.requests.find((item) => item.id === requestId);
   if (!request) {

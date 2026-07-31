@@ -78,6 +78,7 @@ export function buildChatAccessIndex(
       if (str(inv.status) !== 'accepted') continue;             // 寫入須已接受
       if (inv.meetupConfirmed === true) continue;                // 已確認見面即關閉新寫入
       if (str(inv.managerDecision) === 'declined') continue;     // 幹部拒絕才結案；確認上台後仍可對話
+      if (str(inv.meetupEndedAt)) continue;                      // 約會結束後保留紀錄但鎖住新訊息
       if (!hasValidWritableExpiry(str(inv.chatExpiresAt), now)) continue;
     }
     const threadId = directInvitationThreadId(inv);

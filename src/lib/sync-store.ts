@@ -14,11 +14,13 @@ const RESET_KEY = kvKey('sl:reset:v1'); // hash：{ collection: 清除時間戳(
 
 export type SharedKey =
   | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
+  | 'chatReads'
   | 'presence' | 'photoOverrides' | 'photoGalleries' | 'registeredUsers' | 'blocks' | 'escorts'
   | 'momentPosts' | 'plazaComments';
 
 export const SHARED_KEYS: SharedKey[] = [
   'requests', 'responses', 'invitations', 'updates', 'chatMessages',
+  'chatReads',
   'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts',
   'momentPosts', 'plazaComments',
 ];
@@ -29,6 +31,7 @@ export type SharedState = Record<SharedKey, Item[]>;
 function emptyShared(): SharedState {
   return {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
+    chatReads: [],
     presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [], escorts: [],
     momentPosts: [], plazaComments: [],
   };
@@ -37,6 +40,7 @@ function emptyShared(): SharedState {
 // 記憶體 fallback：{ collection: { id: item } }
 const mem: Record<SharedKey, Record<string, Item>> = {
   requests: {}, responses: {}, invitations: {}, updates: {}, chatMessages: {},
+  chatReads: {},
   presence: {}, photoOverrides: {}, photoGalleries: {}, registeredUsers: {}, blocks: {}, escorts: {},
   momentPosts: {}, plazaComments: {},
 };
@@ -137,6 +141,7 @@ export async function deleteUserData(userId: string): Promise<void> {
   await f('invitations', (i) => i.fromUserId === userId || i.toUserId === userId);
   await f('updates', (u) => u.userId === userId || u.actorId === userId);
   await f('chatMessages', (m) => m.senderId === userId);
+  await f('chatReads', (r) => r.userId === userId);
   await f('presence', (p) => p.id === userId);
   await f('photoOverrides', (p) => p.id === userId);
   await f('photoGalleries', (p) => p.id === userId);

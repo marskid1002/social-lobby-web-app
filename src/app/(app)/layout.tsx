@@ -150,7 +150,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {!isUserProfile && !isStore && !isPlazaThread && !isChat && <NotificationBanner />}
 
-      <main className={`flex-1 ${isPlazaThread || isStore || isChat ? '' : 'pb-24'}`}>
+      <main className={`flex-1 ${isPlazaThread || isStore || isChat ? '' : 'pb-[calc(6rem+env(safe-area-inset-bottom))]'}`}>
         {children}
       </main>
 

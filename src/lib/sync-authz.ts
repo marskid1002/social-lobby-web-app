@@ -60,6 +60,11 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
   const out: Record<string, unknown> = { ...rawPatch };
   const acceptedAt = new Date(now).toISOString();
   const acceptedChatExpiresAt = chatExpiresAtFrom(now);
+  const busyGirls = activeConfirmedGirlIds(
+    [...idx.responses.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
+    [...idx.invitations.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
+    now,
+  );
 
   // ── 1) escorts：create 驗 incoming.managerId===me；update 以 server existing.managerId===me，凍結 id/managerId/createdAt ──
   if ('escorts' in out) {
@@ -70,7 +75,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         if (s(existing.managerId) !== me) return []; // 不得接管他人 escort（即使 incoming.managerId 改成自己）
         const merged: Item = { ...existing };
         if (typeof e.nickname === 'string') merged.nickname = e.nickname;
-        if (typeof e.removed === 'boolean') merged.removed = e.removed;
+        if (typeof e.removed === 'boolean' && !(e.removed && busyGirls.has(id))) merged.removed = e.removed;
         return [merged]; // id/managerId/createdAt 一律沿用 existing
       }
       if (s(e.managerId) !== me) return [];
@@ -85,12 +90,6 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
     const id = s(e.id); if (!id) continue;
     if (s(e.managerId) === me || s(idx.escorts.get(id)?.managerId) === me) { if (e.removed === true) managed.delete(id); else managed.add(id); }
   }
-  const busyGirls = activeConfirmedGirlIds(
-    [...idx.responses.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
-    [...idx.invitations.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
-    now,
-  );
-
   // ── 2) presence / photoOverrides / photoGalleries：僅 manager 且 item.id ∈ managedGirlIds ──
   for (const k of ['presence', 'photoOverrides', 'photoGalleries'] as const) {
     if (k in out) out[k] = asArr(out[k]).filter((it) => { const id = s(it.id); return !!id && isManager && managed.has(id); });

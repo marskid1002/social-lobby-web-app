@@ -15,6 +15,7 @@ interface Props {
 export function UserCard({ user, status, index, hasMet }: Props) {
   const router = useRouter();
   const gradient = CARD_GRADIENTS[index % 3];
+  const isBusy = status?.status === 'busy';
 
   return (
     <button
@@ -54,9 +55,9 @@ export function UserCard({ user, status, index, hasMet }: Props) {
         </div>
         {status && (
           <div className="flex items-center gap-1.5 mt-1">
-            <span className="inline-block w-2 h-2 rounded-full shrink-0 bg-green-400" />
+            <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${isBusy ? 'bg-pink-500' : 'bg-green-400'}`} />
             <span className="text-xs font-medium text-white/80">
-              上線 · {status.area}
+              {isBusy ? '忙碌中' : '上線'} · {status.area}
             </span>
           </div>
         )}

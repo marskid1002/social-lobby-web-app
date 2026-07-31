@@ -8,6 +8,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { TAIPEI_AREAS } from '@/lib/mock';
 import type { RequestType } from '@/lib/mock';
+import { activeConfirmedGirlIds } from '@/lib/request-attendance';
 
 
 const CARD_GRADIENTS = ['bg-gradient-card-a', 'bg-gradient-card-b', 'bg-gradient-card-c'];
@@ -46,6 +47,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   if (!user) return <div className="p-8 text-center text-zinc-400">找不到此用戶</div>;
 
   const onlineStatus = state.onlineStatuses.find((s) => s.userId === id);
+  const isBusy = activeConfirmedGirlIds(state.responses, state.invitations).has(id);
   const isFollowing = state.follows.some(
     (f) => f.followerId === state.currentUserId && f.followingId === id
   );
@@ -166,9 +168,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
         {onlineStatus && (
           <div className="flex justify-center mb-4">
             <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-brand-snow border border-brand-lavender">
-              <span className="w-2 h-2 rounded-full bg-green-400" />
+              <span className={`w-2 h-2 rounded-full ${isBusy ? 'bg-pink-500' : 'bg-green-400'}`} />
               <span className="text-xs font-medium text-brand-ink">
-                上線 · {onlineStatus.area} ·{' '}
+                {isBusy ? '忙碌中' : '上線'} · {onlineStatus.area} ·{' '}
                 {formatDistanceToNow(new Date(onlineStatus.lastSeen), { locale: zhTW, addSuffix: true })}
               </span>
             </div>

@@ -13,7 +13,7 @@ import {
   seedTeaserMessages,
   momentPosts as seedMomentPosts,
 } from '@/lib/mock';
-import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, MeetRecord, MomentPost, PlazaComment } from '@/lib/mock';
+import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Follow, ChatMessage, ChatRead, MeetRecord, MomentPost, PlazaComment } from '@/lib/mock';
 import type { TeaserMessage } from '@/lib/mock/chat';
 import { chatExpiresAtFrom } from '@/lib/chat-lifetime';
 import { shouldRedirectExpiredSession } from '@/lib/session-redirect';
@@ -55,6 +55,7 @@ export interface AppState {
   showOnNearby: boolean;
   autoOfflineHours: number;
   chatMessages: ChatMessage[];
+  chatReads: ChatRead[];
   meetRecords: MeetRecord[];
   teaserMessages: TeaserMessage[];
   inboxUnread: boolean;      // true when a new accepted invite is waiting in inbox
@@ -98,6 +99,7 @@ function getSeedState(): AppState {
     showOnNearby: true,
     autoOfflineHours: 4,
     chatMessages: CLEAN_START ? [] : seedChatMessages,
+    chatReads: [],
     meetRecords: [],
     teaserMessages: CLEAN_START ? [] : seedTeaserMessages,
     inboxUnread: false,
@@ -165,7 +167,7 @@ const listeners = new Set<() => void>();
 // 這些集合存在 server（/api/sync），跨裝置共享；其餘欄位（currentUserId、
 // secondaryUserId、readUpdateIds、UI 偏好）維持各裝置本機。
 // presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
-const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts', 'momentPosts', 'plazaComments'] as const;
+const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'chatReads', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts', 'momentPosts', 'plazaComments'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
 
 // 把註冊的新客戶併入 users（跨裝置：其他人才看得到發局者等資訊）
@@ -480,6 +482,7 @@ function startSync() {
     const s = getState();
     const initPatch: Partial<Record<SharedKey, unknown[]>> = {};
     for (const key of SHARED_KEYS) {
+      if (key === 'chatReads') continue;
       const arr = s[key] as unknown[];
       if (arr && arr.length) initPatch[key] = arr;
     }
@@ -701,11 +704,14 @@ export function useAppState(options: { sync?: boolean } = {}) {
   }, []);
 
   const removeEscort = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      escorts: prev.escorts.map((e) => (e.id === id ? { ...e, removed: true } : e)),
-      users: prev.users.filter((u) => u.id !== id),
-    }));
+    setState((prev) => {
+      if (activeConfirmedGirlIds(prev.responses, prev.invitations).has(id)) return prev;
+      return {
+        ...prev,
+        escorts: prev.escorts.map((e) => (e.id === id ? { ...e, removed: true } : e)),
+        users: prev.users.filter((u) => u.id !== id),
+      };
+    });
   }, []);
 
   const postRequest = useCallback((req: Omit<Request, 'id' | 'creatorId' | 'createdAt' | 'expiresAt' | 'status' | 'metrics'>) => {
@@ -1194,9 +1200,23 @@ export function useAppState(options: { sync?: boolean } = {}) {
     return newMsg;
   }, []);
 
+  const markChatRead = useCallback(async (threadId: string, requestId?: string) => {
+    const res = await fetch('/api/chat/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ threadId, requestId }),
+    });
+    const body = await res.json().catch(() => ({})) as { error?: string; read?: ChatRead };
+    if (!res.ok || !body.read) {
+      throw new Error(body.error || '無法更新已讀狀態');
+    }
+    applyServerShared({ chatReads: [body.read] });
+    return body.read;
+  }, []);
+
   const decideChat = useCallback(async (
     invitationId: string,
-    decision: 'confirmed' | 'declined',
+    decision: 'confirmed' | 'declined' | 'ended',
   ) => {
     const res = await fetch('/api/chat/decision', {
       method: 'POST',
@@ -1463,6 +1483,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     refreshShared,
     reset,
     sendChatMessage,
+    markChatRead,
     decideChat,
     confirmMeetup,
     confirmGroupAttendance,

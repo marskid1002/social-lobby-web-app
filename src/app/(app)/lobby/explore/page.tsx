@@ -10,7 +10,7 @@ import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
 import { getRequestGradient, getRequestAccentColor, REQUEST_TYPE_LABELS } from '@/lib/utils';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
-import { confirmedGirlIdsForRequest } from '@/lib/request-attendance';
+import { activeConfirmedGirlIds, confirmedGirlIdsForRequest } from '@/lib/request-attendance';
 
 const SECTION_B_LIMIT: Record<string, number> = {
   guest: 3,   // 訪客只看 3 位，其餘馬賽克
@@ -137,6 +137,7 @@ function FemaleListRow({ userId, blurred }: { userId: string; blurred?: boolean 
   const router = useRouter();
   const user = state.users.find((u) => u.id === userId);
   const onlineStatus = state.onlineStatuses.find((s) => s.userId === userId);
+  const isBusy = activeConfirmedGirlIds(state.responses, state.invitations).has(userId);
 
   if (!user || !onlineStatus) return null;
 
@@ -172,13 +173,13 @@ function FemaleListRow({ userId, blurred }: { userId: string; blurred?: boolean 
           alt={user.nickname}
           className="w-10 h-10 rounded-full object-cover"
         />
-        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 rounded-full border-2 border-white" />
+        <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isBusy ? 'bg-pink-500' : 'bg-green-400'}`} />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</span>
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 bg-green-100 text-green-700">
-            上線
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isBusy ? 'bg-pink-100 text-pink-700' : 'bg-green-100 text-green-700'}`}>
+            {isBusy ? '忙碌中' : '上線'}
           </span>
         </div>
         <p className="text-xs text-zinc-400 mt-0.5">

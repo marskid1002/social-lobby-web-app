@@ -63,6 +63,7 @@ export function scopeForSession(all: SharedState, s: SessionPayload): SharedStat
   } as Partial<SharedState>;
   const empty: SharedState = {
     requests: [], responses: [], invitations: [], updates: [], chatMessages: [],
+    chatReads: [],
     presence: [], photoOverrides: [], photoGalleries: [], registeredUsers: [], blocks: [], escorts: [],
     momentPosts: [], plazaComments: [],
   };
@@ -111,8 +112,10 @@ export function scopeForSession(all: SharedState, s: SessionPayload): SharedStat
     return canReadChatThread(tid, chatAccess); // 精確成員比對；非成員不得收到
   });
 
+  const chatReads = (all.chatReads ?? []).filter((read) => asRec(read).userId === me);
+
   return {
-    requests: visibleRequests, responses: scopedResponses, invitations, updates, chatMessages,
+    requests: visibleRequests, responses: scopedResponses, invitations, updates, chatMessages, chatReads,
     ...pub,
   } as SharedState;
 }
@@ -121,6 +124,8 @@ export function scopeForSession(all: SharedState, s: SessionPayload): SharedStat
 // 防止客戶自行把 tier 改成 vip、role 改成 manager 提權，或竄改經濟欄位。
 function sanitizePatch(patch: Record<string, unknown>, s: SessionPayload): void {
   const me = s.userId;
+  // Read receipts can only be written through /api/chat/read after membership checks.
+  delete patch.chatReads;
   const ru = patch.registeredUsers;
   if (Array.isArray(ru)) {
     // 只保留本人（丟掉 poll 併入的他人帳號，避免外來項導致整批 403）；權限/等級以 session 為準、剔除經濟欄位
