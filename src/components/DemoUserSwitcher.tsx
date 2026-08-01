@@ -83,7 +83,7 @@ export function DemoUserSwitcher({ open, onClose }: Props) {
     <div className="fixed inset-0 z-[100] flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl"
+        className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />

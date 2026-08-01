@@ -74,9 +74,9 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
   // 訪客直接打網址開這頁也不能發局：顯示提示、不給表單（避免假成功）
   if (currentUser?.tier === 'guest') {
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={onClose}>
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-        <div className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-6 pb-10 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
           <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
           <p className="text-base font-bold text-brand-ink mb-1">訪客無法發局</p>
           <p className="text-sm text-zinc-400 mb-5">登入或註冊後即可發布邀請。</p>
@@ -87,10 +87,10 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+    <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <div
-        className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl max-h-[92vh] overflow-y-auto"
+        className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Handle */}
@@ -182,18 +182,20 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             </p>
 
             {/* Submit */}
-            <button
-              onClick={handleSubmit}
-              disabled={!type}
-              className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
-            >
+            <div className="app-sticky-sheet-action">
+              <button
+                onClick={handleSubmit}
+                disabled={!type}
+                className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
+              >
               {isEditing ? '儲存變更' : '發送邀請'}
-            </button>
+              </button>
+            </div>
           </div>
       </div>
 
       {toast && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50">
+        <div className="app-toast-layer absolute bottom-12 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg">
           {isEditing ? '邀請已更新' : '邀請已發送'}
         </div>
       )}

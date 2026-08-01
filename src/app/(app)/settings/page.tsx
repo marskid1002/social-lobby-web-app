@@ -187,7 +187,7 @@ export default function SettingsPage() {
 
       {/* Blocked dialog */}
       {blockedOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setBlockedOpen(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-center justify-center px-4" onClick={() => setBlockedOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-brand-ink mb-4">封鎖名單</h3>
@@ -215,7 +215,7 @@ export default function SettingsPage() {
 
       {/* Delete confirm */}
       {deleteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setDeleteOpen(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-center justify-center px-4" onClick={() => setDeleteOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-brand-ink mb-2">確定要刪除帳號？</h3>
@@ -230,7 +230,7 @@ export default function SettingsPage() {
 
       {/* Upgrade dialog */}
       {upgradeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setUpgradeOpen(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-center justify-center px-4" onClick={() => setUpgradeOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative w-full max-w-sm bg-white rounded-3xl p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-center mb-4">

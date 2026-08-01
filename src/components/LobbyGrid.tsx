@@ -127,10 +127,10 @@ export function LobbyGrid({
 
       {/* Filter sheet */}
       {filterOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setFilterOpen(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setFilterOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 max-h-[80vh] overflow-y-auto"
+            className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Handle + header */}

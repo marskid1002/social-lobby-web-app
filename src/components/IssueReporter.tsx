@@ -59,7 +59,7 @@ export function IssueReporter() {
       </button>
       {open && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/35 p-3 sm:items-center">
-          <div className="w-full max-w-[410px] rounded-3xl bg-white p-5 shadow-2xl">
+          <div className="app-bottom-sheet w-full max-w-[410px] overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="font-bold text-zinc-900">回報問題</h2>

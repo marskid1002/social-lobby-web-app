@@ -380,7 +380,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       />
 
       {/* Sticky CTA */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] bg-white border-t border-brand-lavender px-4 py-3 pb-safe z-40">
+      <div className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 border-t border-brand-lavender bg-white px-4 py-3 pb-safe">
         {isCreator ? (
           joiners.length > 0 ? (
             <div className="text-center">
@@ -412,9 +412,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
       {/* ── Confirm reject sheet (joining → penalty) ── */}
       {showConfirmSheet && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowConfirmSheet(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setShowConfirmSheet(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-5" />
             <p className="text-base font-bold text-brand-ink mb-1">確認拒絕？</p>
             <p className="text-sm text-zinc-500 mb-5 leading-snug">她將被移除，名額重新開放。</p>
@@ -427,7 +427,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50 pointer-events-none">
+        <div className="app-toast-layer fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg pointer-events-none">
           {toast}
         </div>
       )}

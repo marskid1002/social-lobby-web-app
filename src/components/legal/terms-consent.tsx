@@ -74,7 +74,7 @@ export default function TermsConsent({ accepted, onAcceptedChange }: TermsConsen
       </div>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="terms-dialog-title">
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center bg-black/45 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="terms-dialog-title">
           <div className="flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-3xl bg-white shadow-xl sm:max-h-[86dvh] sm:rounded-3xl">
             <div className="flex items-start justify-between border-b border-brand-lavender px-5 py-4">
               <div>

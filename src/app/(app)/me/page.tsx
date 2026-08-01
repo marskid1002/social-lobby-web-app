@@ -203,10 +203,10 @@ export default function MyProfilePage() {
 
       {/* Edit sheet */}
       {editOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setEditOpen(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setEditOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 max-h-[90vh] overflow-y-auto shadow-2xl"
+            className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
@@ -247,7 +247,7 @@ export default function MyProfilePage() {
                 </div>
               </div>
 
-              <button onClick={handleSave} className="w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base active:scale-[0.98] transition-all shadow-card mt-2">
+              <button onClick={handleSave} className="sticky bottom-0 z-10 w-full py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base active:scale-[0.98] transition-all shadow-card mt-2">
                 儲存
               </button>
             </div>
@@ -256,7 +256,7 @@ export default function MyProfilePage() {
       )}
 
       {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg z-50">
+        <div className="app-toast-layer fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg">
           {toast}
         </div>
       )}

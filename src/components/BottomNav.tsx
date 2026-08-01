@@ -42,7 +42,7 @@ export function BottomNav() {
   return createPortal(
     <>
       <nav
-        className="fixed inset-x-0 bottom-0 z-[60] mx-auto w-full max-w-[430px] bg-white border-t border-brand-lavender pb-safe"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[430px] bg-white border-t border-brand-lavender pb-safe"
         aria-label="主選單"
       >
         <div className="flex items-end justify-around px-2 pt-2 pb-1">

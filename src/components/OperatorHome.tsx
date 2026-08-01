@@ -402,17 +402,17 @@ export function OperatorHome() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-lg z-50 max-w-[90vw] text-center break-words">
+        <div className="app-toast-layer fixed bottom-28 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-lg max-w-[90vw] text-center break-words">
           {toast}
         </div>
       )}
 
       {/* Dispatch bottom sheet */}
       {dispatchSheet && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setDispatchSheet(null)}>
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setDispatchSheet(null)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl"
+            className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
@@ -464,7 +464,7 @@ export function OperatorHome() {
             <button
               onClick={handleDispatch}
               disabled={selectedGirls.length === 0}
-              className="w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
+              className="sticky bottom-0 z-10 w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
             >
               確認出席{selectedGirls.length > 0 ? `（${selectedGirls.length} 位）` : ''}
             </button>
@@ -474,10 +474,10 @@ export function OperatorHome() {
 
       {/* 新增人員 sheet（幹部自建小姐）*/}
       {addOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setAddOpen(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setAddOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl"
+            className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
@@ -512,10 +512,10 @@ export function OperatorHome() {
         const hasOverride = state.photoOverrides.some((o) => o.id === girl.id);
         const gallery = galleryOf(girl.id);
         return (
-          <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setPhotoSheetGirlId(null)}>
+          <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setPhotoSheetGirlId(null)}>
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
             <div
-              className="relative w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-8 shadow-2xl max-h-[85vh] flex flex-col"
+              className="app-bottom-sheet relative flex w-full max-w-[430px] flex-col rounded-t-[28px] bg-white p-5 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4 shrink-0" />
@@ -523,7 +523,7 @@ export function OperatorHome() {
                 {girl.nickname} 的照片
               </p>
 
-              <div className="overflow-y-auto mt-4 flex flex-col gap-5">
+              <div className="min-h-0 overflow-y-auto overscroll-contain mt-4 flex flex-col gap-5">
                 {/* 大頭照 */}
                 <div>
                   <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2">大頭照</p>

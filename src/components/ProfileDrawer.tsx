@@ -42,7 +42,7 @@ export function ProfileDrawer({ open, onClose }: Props) {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="app-modal-layer fixed inset-0 flex" onClick={onClose}>
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
 
         {/* Drawer panel */}
@@ -51,7 +51,7 @@ export function ProfileDrawer({ open, onClose }: Props) {
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-gradient-card-a p-5 pt-10">
+          <div className="bg-gradient-card-a p-5 pt-[max(2.5rem,calc(1rem+env(safe-area-inset-top)))]">
             <div className="flex items-start justify-between mb-3">
               <button
                 onClick={() => navigate('/me')}

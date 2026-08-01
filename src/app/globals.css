@@ -132,6 +132,27 @@
   .pl-safe { padding-left: max(env(safe-area-inset-left), 0px); }
   .pr-safe { padding-right: max(env(safe-area-inset-right), 0px); }
 
+  /* Shared mobile layout rules: keep content clear of the persistent nav and
+     make every modal sit above it, including on iPhone Safari. */
+  .app-bottom-clearance { padding-bottom: calc(6rem + env(safe-area-inset-bottom)); }
+  .app-modal-layer { z-index: 80; }
+  .app-toast-layer { z-index: 100; }
+  .app-bottom-sheet {
+    max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top)));
+    overscroll-behavior: contain;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .app-sticky-sheet-action {
+    position: sticky;
+    bottom: calc(-1 * max(1rem, env(safe-area-inset-bottom)));
+    z-index: 10;
+    margin-right: -1.25rem;
+    margin-left: -1.25rem;
+    padding: 0.75rem 1.25rem max(1rem, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-brand-lavender);
+    background: white;
+  }
+
   .bg-gradient-sky      { background: linear-gradient(135deg, #DDF4FD 0%, #8BD8F1 100%); }
   .bg-gradient-pink     { background: linear-gradient(135deg, #F7BEF1 0%, #DED9E5 100%); }
   .bg-gradient-sky-pink { background: linear-gradient(135deg, #8BD8F1 0%, #F7BEF1 100%); }

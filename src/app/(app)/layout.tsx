@@ -102,6 +102,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <div className="mx-auto max-w-[430px] min-h-screen bg-brand-snow" />;
   }
 
+  const isRequestDetail = /^\/requests\/[^/]+$/.test(pathname) && pathname !== '/requests/new';
+  const showBottomNav = !isPlazaThread && !isStore && !isChat && !isRequestDetail;
+
   return (
     <div className="flex flex-col min-h-screen bg-brand-snow">
       <SessionSync />
@@ -150,11 +153,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {!isUserProfile && !isStore && !isPlazaThread && !isChat && <NotificationBanner />}
 
-      <main className={`flex-1 ${isPlazaThread || isStore || isChat ? '' : 'pb-[calc(6rem+env(safe-area-inset-bottom))]'}`}>
+      <main className={`flex-1 ${showBottomNav ? 'app-bottom-clearance' : ''}`}>
         {children}
       </main>
 
-      {!isPlazaThread && !isStore && !isChat && <BottomNav />}
+      {showBottomNav && <BottomNav />}
       <ProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <DualIdentityBadge />
       <NotificationWatcher />
