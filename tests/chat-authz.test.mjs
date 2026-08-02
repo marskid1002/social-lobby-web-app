@@ -185,6 +185,14 @@ test('13b) 舊群組沒有 groupThreadId invitation：維持既有 request/respo
   assert.deepEqual(Wids({ chatMessages: [cm('joiner', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), cols), ['joiner']);
 });
 
+test('13c) 局資料 8 小時後已清除，群組 invitation 仍讓聊天室雙方使用到 48 小時', () => {
+  const invitationOnly = {
+    invitations: [{ id: 'gi1', requestId: 'r1', fromUserId: 'g1', toUserId: 'C', groupThreadId: 'g-r1', status: 'accepted', chatExpiresAt: FE, createdAt: CA }],
+  };
+  assert.deepEqual(Wids({ chatMessages: [cm('creator', 'g-r1', 'C', { requestId: 'r1' })] }, usr('C'), invitationOnly), ['creator']);
+  assert.deepEqual(Wids({ chatMessages: [cm('joiner', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), invitationOnly), ['joiner']);
+});
+
 test('15/16) 派工→接受→代談：幹部/客戶可寫；其他幹部不能寫別人的代談', () => {
   // 代談 invitation：from=幹部 u-501、to=客戶 C、dispatcherId=u-501、accepted
   const cols = {

@@ -15,6 +15,7 @@ import type { SessionPayload } from './session';
 import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage } from './chat-authz';
 import { chatExpiresAtFrom } from './chat-lifetime';
 import { activeConfirmedGirlIds } from './request-attendance';
+import { REQUEST_ACTIVE_MS, REQUEST_RETENTION_MS } from './data-retention';
 
 type Item = Record<string, unknown>;
 
@@ -122,7 +123,15 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         return [merged];
       }
       if (s(r.creatorId) !== me) return [];
-      return [r];
+      const suppliedExpiry = Date.parse(s(r.expiresAt) ?? '');
+      if (Number.isFinite(suppliedExpiry) && suppliedExpiry <= now - (REQUEST_RETENTION_MS - REQUEST_ACTIVE_MS)) return [];
+      return [{
+        ...r,
+        creatorId: me,
+        createdAt: acceptedAt,
+        expiresAt: new Date(now + REQUEST_ACTIVE_MS).toISOString(),
+        status: 'open',
+      }];
     });
   }
 
@@ -225,7 +234,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         if (!isPrivate) { if (!reqExists(s(reqId))) return []; } // 一般邀請 request 必須存在
         const built: Item = { id, fromUserId: me, toUserId: to, requestId: isPrivate ? null : s(reqId), status: 'pending' };
         if (typeof i.message === 'string') built.message = i.message;
-        if (typeof i.createdAt === 'string') built.createdAt = i.createdAt;
+        built.createdAt = acceptedAt;
         return to ? [built] : [];
       }
       if (to === me) {
@@ -242,7 +251,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         if (s(mr.dispatcherId)) built.dispatcherId = s(mr.dispatcherId);
         built.respondedAt = acceptedAt;
         built.chatExpiresAt = acceptedChatExpiresAt;
-        if (typeof i.createdAt === 'string') built.createdAt = i.createdAt;
+        built.createdAt = acceptedAt;
         return [built];
       }
       return [];

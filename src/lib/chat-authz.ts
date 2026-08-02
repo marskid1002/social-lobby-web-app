@@ -87,6 +87,16 @@ export function buildChatAccessIndex(
     const requestIds = directRequestIds.get(threadId) ?? new Set<string | null>();
     requestIds.add(str(inv.requestId) ?? null);
     directRequestIds.set(threadId, requestIds);
+
+    const groupThreadId = str(inv.groupThreadId);
+    if (groupThreadId && str(inv.status) === 'accepted') {
+      if (!opts.writable || (
+        inv.meetupConfirmed !== true
+        && str(inv.managerDecision) !== 'declined'
+        && !str(inv.meetupEndedAt)
+        && hasValidWritableExpiry(str(inv.chatExpiresAt), now)
+      )) group.add(groupThreadId);
+    }
   }
 
   // 群組：g-{requestId}，成員 = 局 creator ∪ 該局 joining 回應者

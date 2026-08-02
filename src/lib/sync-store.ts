@@ -6,6 +6,7 @@
  */
 
 import { getRedis, kvKey, warnIfRedisMissingInProd } from './kv';
+import { planDataRetention } from './data-retention';
 
 warnIfRedisMissingInProd(); // 生產環境缺 Redis → 冷啟動時大聲警告（資料不會持久化）
 
@@ -52,7 +53,7 @@ function parseItem(v: unknown): Item | null {
   try { return JSON.parse(String(v)) as Item; } catch { return null; }
 }
 
-export async function getShared(): Promise<SharedState> {
+async function readSharedRaw(): Promise<SharedState> {
   const redis = getRedis();
   const out = emptyShared();
   if (redis) {
@@ -64,6 +65,22 @@ export async function getShared(): Promise<SharedState> {
     for (const key of SHARED_KEYS) out[key] = Object.values(mem[key]);
   }
   return out;
+}
+
+async function deleteSharedItems(remove: Partial<Record<SharedKey, string[]>>): Promise<void> {
+  const redis = getRedis();
+  for (const key of SHARED_KEYS) {
+    const ids = remove[key];
+    if (!ids?.length) continue;
+    if (redis) await redis.hdel(hashKey(key), ...ids);
+    else for (const id of ids) delete mem[key][id];
+  }
+}
+
+export async function getShared(): Promise<SharedState> {
+  const plan = planDataRetention(await readSharedRaw());
+  await deleteSharedItems(plan.remove);
+  return plan.state;
 }
 
 /** 取單一集合（授權檢查用，避免抓全部）。 */

@@ -54,7 +54,10 @@ test('presence/photos：本人 escort 可寫；他人/未知/removed/非 manager
 
 // ══ requests（M5）══
 test('requests：creator-only、發局者可編輯白名單欄位、凍結身份/時間、takeover 丟棄', () => {
-  assert.deepEqual(ids(run({ requests: [{ id: 'r1', creatorId: 'A', createdAt: CA }] }, usr('A')).requests), ['r1']);
+  const created = one(run({ requests: [{ id: 'r1', creatorId: 'A', createdAt: CA }] }, usr('A')).requests);
+  assert.equal(created.createdAt, ACCEPTED_AT);
+  assert.equal(created.expiresAt, new Date(NOW + 2 * 60 * 60 * 1000).toISOString());
+  assert.equal(created.status, 'open');
   assert.deepEqual(run({ requests: [{ id: 'r1', creatorId: 'B', createdAt: CA }] }, usr('A')).requests, []);
   const cols = { requests: [{ id: 'r1', creatorId: 'A', createdAt: CA, expiresAt: CA, area: '信義區', requestType: 'other', peopleCount: 2, note: '原文', status: 'open' }] };
   const m = one(run({ requests: [{ id: 'r1', creatorId: 'HACK', createdAt: 'HACK', expiresAt: 'HACK', area: '大安區', requestType: 'drinking', peopleCount: 4, note: '更新', status: 'closed' }] }, usr('A'), cols).requests);

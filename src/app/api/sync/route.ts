@@ -275,6 +275,8 @@ export async function POST(req: NextRequest) {
     const patch: Record<string, unknown> = shape.patch;
     stripDataUrlItems(patch); // 丟掉殘留的 dataURL 項目（不整批拒絕），避免一顆壞照片讓整批同步失敗
     sanitizePatch(patch, session); // 權限/等級以伺服器 session 為準，擋自升 tier/role（economic 欄位剔除）
+    // 每次同步先執行 8/48 小時資料保留清理，授權判斷不再看到過期資料。
+    await getShared();
 
     // B：物件層級寫入授權——批次預讀「授權需要」的 server 集合、建 by-id index，逐筆授權。
     // 既有物件一律以 server stored object 為權威、update 凍結不可變欄位；未授權項逐筆丟棄、合法項照存（不整批失敗）。
