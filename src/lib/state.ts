@@ -18,6 +18,8 @@ import type { TeaserMessage } from '@/lib/mock/chat';
 import { chatExpiresAtFrom } from '@/lib/chat-lifetime';
 import { shouldRedirectExpiredSession } from '@/lib/session-redirect';
 import { activeConfirmedGirlIds } from '@/lib/request-attendance';
+import { planDataRetention } from '@/lib/data-retention';
+import type { SharedState } from '@/lib/sync-store';
 
 const STORAGE_KEY = 'sl_state_v3';
 const PRIVATE_INVITE_CREDIT_COST = 3;
@@ -141,7 +143,7 @@ function loadState(): AppState {
     if (merged.registeredUsers?.length) merged = applyRegisteredUsers(merged);
     if (merged.photoOverrides?.length) merged = applyPhotoOverrides(merged);
     if (merged.presence?.length) merged = reconcilePresence(merged);
-    return merged;
+    return pruneExpiredLocalState(merged);
   } catch {
     return getSeedState();
   }
@@ -169,6 +171,23 @@ const listeners = new Set<() => void>();
 // presence：小姐上/下班 override；photoOverrides：幹部改的照片 override；皆跨裝置同步（id = 使用者 id）
 const SHARED_KEYS = ['requests', 'responses', 'invitations', 'updates', 'chatMessages', 'chatReads', 'presence', 'photoOverrides', 'photoGalleries', 'registeredUsers', 'blocks', 'escorts', 'momentPosts', 'plazaComments'] as const;
 type SharedKey = typeof SHARED_KEYS[number];
+
+/**
+ * 伺服器刪除資料後不會回傳 tombstone；本機原本使用 union 合併，因此舊快取會一直留下。
+ * 同步前先套用同一套 8/48 小時規則，並保留 AppState 其餘本機設定。
+ */
+export function pruneExpiredLocalState(state: AppState, now: number = Date.now()): AppState {
+  const shared = {} as SharedState;
+  for (const key of SHARED_KEYS) {
+    shared[key] = ((state[key] as unknown as { id: string }[]) ?? []) as SharedState[typeof key];
+  }
+  const retained = planDataRetention(shared, now).state;
+  const next = { ...state };
+  for (const key of SHARED_KEYS) {
+    (next[key] as unknown) = retained[key];
+  }
+  return next;
+}
 
 // 把註冊的新客戶併入 users（跨裝置：其他人才看得到發局者等資訊）
 function applyRegisteredUsers(next: AppState): AppState {
@@ -414,6 +433,16 @@ export function otherIdFromThread(threadId: string, me: string): string {
 
 function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>) {
   if (!globalState) globalState = loadState();
+  globalState = pruneExpiredLocalState(globalState);
+  // 已被保留期限清掉的項目也必須離開「尚未確認」佇列，否則稍後仍會蓋回本機。
+  for (const key of SHARED_KEYS) {
+    const pending = unconfirmed[key];
+    if (!pending?.size) continue;
+    const retainedIds = new Set(
+      ((globalState[key] as unknown as { id: string }[]) ?? []).map((item) => item.id),
+    );
+    for (const id of pending.keys()) if (!retainedIds.has(id)) pending.delete(id);
+  }
   // 更新清除時間戳（管理員清空後，server 會回帶各集合的清除時間）
   const incomingReset = (shared as { resetAt?: Record<string, number> }).resetAt;
   if (incomingReset) resetMarks = { ...resetMarks, ...incomingReset };

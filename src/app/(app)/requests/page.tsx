@@ -48,8 +48,11 @@ export default function RequestsPage() {
 
   // ── Manager view ────────────────────────────────────────────────
   if (role === 'manager') {
+    const now = Date.now();
     const openRequests = state.requests.filter(
-      (r) => r.status === 'open' && r.creatorId !== state.currentUserId
+      (r) => r.status === 'open'
+        && new Date(r.expiresAt).getTime() > now
+        && r.creatorId !== state.currentUserId
     );
     const filtered = openRequests.filter((r) => !typeFilter || r.requestType === typeFilter);
     return (

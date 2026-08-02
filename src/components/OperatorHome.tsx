@@ -152,6 +152,7 @@ export function OperatorHome() {
   const incomingRequests = state.requests
     .filter((r) => {
       if (r.status !== 'open') return false;
+      if (new Date(r.expiresAt).getTime() <= Date.now()) return false;
       if (confirmedCountForRequest(r.id, state.responses, state.invitations) >= r.peopleCount) {
         return false;
       }
