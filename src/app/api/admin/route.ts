@@ -19,7 +19,11 @@ import { requireActiveSession } from '@/lib/active-session';
 import { deleteUserData, clearShared, getCollection, mergeShared } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { listReports, setReportResolved } from '@/lib/report-store';
-import { buildAdminDashboard, type AdminAccountSummary } from '@/lib/admin-dashboard';
+import {
+  buildAdminDashboard,
+  buildAdminManagerRosters,
+  type AdminAccountSummary,
+} from '@/lib/admin-dashboard';
 import { listAdminAudit, recordAdminAudit } from '@/lib/admin-audit-store';
 import { getRedis, isRedisConfigured, keyPrefix } from '@/lib/kv';
 import { isSessionSecretConfigured } from '@/lib/session';
@@ -179,6 +183,8 @@ export async function GET(req: NextRequest) {
     responses,
     invitations,
     chatMessages,
+    escorts,
+    presence,
     auditLogs,
     traceEvents,
     issues,
@@ -191,6 +197,8 @@ export async function GET(req: NextRequest) {
     getCollection('responses'),
     getCollection('invitations'),
     getCollection('chatMessages'),
+    getCollection('escorts'),
+    getCollection('presence'),
     listAdminAudit(),
     listFlowTraces({ limit: 1000 }),
     listIssueReports(),
@@ -206,9 +214,16 @@ export async function GET(req: NextRequest) {
     invitations,
     chatMessages,
   });
+  const managerRosters = buildAdminManagerRosters({
+    accounts,
+    escorts,
+    presence,
+    responses,
+    invitations,
+  });
 
   return NextResponse.json(
-    { accounts, reports, dashboard, system, auditLogs, traceEvents, issues, devices },
+    { accounts, reports, dashboard, managerRosters, system, auditLogs, traceEvents, issues, devices },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

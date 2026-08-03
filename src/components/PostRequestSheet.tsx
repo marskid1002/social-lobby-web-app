@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { X, Minus, Plus } from 'lucide-react';
 import { useAppState } from '@/lib/state';
-import { TAIPEI_AREAS } from '@/lib/mock';
 import type { Request, RequestType } from '@/lib/mock';
+import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 import { useRouter } from 'next/navigation';
 
 const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
@@ -29,7 +29,9 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
 
   const maxCount = 20; // 發局免費、不分等級：可加入人數 1~20
 
-  const [area, setArea] = useState(currentUser?.defaultArea ?? '信義區');
+  const initialArea = currentUser?.defaultArea ?? '信義區';
+  const [city, setCity] = useState<AreaCity>(() => cityForArea(initialArea));
+  const [area, setArea] = useState(initialArea);
   const [type, setType] = useState<RequestType | null>(null);
   const [count, setCount] = useState(Math.min(1, maxCount));
   const [note, setNote] = useState('');
@@ -37,11 +39,21 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    setArea(request?.area ?? currentUser?.defaultArea ?? '信義區');
+    const nextArea = request?.area ?? currentUser?.defaultArea ?? '信義區';
+    setCity(cityForArea(nextArea));
+    setArea(nextArea);
     setType(request?.requestType ?? null);
     setCount(request?.peopleCount ?? 1);
     setNote(request?.note ?? '');
   }, [currentUser?.defaultArea, open, request]);
+
+  const districtOptions = AREA_OPTIONS[city] as readonly string[];
+  const isLegacyArea = area !== '' && !districtOptions.includes(area);
+
+  function handleCityChange(nextCity: AreaCity) {
+    setCity(nextCity);
+    setArea(AREA_OPTIONS[nextCity][0]);
+  }
 
   function handleSubmit() {
     if (!type) return;
@@ -108,13 +120,25 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             {/* Area */}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-semibold text-brand-ink">區域</label>
-              <select
-                value={area}
-                onChange={(e) => setArea(e.target.value)}
-                className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-sm text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
-              >
-                {TAIPEI_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
-              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={city}
+                  onChange={(e) => handleCityChange(e.target.value as AreaCity)}
+                  className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+                  aria-label="縣市"
+                >
+                  {AREA_CITIES.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+                <select
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+                  aria-label="行政區"
+                >
+                  {isLegacyArea && <option value={area}>{area}</option>}
+                  {districtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </div>
             </div>
 
             {/* Type */}

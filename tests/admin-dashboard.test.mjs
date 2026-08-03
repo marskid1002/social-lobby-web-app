@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 
-const { buildAdminDashboard } = await import('@/lib/admin-dashboard');
+const { buildAdminDashboard, buildAdminManagerRosters } = await import('@/lib/admin-dashboard');
 const { GET, POST } = await import('@/app/api/admin/route');
 const { listAdminAudit, recordAdminAudit } = await import('@/lib/admin-audit-store');
 const { signSession } = await import('@/lib/session');
@@ -27,6 +27,43 @@ const FUTURE = '2026-07-31T12:00:00.000Z';
 // 必須使用相對於執行當下的時間，否則 request 會被 8 小時、chatMessages 會被 48 小時保留規則清除。
 const RECENT = new Date(Date.now() - 5 * 60_000).toISOString();       // 5 分鐘前
 const RECENT_LATER = new Date(Date.now() - 4 * 60_000).toISOString(); // 4 分鐘前（晚於 RECENT，維持訊息先後順序）
+
+test('幹部人員統計：依 managerId 隔離，並區分現有、移除、上班與忙碌', () => {
+  const rosters = buildAdminManagerRosters({
+    accounts: [
+      account('A001', 'manager-a', '幹部 A', 'manager'),
+      account('A002', 'manager-b', '幹部 B', 'manager'),
+    ],
+    escorts: [
+      { id: 'girl-a1', managerId: 'manager-a', nickname: '小安', createdAt: '2026-07-30T10:00:00Z' },
+      { id: 'girl-a2', managerId: 'manager-a', nickname: '小美', createdAt: '2026-07-30T10:01:00Z', removed: true },
+      { id: 'girl-b1', managerId: 'manager-b', nickname: '小雨', createdAt: '2026-07-30T10:02:00Z' },
+    ],
+    presence: [{ id: 'girl-a1', online: true }],
+    responses: [{ id: 'response-b1', requestId: 'request-b', userId: 'girl-b1' }],
+    invitations: [{
+      id: 'invitation-b1',
+      requestId: 'request-b',
+      responseId: 'response-b1',
+      status: 'accepted',
+      managerDecision: 'confirmed',
+      chatExpiresAt: FUTURE,
+    }],
+    now: NOW,
+  });
+
+  assert.equal(rosters.length, 2);
+  assert.deepEqual(
+    rosters.map(({ managerId, activeCount, removedCount, totalCreated }) => ({ managerId, activeCount, removedCount, totalCreated })),
+    [
+      { managerId: 'manager-a', activeCount: 1, removedCount: 1, totalCreated: 2 },
+      { managerId: 'manager-b', activeCount: 1, removedCount: 0, totalCreated: 1 },
+    ],
+  );
+  assert.equal(rosters[0].members.find((member) => member.id === 'girl-a1').status, 'online');
+  assert.equal(rosters[0].members.find((member) => member.id === 'girl-a2').status, 'removed');
+  assert.equal(rosters[1].members[0].status, 'busy');
+});
 
 function account(key, userId, nickname, role = 'user') {
   return {

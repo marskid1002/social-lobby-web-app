@@ -116,6 +116,22 @@ type DeviceSummary = {
   userAgents: string[];
 };
 
+type RosterMember = {
+  id: string;
+  nickname: string;
+  createdAt: string;
+  removed: boolean;
+  status: 'online' | 'offline' | 'busy' | 'removed';
+};
+
+type ManagerRoster = {
+  managerId: string;
+  activeCount: number;
+  removedCount: number;
+  totalCreated: number;
+  members: RosterMember[];
+};
+
 type SystemStatus = {
   ready: boolean;
   redisConfigured: boolean;
@@ -152,6 +168,7 @@ type DashboardData = {
   traceEvents: TraceEvent[];
   issues: IssueReport[];
   devices: DeviceSummary[];
+  managerRosters: ManagerRoster[];
 };
 
 type Tab = 'overview' | 'flows' | 'accounts' | 'reports' | 'chats' | 'system' | 'danger';
@@ -170,6 +187,13 @@ const ROLE_LABEL: Record<string, string> = {
   admin: '管理員',
   manager: '幹部',
   user: '客戶',
+};
+
+const ROSTER_STATUS: Record<RosterMember['status'], { label: string; className: string }> = {
+  online: { label: '上班中', className: 'bg-emerald-50 text-emerald-700' },
+  offline: { label: '離線', className: 'bg-zinc-100 text-zinc-500' },
+  busy: { label: '忙碌中', className: 'bg-pink-50 text-pink-700' },
+  removed: { label: '已移除', className: 'bg-red-50 text-red-600' },
 };
 
 const REQUEST_TYPE_LABEL: Record<string, string> = {
@@ -251,6 +275,7 @@ export default function AdminPage() {
   const [newManagerName, setNewManagerName] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState('');
+  const [rosterOpen, setRosterOpen] = useState<string | null>(null);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -701,8 +726,12 @@ export default function AdminPage() {
                   className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-sky-400"
                 />
                 <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-                  {filteredAccounts.map((account) => (
-                    <div key={account.userId} className="flex flex-col gap-3 border-b border-zinc-100 p-4 last:border-0 lg:flex-row lg:items-center">
+                  {filteredAccounts.map((account) => {
+                    const roster = data.managerRosters.find((item) => item.managerId === account.userId);
+                    const isRosterOpen = rosterOpen === account.userId;
+                    return (
+                    <div key={account.userId} className="border-b border-zinc-100 p-4 last:border-0">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-bold">{account.nickname}</p>
@@ -723,6 +752,18 @@ export default function AdminPage() {
                           {' · '}
                           最近登入：{fmtTime(data.devices.find((device) => device.userId === account.userId)?.lastSeenAt)}
                         </p>
+                        {account.role === 'manager' && roster && (
+                          <button
+                            type="button"
+                            onClick={() => setRosterOpen(isRosterOpen ? null : account.userId)}
+                            className="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-left text-xs font-semibold text-violet-700"
+                            aria-expanded={isRosterOpen}
+                          >
+                            現有人員 {roster.activeCount} 位
+                            <span className="ml-1 font-normal text-violet-500">・累計建立 {roster.totalCreated} 位</span>
+                            <span className="ml-1">{isRosterOpen ? '收合 ▲' : '查看名單 ▼'}</span>
+                          </button>
+                        )}
                       </div>
                       {account.role !== 'admin' && (
                         <div className="flex flex-wrap gap-2">
@@ -795,8 +836,36 @@ export default function AdminPage() {
                           )}
                         </div>
                       )}
+                      </div>
+                      {account.role === 'manager' && roster && isRosterOpen && (
+                        <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/50 p-3">
+                          {roster.members.length > 0 ? (
+                            <div className="space-y-2">
+                              {roster.members.map((member) => {
+                                const status = ROSTER_STATUS[member.status];
+                                return (
+                                  <div key={member.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2 text-xs">
+                                    <span className="font-bold text-zinc-800">{member.nickname}</span>
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status.className}`}>
+                                      {status.label}
+                                    </span>
+                                    <span className="font-mono text-zinc-400">{member.id}</span>
+                                    <span className="ml-auto text-zinc-400">建立：{fmtTime(member.createdAt)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-zinc-400">這位幹部尚未建立人員。</p>
+                          )}
+                          {roster.removedCount > 0 && (
+                            <p className="mt-2 text-[11px] text-zinc-400">其中 {roster.removedCount} 位已移除，仍保留於累計紀錄。</p>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             )}

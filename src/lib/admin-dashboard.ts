@@ -1,3 +1,5 @@
+import { activeConfirmedGirlIds } from './request-attendance';
+
 type Item = { id: string; [key: string]: unknown };
 
 export interface AdminAccountSummary {
@@ -67,6 +69,22 @@ export interface AdminDashboard {
   conversations: AdminConversationSummary[];
 }
 
+export interface AdminRosterMember {
+  id: string;
+  nickname: string;
+  createdAt: string;
+  removed: boolean;
+  status: 'online' | 'offline' | 'busy' | 'removed';
+}
+
+export interface AdminManagerRoster {
+  managerId: string;
+  activeCount: number;
+  removedCount: number;
+  totalCreated: number;
+  members: AdminRosterMember[];
+}
+
 const text = (value: unknown): string =>
   typeof value === 'string' ? value : '';
 
@@ -80,6 +98,53 @@ const byOldest = (a: Item, b: Item): number =>
 
 const accountName = (accounts: AdminAccountSummary[], userId: string): string =>
   accounts.find((account) => account.userId === userId)?.nickname || userId;
+
+export function buildAdminManagerRosters(input: {
+  accounts: AdminAccountSummary[];
+  escorts: Item[];
+  presence: Item[];
+  responses: Item[];
+  invitations: Item[];
+  now?: number;
+}): AdminManagerRoster[] {
+  const busyIds = activeConfirmedGirlIds(input.responses, input.invitations, input.now);
+  const onlineById = new Map(
+    input.presence.map((item) => [item.id, item.online === true]),
+  );
+
+  return input.accounts
+    .filter((account) => account.role === 'manager')
+    .map((account) => {
+      const members = input.escorts
+        .filter((escort) => text(escort.managerId) === account.userId)
+        .sort(byOldest)
+        .map((escort): AdminRosterMember => {
+          const removed = escort.removed === true;
+          const status = removed
+            ? 'removed'
+            : busyIds.has(escort.id)
+              ? 'busy'
+              : onlineById.get(escort.id)
+                ? 'online'
+                : 'offline';
+          return {
+            id: escort.id,
+            nickname: text(escort.nickname) || escort.id,
+            createdAt: text(escort.createdAt),
+            removed,
+            status,
+          };
+        });
+      const removedCount = members.filter((member) => member.removed).length;
+      return {
+        managerId: account.userId,
+        activeCount: members.length - removedCount,
+        removedCount,
+        totalCreated: members.length,
+        members,
+      };
+    });
+}
 
 export function buildAdminDashboard(input: {
   accounts: AdminAccountSummary[];
