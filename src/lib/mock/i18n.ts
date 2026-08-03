@@ -44,7 +44,7 @@ export const t = {
   typeAfterParty: 'After Party',
   typeDrinking: '喝一杯',
   typeFillSpot: '補位',
-  typeLastMinute: '臨時局',
+  typeLastMinute: '臨時約會',
   typeOther: '其他',
 
   // Buttons

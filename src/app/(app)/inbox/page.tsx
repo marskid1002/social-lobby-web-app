@@ -320,7 +320,7 @@ export default function InboxPage() {
                     {request
                       ? `${REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType} · ${creatorUser?.nickname ?? '某人'}`
                       : isEscort
-                        ? `你加入了 ${creatorUser?.nickname ?? '某人'} 的活動`
+                        ? `你加入了 ${creatorUser?.nickname ?? '某人'} 的約會`
                         : `${otherUser?.nickname} 的私人邀請`}
                   </p>
                   {escortLabel && (
@@ -335,11 +335,11 @@ export default function InboxPage() {
                   )}
                   <p className="text-xs text-brand-ink/50 mt-0.5">
                     {card.meetupEndedAt
-                      ? '✅ 約會已結束・小姐可再次派工'
+                      ? '✅ 約會已結束・女伴可以再安排下一場'
                       : card.managerDecision
                       ? card.managerDecision === 'confirmed'
-                        ? '💗 幹部已確認小姐上台'
-                        : '💔 約會失敗'
+                        ? '💗 已確認女伴出席'
+                        : '💔 約會沒有成立'
                       : card.isGroup
                       ? `${card.joinerUsers.length} 位女伴加入 · 群組聊天已開啟`
                       : (() => {
@@ -406,7 +406,7 @@ export default function InboxPage() {
               text = (
                 <>
                   <span className="font-semibold">{actor?.nickname ?? '某人'}</span>
-                  {' 想加入你的局'}
+                  {' 想參加你的約會'}
                   {request && <span className="text-zinc-400"> · {request.area}</span>}
                 </>
               );
@@ -421,7 +421,7 @@ export default function InboxPage() {
               text = (
                 <>
                   <span className="font-semibold">{actor?.nickname ?? '某人'}</span>
-                  {' 加入了你的邀請'}
+                  {' 加入了你的約會'}
                   {request && <span className="text-zinc-400"> · {request.area}</span>}
                 </>
               );
@@ -435,9 +435,9 @@ export default function InboxPage() {
               chipLabel = request ? (REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType) : null;
               text = (
                 <>
-                  {'你的邀請達到 '}
+                  {'你的約會已被查看 '}
                   <span className="font-semibold text-amber-600">{(notif as { milestoneCount?: number }).milestoneCount} 次</span>
-                  {' 查看！'}
+                  {'！'}
                 </>
               );
               onTap = () => notif.refRequestId && router.push(`/requests/${notif.refRequestId}`);

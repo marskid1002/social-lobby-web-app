@@ -17,7 +17,7 @@ const REQUEST_TYPES: { value: RequestType; label: string; emoji: string }[] = [
   { value: 'after_party', label: 'After Party', emoji: '🎉' },
   { value: 'drinking',    label: '喝酒',        emoji: '🍻' },
   { value: 'fill_spot',   label: '補位',        emoji: '🙋' },
-  { value: 'last_minute', label: '臨時揪',      emoji: '⚡' },
+  { value: 'last_minute', label: '臨時約會',    emoji: '⚡' },
   { value: 'other',       label: '其他',        emoji: '✨' },
 ];
 

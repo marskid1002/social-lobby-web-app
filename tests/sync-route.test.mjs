@@ -14,7 +14,12 @@ const authStore = await import('@/lib/auth-store');
 
 const REDIS = !!(process.env.KV_REST_API_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_URL);
 const skip = REDIS ? '偵測到 Redis 環境變數：跳過 route 整合測試以免碰 production' : false;
-const CA = '2026-01-01T00:00:00.000Z';
+// 這些測試會經過真實 store（mergeShared → getShared → planDataRetention，以實際 Date.now() 判斷），
+// 因此時間必須相對於「執行當下」產生：固定的舊日期會被 8 小時保留規則清除，導致 request 消失、
+// 連帶 response/invitation/update 全部被判定為無關聯而丟棄。
+const NOW = Date.now();
+const CA = new Date(NOW - 5 * 60_000).toISOString();                 // 5 分鐘前：仍在 8 小時保留期內
+const CHAT_EXPIRES = new Date(NOW + 48 * 60 * 60_000).toISOString(); // 48 小時後：聊天室有效（未過期）
 const mgr = (id) => ({ userId: id, role: 'manager', tier: 'vip' });
 const cust = (id) => ({ userId: id, role: 'user', tier: 'standard' });
 
@@ -117,7 +122,7 @@ test('route：合法派工→接受→代談 可透過實際 POST 同步', { ski
   // 客戶 c 接受 → response 轉 joining + 建立 accepted 代談邀請 + 通知幹部
   await post(cust(c), {
     responses: [{ id: 'd1', responseStatus: 'joining' }],
-    invitations: [{ id: 'iv', fromUserId: 'u-501', toUserId: c, requestId: 'r1', dispatcherId: 'u-501', status: 'accepted', respondedAt: CA, chatExpiresAt: CA, createdAt: CA }],
+    invitations: [{ id: 'iv', fromUserId: 'u-501', toUserId: c, requestId: 'r1', dispatcherId: 'u-501', status: 'accepted', respondedAt: CA, chatExpiresAt: CHAT_EXPIRES, createdAt: CA }],
     updates: [{ id: 'ua', actorId: c, userId: 'u-501', eventType: 'invite_accepted', refRequestId: 'r1' }],
   });
   assert.equal(byId(await col('responses'), 'd1').responseStatus, 'joining');

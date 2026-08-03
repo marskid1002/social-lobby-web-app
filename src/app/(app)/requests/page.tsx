@@ -15,7 +15,7 @@ const TYPE_FILTERS = [
   { value: 'after_party', label: 'After Party' },
   { value: 'drinking',    label: '喝一杯' },
   { value: 'fill_spot',   label: '補位' },
-  { value: 'last_minute', label: '臨時局' },
+  { value: 'last_minute', label: '臨時約會' },
   { value: 'other',       label: '其他' },
 ];
 

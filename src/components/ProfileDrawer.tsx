@@ -18,9 +18,9 @@ export function ProfileDrawer({ open, onClose }: Props) {
 
   async function handleEnableNotif() {
     const { permission: p, subscribed } = await requestNotif();
-    if (p === 'granted' && subscribed) toast.success('已開啟通知 🔔');
+    if (p === 'granted' && subscribed) toast.success('已開啟通知，有新邀請會馬上通知你 🔔');
     else if (p === 'granted' && !subscribed) toast('通知已授權，但綁定失敗，請確認網路後再試一次');
-    else if (p === 'denied') toast('通知被拒絕，請到瀏覽器/系統設定開啟');
+    else if (p === 'denied') toast('通知被拒絕了，可以到瀏覽器或系統設定重新打開');
     else if (p === 'unsupported') toast('此瀏覽器不支援推播');
   }
 

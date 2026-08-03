@@ -51,11 +51,11 @@ export function NotificationWatcher() {
           const actorName = actor?.nickname ?? '某人';
 
           let message = '';
-          if (upd.eventType === 'invite_received') message = `${actorName} 傳送了邀請`;
+          if (upd.eventType === 'invite_received') message = upd.refRequestId ? `${actorName} 邀你一起約會` : `${actorName} 傳送了私人邀請給你`;
           else if (upd.eventType === 'invite_accepted') message = `${actorName} 接受了你的邀請`;
-          else if (upd.eventType === 'response_received') message = `${actorName} 想加入你的局`;
-          else if (upd.eventType === 'request_posted') message = `${actorName} 發布了新的局`;
-          else if (upd.eventType === 'milestone_views') message = `你的需求達到里程碑`;
+          else if (upd.eventType === 'response_received') message = `${actorName} 想參加你的約會`;
+          else if (upd.eventType === 'request_posted') message = `${actorName} 發起了新的約會`;
+          else if (upd.eventType === 'milestone_views') message = `你的約會被很多人看到囉`;
           else if (upd.eventType === 'plaza_reply') message = `${actorName} 回覆了你的廣場貼文`;
           else message = '你有一則新通知';
 
@@ -74,7 +74,7 @@ export function NotificationWatcher() {
     if (state.inboxUnread && !prevInboxUnreadRef.current) {
       const user = state.users.find((u) => u.id === state.currentUserId);
       toast('收件匣有新配對！', {
-        description: user ? `${user.nickname} 的邀請已確認` : undefined,
+        description: user ? '你的邀請已確認，聊天室開好了' : undefined,
         duration: 5000,
         icon: '✅',
       });

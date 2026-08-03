@@ -9,7 +9,7 @@ export const REQUEST_TYPE_LABELS: Record<string, string> = {
   after_party: 'After Party',
   drinking: '喝一杯',
   fill_spot: '補位',
-  last_minute: '臨時局',
+  last_minute: '臨時約會',
   other: '其他',
 };
 

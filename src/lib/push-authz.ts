@@ -50,8 +50,8 @@ export function planAuthorizedSyncPushes(input: {
       entityId: request.id,
       requestId: request.id,
       userIds: managerIds,
-      title: '有新的局邀請',
-      body: '有新的局發布，快安排出席',
+      title: '有新的約會邀請',
+      body: '有人發起了新的約會，快安排出席',
       url: '/lobby/explore',
     });
   }
@@ -75,8 +75,8 @@ export function planAuthorizedSyncPushes(input: {
       entityId: response.id,
       requestId,
       userIds: [creatorId],
-      title: '有人想加入你的局',
-      body: '有人對你的需求感興趣',
+      title: '有人想參加你的約會',
+      body: '有人對你的約會感興趣，快去看看',
       url: `/requests/${encodeURIComponent(requestId)}`,
     });
   }
@@ -98,7 +98,7 @@ export function planAuthorizedSyncPushes(input: {
       requestId: text(invitation.requestId) || undefined,
       userIds: [recipientId],
       title: '你收到一則邀請',
-      body: text(invitation.requestId) ? '有人傳送了邀請' : '有人傳送了私人邀請',
+      body: text(invitation.requestId) ? '有人邀你一起約會' : '有人傳送了私人邀請給你',
       url: '/inbox',
     });
   }

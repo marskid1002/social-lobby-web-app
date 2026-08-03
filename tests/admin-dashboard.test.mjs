@@ -22,6 +22,11 @@ const REDIS = Boolean(
 const skip = REDIS ? '偵測到 Redis 環境變數：跳過 route 測試以免碰 production' : false;
 const NOW = Date.parse('2026-07-30T12:00:00.000Z');
 const FUTURE = '2026-07-31T12:00:00.000Z';
+// 上方 NOW 是「純流程診斷」測試注入 buildAdminDashboard 的固定時間，不受資料保留規則影響。
+// 但經過真實 store 的測試（mergeShared → getShared → planDataRetention 以實際 Date.now() 判斷）
+// 必須使用相對於執行當下的時間，否則 request 會被 8 小時、chatMessages 會被 48 小時保留規則清除。
+const RECENT = new Date(Date.now() - 5 * 60_000).toISOString();       // 5 分鐘前
+const RECENT_LATER = new Date(Date.now() - 4 * 60_000).toISOString(); // 4 分鐘前（晚於 RECENT，維持訊息先後順序）
 
 function account(key, userId, nickname, role = 'user') {
   return {
@@ -267,7 +272,7 @@ test('危險操作：只有前端確認不夠，API 確認文字錯誤必須 400
       id: 'keep-request',
       creatorId: 'customer-keep',
       status: 'open',
-      createdAt: '2026-07-30T10:00:00.000Z',
+      createdAt: RECENT, // 須在 8 小時保留期內，否則會被清除而非「因確認文字錯誤而保留」
     }],
   });
 
@@ -289,7 +294,7 @@ test('聊天室內容按需載入，並以 requestId 精確隔離', { skip }, as
         requestId: 'request-one',
         senderId: 'u-016',
         text: '第一局訊息',
-        createdAt: '2026-07-30T10:00:00.000Z',
+        createdAt: RECENT, // 須在 48 小時聊天保留期內，否則訊息會被清除而讀不到
       },
       {
         id: 'chat-two',
@@ -297,7 +302,7 @@ test('聊天室內容按需載入，並以 requestId 精確隔離', { skip }, as
         requestId: 'request-two',
         senderId: 'u-016',
         text: '第二局訊息',
-        createdAt: '2026-07-30T10:01:00.000Z',
+        createdAt: RECENT_LATER,
       },
     ],
   });

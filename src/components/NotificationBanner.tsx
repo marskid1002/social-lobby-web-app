@@ -18,9 +18,9 @@ export function NotificationBanner() {
 
   async function handleEnable() {
     const { permission: p, subscribed } = await request();
-    if (p === 'granted' && subscribed) toast.success('已開啟通知，新邀請會即時提醒你 🔔');
+    if (p === 'granted' && subscribed) toast.success('已開啟通知，有新邀請會馬上通知你 🔔');
     else if (p === 'granted' && !subscribed) toast('通知已授權，但綁定失敗，請確認網路後再試一次');
-    else if (p === 'denied') toast('通知已被拒絕，可到瀏覽器/系統設定重新開啟');
+    else if (p === 'denied') toast('通知被拒絕了，可以到瀏覽器或系統設定重新打開');
     else if (p === 'unsupported') toast('此瀏覽器不支援推播');
   }
 
@@ -31,7 +31,7 @@ export function NotificationBanner() {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-brand-ink leading-tight">開啟通知</p>
-        <p className="text-xs text-zinc-500 leading-tight mt-0.5">收到新邀請、加入與配對時即時提醒</p>
+        <p className="text-xs text-zinc-500 leading-tight mt-0.5">這樣才不會錯過新邀請和聊天訊息</p>
       </div>
       <button
         onClick={handleEnable}

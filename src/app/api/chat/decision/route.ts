@@ -64,10 +64,10 @@ export async function POST(req: NextRequest) {
       if (result.customerUserId) {
         await sendWebPushToUsers(
           [result.customerUserId],
-          decision === 'confirmed' ? '約會成功' : decision === 'declined' ? '約會失敗' : '約會結束',
+          decision === 'confirmed' ? '約會成功' : decision === 'declined' ? '約會沒有成立' : '約會結束',
           decision === 'confirmed'
-            ? '幹部已確認這位小姐上台。'
-            : decision === 'declined' ? '幹部已將本次約會標記為失敗。' : '本次約會已結束。',
+            ? '已確認女伴出席，好好享受這次約會吧！'
+            : decision === 'declined' ? '這次約會沒有成立，可以再發一個新的約會邀請試試' : '這次約會已經結束了，謝謝你的參與',
           `/chat/${encodeURIComponent(result.threadId)}?req=${encodeURIComponent(result.requestId)}`,
         ).catch((error) => {
           console.error('[chat decision push]', error instanceof Error ? error.name : 'UnknownError');

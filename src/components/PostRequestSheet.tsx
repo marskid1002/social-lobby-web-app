@@ -11,7 +11,7 @@ const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
   { value: 'after_party', label: 'After Party', color: '#F7BEF1' },
   { value: 'drinking', label: '喝一杯', color: '#F59E0B' },
   { value: 'fill_spot', label: '補位', color: '#8BD8F1' },
-  { value: 'last_minute', label: '臨時局', color: '#EF4444' },
+  { value: 'last_minute', label: '臨時約會', color: '#EF4444' },
   { value: 'other', label: '其他', color: '#DED9E5' },
 ];
 

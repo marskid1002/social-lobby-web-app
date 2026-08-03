@@ -1,7 +1,7 @@
 // Social Lobby Service Worker — 處理 Web Push 通知
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'JUGA', body: '你有一則新通知', url: '/' };
+  let data = { title: 'JUGA', body: '你有一則新通知，點進來看看', url: '/' };
 
   if (event.data) {
     try {

@@ -20,7 +20,10 @@ const REDIS = Boolean(
   || process.env.REDIS_URL
 );
 const skip = REDIS ? '偵測到 Redis 環境變數：跳過整合測試以免碰 production' : false;
-const CA = '2026-07-30T00:00:00.000Z';
+// 這些測試會經過真實 store（mergeShared → getShared → planDataRetention，以實際 Date.now() 判斷）。
+// 固定的舊日期會被 8 小時保留規則清除，導致 request/response 在接受入局前就消失。
+// 因此建立時間一律相對於「執行當下」產生（聊天室到期時間由 production 的 chatExpiresAtFrom 產生，不在此覆寫）。
+const CA = new Date(Date.now() - 5 * 60_000).toISOString(); // 5 分鐘前：仍在 8 小時保留期內
 let phoneSeq = 970000000;
 
 async function customer(nickname) {

@@ -73,8 +73,8 @@ export async function POST(req: NextRequest) {
     if (!result.alreadyAccepted) {
       const pushResult = await sendWebPushToUsers(
         [result.partnerUserId],
-        '客戶已同意入局！',
-        `${auth.account?.nickname ?? '某位客戶'} 已同意，聊天室已開啟`,
+        '客戶已答應約會！',
+        `${auth.account?.nickname ?? '某位客戶'} 已同意，聊天室已經開好囉`,
         `/inbox?match=${encodeURIComponent(String(result.invitation.id))}&src=push`,
       ).catch((error) => {
         console.error('[match accept push]', error instanceof Error ? error.name : 'UnknownError');
