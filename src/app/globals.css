@@ -63,11 +63,11 @@
   --color-status-busy: #6B7280;
 
   /* Request type colors */
-  --color-type-after-party: #F7BEF1;
+  --color-type-after-party: #FF3C91;
   --color-type-drinking: #F59E0B;
-  --color-type-fill-spot: #8BD8F1;
+  --color-type-fill-spot: #6C2EFF;
   --color-type-last-minute: #EF4444;
-  --color-type-other: #DED9E5;
+  --color-type-other: #9295A5;
 
   /* Shadows */
   --shadow-card: 0 4px 16px -2px rgba(139, 216, 241, 0.15);
@@ -223,7 +223,18 @@
   body .text-zinc-600, body .text-zinc-500 { color: #b0b2bf; }
   body .text-zinc-400, body .text-zinc-300 { color: var(--juga-muted); }
   body .border-zinc-100, body .border-zinc-200, body .border-zinc-300 { border-color: var(--juga-line); }
-  body .bg-zinc-50, body .bg-zinc-100 { background-color: var(--juga-surface-2); }
+  body .bg-zinc-50, body .bg-zinc-100, body .bg-zinc-200 { background-color: var(--juga-surface-2); }
+  body .bg-red-50, body .bg-red-100 { background-color: rgba(255,83,105,.10); }
+  body .bg-amber-50, body .bg-amber-100 { background-color: rgba(255,181,74,.10); }
+  body .bg-blue-50, body .bg-blue-100 { background-color: rgba(77,142,255,.11); }
+  body .bg-green-50, body .bg-green-100 { background-color: rgba(53,214,154,.10); }
+  body .bg-purple-50, body .bg-purple-100 { background-color: rgba(108,46,255,.13); }
+  body .bg-pink-50, body .bg-pink-100, body .bg-rose-50, body .bg-rose-100 { background-color: rgba(255,60,145,.11); }
+  body .border-red-200, body .border-amber-200, body .border-amber-300,
+  body .border-blue-200, body .border-green-200, body .border-purple-200 { border-color: var(--juga-line); }
+  body .border-pink-100, body .border-pink-200, body .border-pink-300,
+  body .border-rose-100, body .border-rose-200 { border-color: rgba(255,60,145,.24); }
   body .shadow-sm, body .shadow-card, body .shadow-card-pink { box-shadow: 0 18px 50px rgba(0,0,0,.24); }
-  body input, body textarea, body select { accent-color: var(--juga-pink); }
+  body input, body textarea, body select { accent-color: var(--juga-pink); caret-color: var(--juga-pink); }
+  body input:focus, body textarea:focus, body select:focus { border-color: rgba(255,60,145,.55); --tw-ring-color: rgba(255,60,145,.18); }
 }

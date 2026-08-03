@@ -8,11 +8,11 @@ import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/are
 import { useRouter } from 'next/navigation';
 
 const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
-  { value: 'after_party', label: 'After Party', color: '#F7BEF1' },
+  { value: 'after_party', label: 'After Party', color: '#FF3C91' },
   { value: 'drinking', label: '喝一杯', color: '#F59E0B' },
-  { value: 'fill_spot', label: '補位', color: '#8BD8F1' },
+  { value: 'fill_spot', label: '補位', color: '#6C2EFF' },
   { value: 'last_minute', label: '臨時約會', color: '#EF4444' },
-  { value: 'other', label: '其他', color: '#DED9E5' },
+  { value: 'other', label: '其他', color: '#9295A5' },
 ];
 
 interface Props {

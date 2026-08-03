@@ -18,11 +18,11 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  after_party: '#F7BEF1',
+  after_party: '#FF3C91',
   drinking:    '#F59E0B',
-  fill_spot:   '#8BD8F1',
+  fill_spot:   '#6C2EFF',
   last_minute: '#EF4444',
-  other:       '#DED9E5',
+  other:       '#9295A5',
 };
 
 interface Props {
@@ -37,7 +37,7 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
   const { state, closeRequest } = useAppState();
   const [toast, setToast] = useState('');
 
-  const typeColor = TYPE_COLORS[request.requestType] ?? '#DED9E5';
+  const typeColor = TYPE_COLORS[request.requestType] ?? '#9295A5';
   const typeLabel = TYPE_LABELS[request.requestType] ?? request.requestType;
 
   // Counts for the demand signal row
@@ -80,7 +80,7 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
 
       {/* Row 2: type badge + meta */}
       <div className="flex items-center gap-2 mb-2">
-        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-brand-ink" style={{ backgroundColor: typeColor }}>
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
           {typeLabel}
         </span>
         <span className="text-xs text-zinc-500">{request.area} · {request.peopleCount} 人</span>

@@ -640,7 +640,7 @@ export default function ChatPage({ params }: ChatPageProps) {
     return (
       <div
         className="flex h-dvh min-h-0 flex-col overflow-hidden"
-        style={{ ...frameStyle, background: 'linear-gradient(160deg, #fdf2f8 0%, #fce7f3 55%, #faf5ff 100%)' }}
+        style={{ ...frameStyle, background: 'var(--juga-page-background)' }}
       >
         <div className="flex items-center gap-3 px-4 pt-3 pb-3 bg-white/85 backdrop-blur-md border-b border-pink-100 shadow-sm shrink-0">
           <button
@@ -678,7 +678,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         {inviteParts.length > 0 && (
           <div
             className="shrink-0 mx-4 mt-3 mb-1 p-3.5 rounded-2xl border border-pink-200"
-            style={{ background: 'rgba(253,242,248,0.92)' }}
+            style={{ background: 'rgba(25,27,41,0.92)' }}
           >
             <p className="text-[10px] font-bold text-pink-400 uppercase tracking-wider mb-2.5">邀請詳情</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">

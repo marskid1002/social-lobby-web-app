@@ -137,7 +137,7 @@ export default function InboxPage() {
         isGroup: false,
         joinerUsers: [],
         otherUserId: otherId,
-        gradient: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)',
+        gradient: 'var(--juga-brand-gradient)',
         chatExpiresAt: inv.chatExpiresAt,
         managerDecision: inv.managerDecision,
         meetupEndedAt: inv.meetupEndedAt,
@@ -207,7 +207,7 @@ export default function InboxPage() {
       <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
         <div
           className="w-20 h-20 rounded-3xl flex items-center justify-center mb-4 shadow-card"
-          style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)' }}
+          style={{ background: 'var(--juga-brand-gradient)' }}
         >
           <span className="text-4xl">{isEscort ? '🌟' : '🔔'}</span>
         </div>
@@ -221,7 +221,7 @@ export default function InboxPage() {
           <button
             onClick={() => router.push('/requests')}
             className="mt-4 px-6 py-2.5 rounded-2xl font-semibold text-sm text-brand-ink active:scale-95 transition-all shadow-card"
-            style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #DED9E5 50%, #F7BEF1 100%)' }}
+            style={{ background: 'var(--juga-brand-gradient)' }}
           >
             查看今晚的局
           </button>

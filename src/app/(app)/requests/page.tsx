@@ -20,11 +20,11 @@ const TYPE_FILTERS = [
 ];
 
 const TYPE_COLORS: Record<string, string> = {
-  after_party: '#F7BEF1',
+  after_party: '#FF3C91',
   drinking:    '#F59E0B',
-  fill_spot:   '#8BD8F1',
+  fill_spot:   '#6C2EFF',
   last_minute: '#EF4444',
-  other:       '#DED9E5',
+  other:       '#9295A5',
 };
 
 type EscortTab = 'area' | 'all' | 'sent';
@@ -151,7 +151,7 @@ export default function RequestsPage() {
 
       {activeList.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-          <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-card" style={{ background: 'linear-gradient(135deg, #8BD8F1 0%, #F7BEF1 100%)' }}>
+          <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-4 shadow-card" style={{ background: 'var(--juga-brand-gradient)' }}>
             <span className="text-3xl">{escortTab === 'sent' ? '⏳' : '🎉'}</span>
           </div>
           <p className="text-sm font-semibold text-brand-ink mb-1">
@@ -185,7 +185,7 @@ export default function RequestsPage() {
             }
 
             const creator = state.users.find((u) => u.id === req.creatorId);
-            const typeColor = TYPE_COLORS[req.requestType] ?? '#DED9E5';
+            const typeColor = TYPE_COLORS[req.requestType] ?? '#9295A5';
             const slotsLeft = req.peopleCount - (joinerCounts[req.id] ?? 0);
 
             return (
@@ -195,7 +195,7 @@ export default function RequestsPage() {
               >
                 <button onClick={() => router.push(`/requests/${req.id}`)} className="w-full text-left">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-brand-ink" style={{ backgroundColor: typeColor }}>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
                       {TYPE_FILTERS.find(f => f.value === req.requestType)?.label ?? req.requestType}
                     </span>
                     <span className="flex items-center gap-1 text-xs text-zinc-400">
@@ -227,7 +227,7 @@ export default function RequestsPage() {
                     <span className="text-xs font-semibold text-zinc-500">已送出請求 ⏳</span>
                   </div>
                 ) : (
-                  <div style={{ background: 'linear-gradient(135deg, #8BD8F1, #DED9E5, #F7BEF1)', padding: '1.5px', borderRadius: '14px' }}>
+                  <div style={{ background: 'var(--juga-brand-gradient)', padding: '1.5px', borderRadius: '14px' }}>
                     <button
                       onClick={() => { joinRequest(req.id); setJoinedIds((prev) => new Set([...prev, req.id])); }}
                       className="w-full py-2.5 rounded-[12px] bg-white text-sm font-bold text-brand-ink active:bg-brand-snow transition-colors"

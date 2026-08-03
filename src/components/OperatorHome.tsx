@@ -22,11 +22,11 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  after_party: '#F7BEF1',
+  after_party: '#FF3C91',
   drinking: '#F59E0B',
-  fill_spot: '#8BD8F1',
+  fill_spot: '#6C2EFF',
   last_minute: '#EF4444',
-  other: '#DED9E5',
+  other: '#9295A5',
 };
 
 // 上傳前先在前端縮圖並轉成 JPEG：手機相簿常是數 MB 大圖或 iPhone HEIC，
@@ -248,7 +248,7 @@ export function OperatorHome() {
             const dispatchedCount = dispatchedGirlIds(req.id).length;
             const confirmedCount = confirmedCountForRequest(req.id, state.responses, state.invitations);
             const isFull = isRequestClosed(req); // #5 只有已關閉才鎖定
-            const typeColor = TYPE_COLORS[req.requestType] ?? '#DED9E5';
+            const typeColor = TYPE_COLORS[req.requestType] ?? '#9295A5';
             const typeLabel = TYPE_LABELS[req.requestType] ?? req.requestType;
 
             return (

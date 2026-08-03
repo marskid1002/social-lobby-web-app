@@ -17,11 +17,11 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_COLORS: Record<string, string> = {
-  after_party: '#F7BEF1',
+  after_party: '#FF3C91',
   drinking:    '#F59E0B',
-  fill_spot:   '#8BD8F1',
+  fill_spot:   '#6C2EFF',
   last_minute: '#EF4444',
-  other:       '#DED9E5',
+  other:       '#9295A5',
 };
 
 const INVITE_LABELS: Record<string, string> = {
@@ -91,7 +91,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     }
   }, []);
 
-  const typeColor  = TYPE_COLORS[request.requestType] ?? '#DED9E5';
+  const typeColor  = TYPE_COLORS[request.requestType] ?? '#9295A5';
   const typeLabel  = TYPE_LABELS[request.requestType] ?? request.requestType;
   const expiresIn  = formatDistance(new Date(request.expiresAt), new Date(), { locale: zhTW });
   const isExpired  = new Date(request.expiresAt) <= new Date();
@@ -192,7 +192,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         {/* Header card — includes FOMO strip */}
         <div className="bg-white rounded-2xl p-4 shadow-card">
           <div className="flex items-center gap-2 mb-3">
-            <span className="px-3 py-1 rounded-full text-xs font-semibold text-brand-ink" style={{ backgroundColor: typeColor }}>
+            <span className="px-3 py-1 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
               {typeLabel}
             </span>
             <span className="flex items-center gap-1 text-xs text-zinc-500">
@@ -256,7 +256,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               </div>
             ) : (
               /* Gradient border pill */
-              <div style={{ background: 'linear-gradient(135deg, #8BD8F1, #DED9E5, #F7BEF1)', padding: '2px', borderRadius: '16px' }}>
+              <div style={{ background: 'var(--juga-brand-gradient)', padding: '2px', borderRadius: '16px' }}>
                 <button
                   onClick={handleJoin}
                   className="w-full py-4 rounded-[14px] bg-white font-bold text-base text-brand-ink active:bg-brand-snow transition-colors"
