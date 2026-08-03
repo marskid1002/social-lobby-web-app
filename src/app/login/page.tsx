@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAppState } from '@/lib/state';
 import TermsConsent from '@/components/legal/terms-consent';
 import { TERMS_VERSION } from '@/lib/legal';
 import { isTaiwanMobile, normalizeTaiwanMobile } from '@/lib/phone';
+import styles from './login.module.css';
 
 type Mode = 'login' | 'register' | 'reset';
 
@@ -153,10 +155,8 @@ export default function LoginPage() {
     } catch { setError('連線失敗'); } finally { setBusy(false); }
   }
 
-  const inputCls =
-    'w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky';
-  const otpBtnCls =
-    'shrink-0 px-3 rounded-xl bg-brand-sky text-brand-ink text-xs font-bold active:scale-[0.98] transition-transform disabled:opacity-50 whitespace-nowrap';
+  const inputCls = styles.input;
+  const otpBtnCls = styles.otpButton;
 
   // 手機 + 發送驗證碼 一組（註冊/重設共用）。用一般函式回傳 JSX（非內嵌元件），避免輸入時失焦。
   const otpRow = (purpose: 'register' | 'reset') => (
@@ -172,37 +172,44 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-brand-snow">
-      <div className="relative flex-1 flex flex-col items-center px-6 pb-10 pt-16">
-        <div className="absolute top-0 left-0 right-0 h-64 bg-gradient-card-a opacity-60 rounded-b-[60px]" />
-        <div className="relative z-10 flex flex-col items-center w-full max-w-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-sky-pink flex items-center justify-center shadow-fab">
-              <span className="text-white font-bold text-lg">S</span>
-            </div>
-            <span className="text-2xl font-bold text-brand-ink tracking-tight">Social Lobby</span>
+    <div className={styles.page}>
+      <div className={styles.ambientPink} />
+      <div className={styles.ambientViolet} />
+      <div className={styles.content}>
+        <div className={styles.brandBlock}>
+          <div className={styles.logoFrame}>
+            <Image src="/icons/icon-192.png" width={84} height={84} alt="JUGA" priority />
           </div>
-          <p className="text-zinc-500 text-sm mb-8">今晚一起出去吧</p>
+          <div className={styles.wordmark}>
+            <span>JUGA</span>
+            <small>START A GOOD GATHERING</small>
+          </div>
+          <h1>
+            <span>每一次的錯過</span>
+            <span className={styles.whiteLine}>都是為了</span>
+            <span>更好的相遇</span>
+          </h1>
+        </div>
 
           {/* 登入 / 註冊 切換 */}
-          <div className="w-full bg-white rounded-2xl border border-brand-lavender shadow-sm p-4 mb-4">
-            <div className="flex bg-brand-snow rounded-xl p-1 mb-4">
+          <div className={styles.authCard}>
+            <div className={styles.modeTabs}>
               <button
                 onClick={() => switchMode('login')}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${mode === 'login' ? 'bg-white text-brand-ink shadow-sm' : 'text-zinc-400'}`}
+                className={mode === 'login' ? styles.activeTab : ''}
               >
                 登入
               </button>
               <button
                 onClick={() => switchMode('register')}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${mode === 'register' ? 'bg-white text-brand-ink shadow-sm' : 'text-zinc-400'}`}
+                className={mode === 'register' ? styles.activeTab : ''}
               >
                 客戶註冊
               </button>
             </div>
 
             {mode === 'login' && (
-              <form onSubmit={handleLogin} className="flex flex-col gap-2.5">
+              <form onSubmit={handleLogin} className={styles.form}>
                 <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="帳號" className={inputCls} aria-label="帳號" />
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼" className={inputCls} aria-label="密碼" />
                 {needActivation && (
@@ -214,45 +221,45 @@ export default function LoginPage() {
                     aria-label="幹部啟用碼"
                   />
                 )}
-                {info && <p className="text-xs text-green-600 font-semibold">{info}</p>}
-                {error && <p className="text-xs text-red-500 font-semibold">{error}</p>}
-                <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
+                {info && <p className={styles.info}>{info}</p>}
+                {error && <p className={styles.error}>{error}</p>}
+                <button type="submit" disabled={busy} className={styles.primaryButton}>
                   {busy ? '登入中…' : '登入'}
                 </button>
-                <button type="button" onClick={() => switchMode('reset')} className="text-xs text-zinc-400 underline self-end">
+                <button type="button" onClick={() => switchMode('reset')} className={styles.textButton}>
                   忘記密碼？
                 </button>
               </form>
             )}
 
             {mode === 'register' && (
-              <form onSubmit={handleRegister} className="flex flex-col gap-2.5">
+              <form onSubmit={handleRegister} className={styles.form}>
                 {otpRow('register')}
                 <input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="暱稱" className={inputCls} aria-label="暱稱" />
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼（至少 6 碼）" className={inputCls} aria-label="密碼" />
-                <TermsConsent accepted={termsAccepted} onAcceptedChange={setTermsAccepted} />
-                {info && <p className="text-xs text-green-600 font-semibold">{info}</p>}
-                {error && <p className="text-xs text-red-500 font-semibold">{error}</p>}
-                <button type="submit" disabled={busy || !termsAccepted} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
+                <div className={styles.termsWrap}><TermsConsent accepted={termsAccepted} onAcceptedChange={setTermsAccepted} /></div>
+                {info && <p className={styles.info}>{info}</p>}
+                {error && <p className={styles.error}>{error}</p>}
+                <button type="submit" disabled={busy || !termsAccepted} className={styles.primaryButton}>
                   {busy ? '註冊中…' : '註冊並開始'}
                 </button>
               </form>
             )}
 
             {mode === 'reset' && (
-              <form onSubmit={handleReset} className="flex flex-col gap-2.5">
-                <p className="text-sm font-bold text-brand-ink">用手機簡訊重設密碼</p>
+              <form onSubmit={handleReset} className={styles.form}>
+                <p className={styles.formTitle}>用手機簡訊重設密碼</p>
                 {otpRow('reset')}
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="新密碼（至少 6 碼）" className={inputCls} aria-label="新密碼" />
-                {info && <p className="text-xs text-green-600 font-semibold">{info}</p>}
-                {error && <p className="text-xs text-red-500 font-semibold">{error}</p>}
-                <button type="submit" disabled={busy} className="w-full py-3 rounded-xl bg-line-green text-white text-sm font-bold active:scale-[0.98] transition-transform disabled:opacity-60">
+                {info && <p className={styles.info}>{info}</p>}
+                {error && <p className={styles.error}>{error}</p>}
+                <button type="submit" disabled={busy} className={styles.primaryButton}>
                   {busy ? '處理中…' : '重設密碼'}
                 </button>
-                <button type="button" onClick={() => switchMode('login')} className="text-xs text-zinc-400 underline self-start">
+                <button type="button" onClick={() => switchMode('login')} className={`${styles.textButton} ${styles.textButtonLeft}`}>
                   ← 返回登入
                 </button>
-                <p className="text-xs text-zinc-400 leading-relaxed">幹部/管理員帳號請聯絡管理員重設，不適用簡訊重設。</p>
+                <p className={styles.helper}>幹部/管理員帳號請聯絡管理員重設，不適用簡訊重設。</p>
               </form>
             )}
           </div>
@@ -261,19 +268,18 @@ export default function LoginPage() {
           <button
             onClick={handleGuest}
             disabled={busy}
-            className="w-full py-3 rounded-2xl bg-white border-2 border-brand-lavender text-sm font-bold text-brand-ink active:scale-[0.98] transition-transform disabled:opacity-60"
+            className={styles.guestButton}
           >
             訪客瀏覽
           </button>
 
-          <p className="text-xs text-zinc-400 text-center mt-6 leading-relaxed">
+          <p className={styles.legalLinks}>
             查看
-            <Link href="/legal/terms" className="mx-1 underline text-zinc-500">平台服務條款</Link>
+            <Link href="/legal/terms">平台服務條款</Link>
             與
-            <Link href="/legal/privacy" className="mx-1 underline text-zinc-500">隱私權政策</Link>
+            <Link href="/legal/privacy">隱私權政策</Link>
             <br />本平台限 18 歲以上使用
           </p>
-        </div>
       </div>
     </div>
   );
