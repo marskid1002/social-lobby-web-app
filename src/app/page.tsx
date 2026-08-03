@@ -20,5 +20,5 @@ export default function RootPage() {
     }
   }, [router]);
 
-  return <div className="min-h-screen bg-brand-snow" />;
+  return <div className="min-h-screen bg-brand-snow" aria-hidden="true" />;
 }

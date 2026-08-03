@@ -4,11 +4,11 @@ import { Toaster } from '@/components/ui/sonner';
 
 export const metadata: Metadata = {
   title: 'JUGA',
-  description: '今晚一起出去吧',
+  description: '每一次的錯過，都是為了更好的相遇',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: 'JUGA',
   },
 };
@@ -18,7 +18,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#8BD8F1',
+  themeColor: '#070812',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-full bg-brand-snow">
-        <div className="mx-auto max-w-[430px] min-h-screen bg-brand-snow relative overflow-x-hidden shadow-2xl">
+        <div className="mx-auto max-w-[430px] min-h-screen bg-brand-snow relative overflow-x-hidden shadow-2xl ring-1 ring-white/5">
           {children}
           <Toaster position="top-center" richColors />
         </div>

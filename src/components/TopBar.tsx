@@ -33,7 +33,7 @@ export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Prop
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-brand-lavender px-4 py-2.5 flex items-center gap-3">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b border-brand-lavender px-4 py-2.5 flex items-center gap-3 shadow-[0_10px_30px_rgba(0,0,0,.16)]">
         {/* Avatar */}
         <button
           onClick={onOpenDrawer}
@@ -41,7 +41,7 @@ export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Prop
           onMouseUp={handleAvatarRelease}
           onTouchStart={handleAvatarPress}
           onTouchEnd={handleAvatarRelease}
-          className="shrink-0 rounded-full ring-2 ring-brand-sky/50 active:scale-95 transition-transform"
+          className="shrink-0 rounded-full ring-2 ring-brand-sky/60 shadow-[0_0_18px_rgba(255,60,145,.18)] active:scale-95 transition-transform"
           aria-label="開啟選單"
         >
           <img
@@ -54,7 +54,7 @@ export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Prop
         {/* Middle */}
         <div className="flex-1 min-w-0">
           {showSearch ? (
-            <div className="flex items-center gap-2 bg-brand-snow rounded-full px-3 py-2 border border-brand-lavender">
+            <div className="flex items-center gap-2 bg-brand-ice rounded-full px-3 py-2 border border-brand-lavender">
               <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" strokeLinecap="round" />
               </svg>
@@ -75,7 +75,7 @@ export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Prop
         {currentUser?.role === 'admin' && (
           <Link
             href="/admin"
-            className="flex shrink-0 items-center gap-1 rounded-full bg-zinc-900 px-3 py-2 text-[11px] font-bold text-white"
+            className="flex shrink-0 items-center gap-1 rounded-full bg-gradient-sky-pink px-3 py-2 text-[11px] font-bold text-white shadow-fab"
             aria-label="返回管理後台"
           >
             <ShieldCheck className="h-4 w-4" strokeWidth={2} />

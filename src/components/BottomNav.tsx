@@ -42,7 +42,7 @@ export function BottomNav() {
   return createPortal(
     <>
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[430px] bg-white border-t border-brand-lavender pb-safe"
+        className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[430px] bg-white/95 backdrop-blur-xl border-t border-brand-lavender pb-safe shadow-[0_-14px_40px_rgba(0,0,0,.32)]"
         aria-label="主選單"
       >
         <div className="flex items-end justify-around px-2 pt-2 pb-1">
@@ -79,7 +79,7 @@ export function BottomNav() {
                     strokeWidth={active ? 2 : 1.75}
                   />
                   {showNotifBadge && (
-                    <span className="absolute -top-2.5 -right-3 min-w-4 h-4 rounded-full bg-red-500 border border-white px-1 text-[9px] font-bold leading-[14px] text-center text-white">
+                    <span className="absolute -top-2.5 -right-3 min-w-4 h-4 rounded-full bg-red-500 border border-brand-lavender px-1 text-[9px] font-bold leading-[14px] text-center text-white">
                       {inboxBadgeCount > 99 ? '99+' : inboxBadgeCount}
                     </span>
                   )}

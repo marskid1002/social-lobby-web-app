@@ -1,12 +1,12 @@
 .page {
-  --night: #070812;
-  --surface: #121421;
-  --surface-2: #191b29;
+  --night: var(--juga-night);
+  --surface: var(--juga-surface);
+  --surface-2: var(--juga-surface-2);
   --line: rgba(255, 255, 255, 0.1);
   --muted: #9295a5;
-  --orange: #ff7a3d;
-  --pink: #ff3c91;
-  --violet: #6c2eff;
+  --orange: var(--juga-orange);
+  --pink: var(--juga-pink);
+  --violet: var(--juga-violet);
   position: relative;
   min-height: 100dvh;
   overflow: hidden;
