@@ -96,8 +96,8 @@ function MyRequestCard({
             </div>
             <span className="text-xs text-zinc-500">
               {extraCount > 0
-                ? `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已上台`
-                : `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 已上台`}
+                ? `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 等 ${visibleResponders.length + extraCount} 人已加入約會`
+                : `${visibleResponders.map(u => u.nickname.slice(0, 2)).join('、')} 已加入約會`}
             </span>
           </div>
         )}
@@ -229,10 +229,11 @@ function ExploreContent() {
 
   const blocked = blockedPeerIds(state); // 雙向封鎖：從瀏覽清單隱藏
   const escortIds = escortPeerIds(state); // 只顯示幹部自建的真實小姐，濾掉 demo 種子假人物
+  const busyGirlIds = activeConfirmedGirlIds(state.responses, state.invitations);
   const femaleUserIds = state.onlineStatuses
     .filter((s) => {
       const u = state.users.find((u) => u.id === s.userId);
-      return u && u.role === 'escort' && escortIds.has(u.id) && u.id !== currentUser?.id && !blocked.has(s.userId);
+      return u && u.role === 'escort' && escortIds.has(u.id) && u.id !== currentUser?.id && !blocked.has(s.userId) && !busyGirlIds.has(s.userId);
     })
     .sort((a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime())
     .map((s) => s.userId);

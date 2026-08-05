@@ -347,7 +347,7 @@ export function OperatorHome() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    {isBusy ? <span className="font-semibold text-pink-500">🔴 上台中・忙碌</span> : isOnline ? '🟢 上線中' : '⚪ 離線'}
+                    {isBusy ? <span className="font-semibold text-pink-500">約會中，忙碌</span> : isOnline ? '🟢 上線中' : '⚪ 離線'}
                     {galleryCount > 0 && <span className="ml-2 text-brand-sky">相簿 {galleryCount}</span>}
                   </p>
                 </div>
@@ -387,7 +387,7 @@ export function OperatorHome() {
                   }}
                   className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-red-200 bg-red-50 text-red-500 active:bg-red-100 disabled:cursor-not-allowed disabled:opacity-30"
                   aria-label={`刪除 ${user.nickname}`}
-                  title={isBusy ? '上台中不可刪除' : '刪除人員'}
+                  title={isBusy ? '約會中不可刪除' : '刪除人員'}
                 >
                   <Trash2 size={13} />
                 </button>
