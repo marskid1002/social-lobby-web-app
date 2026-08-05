@@ -1000,6 +1000,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     const s = getState();
     const request = s.requests.find((r) => r.id === requestId);
     if (!request) return;
+    if (!s.onlineUserIds.includes(girlId)) return;
     if (activeConfirmedGirlIds(s.responses, s.invitations).has(girlId)) return;
 
     // 防止重複派工：若該女伴已 interested / joining 則略過

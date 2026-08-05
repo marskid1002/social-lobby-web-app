@@ -183,16 +183,21 @@ export function OperatorHome() {
   // 開啟派工彈窗的局物件
   const activeReq = dispatchSheet ? state.requests.find((r) => r.id === dispatchSheet) : null;
   const alreadyDispatched = dispatchSheet ? dispatchedGirlIds(dispatchSheet) : [];
+  const eligibleSelectedCount = selectedGirls.filter(
+    (girlId) => !busyGirlIds.has(girlId) && state.onlineUserIds.includes(girlId),
+  ).length;
 
   function toggleGirl(girlId: string) {
-    if (busyGirlIds.has(girlId)) return;
+    if (busyGirlIds.has(girlId) || !state.onlineUserIds.includes(girlId)) return;
     setSelectedGirls((prev) =>
       prev.includes(girlId) ? prev.filter((id) => id !== girlId) : [...prev, girlId]
     );
   }
 
   function handleDispatch() {
-    const eligibleGirls = selectedGirls.filter((girlId) => !busyGirlIds.has(girlId));
+    const eligibleGirls = selectedGirls.filter(
+      (girlId) => !busyGirlIds.has(girlId) && state.onlineUserIds.includes(girlId),
+    );
     if (!dispatchSheet || eligibleGirls.length === 0) return;
     const names = eligibleGirls
       .map((id) => state.users.find((u) => u.id === id)?.nickname)
@@ -433,13 +438,13 @@ export function OperatorHome() {
                 return (
                   <button
                     key={user.id}
-                    onClick={() => !isAlready && !isBusy && toggleGirl(user.id)}
-                    disabled={isAlready || isBusy}
+                    onClick={() => !isAlready && !isBusy && isOnline && toggleGirl(user.id)}
+                    disabled={isAlready || isBusy || !isOnline}
                     className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
                       isSelected
                         ? 'border-purple-400 bg-purple-50'
                         : 'border-transparent bg-brand-snow'
-                    } ${isAlready || isBusy ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    } ${isAlready || isBusy || !isOnline ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -464,7 +469,7 @@ export function OperatorHome() {
 
             <button
               onClick={handleDispatch}
-              disabled={selectedGirls.length === 0}
+              disabled={eligibleSelectedCount === 0}
               className="sticky bottom-0 z-10 w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
             >
               確認出席{selectedGirls.length > 0 ? `（${selectedGirls.length} 位）` : ''}
