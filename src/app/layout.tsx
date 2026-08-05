@@ -4,7 +4,7 @@ import { Toaster } from '@/components/ui/sonner';
 
 export const metadata: Metadata = {
   title: 'JUGA',
-  description: '每一次的錯過，都是為了更好的相遇',
+  description: '今晚有局，因為有你',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

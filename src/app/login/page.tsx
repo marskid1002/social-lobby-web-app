@@ -178,16 +178,15 @@ export default function LoginPage() {
       <div className={styles.content}>
         <div className={styles.brandBlock}>
           <div className={styles.logoFrame}>
-            <Image src="/icons/icon-192.png" width={84} height={84} alt="JUGA" priority />
+            <Image src="/icons/icon-192.png" width={96} height={96} alt="JUGA" priority />
           </div>
           <div className={styles.wordmark}>
             <span>JUGA</span>
             <small>START A GOOD GATHERING</small>
           </div>
           <h1>
-            <span>每一次的錯過</span>
-            <span className={styles.whiteLine}>都是為了</span>
-            <span>更好的相遇</span>
+            <span>今晚有局，</span>
+            <span className={styles.whiteLine}>因為有你</span>
           </h1>
         </div>
 
