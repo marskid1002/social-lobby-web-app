@@ -62,7 +62,7 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-brand-lavender p-4 shadow-card">
+    <div className="juga-request-card bg-white rounded-2xl border border-brand-lavender p-4 shadow-card">
       {/* Row 1: creator + time */}
       <div className="flex items-center gap-2 mb-2">
         {creator && (

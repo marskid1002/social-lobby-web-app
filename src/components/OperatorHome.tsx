@@ -252,7 +252,7 @@ export function OperatorHome() {
             const typeLabel = TYPE_LABELS[req.requestType] ?? req.requestType;
 
             return (
-              <div key={req.id} className={`bg-white rounded-2xl border border-brand-lavender p-4 shadow-sm transition-opacity ${isFull ? 'opacity-60' : ''}`}>
+              <div key={req.id} className={`juga-request-card bg-white rounded-2xl border border-brand-lavender p-4 shadow-sm transition-opacity ${isFull ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-2 mb-2">
                   {creator && (
                     <img src={creator.avatarUrl} alt={creator.nickname} className="w-8 h-8 rounded-full object-cover" />

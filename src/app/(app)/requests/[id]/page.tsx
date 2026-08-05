@@ -190,7 +190,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
       <div className="px-4 py-4 flex flex-col gap-4">
         {/* Header card — includes FOMO strip */}
-        <div className="bg-white rounded-2xl p-4 shadow-card">
+        <div className="juga-request-card bg-white rounded-2xl p-4 shadow-card">
           <div className="flex items-center gap-2 mb-3">
             <span className="px-3 py-1 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
               {typeLabel}

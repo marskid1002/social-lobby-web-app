@@ -460,12 +460,8 @@ export default function InboxPage() {
               <button
                 key={notif.id}
                 onClick={onTap}
-                className="w-full bg-white rounded-2xl border border-brand-lavender shadow-card overflow-hidden text-left active:bg-brand-ice transition-colors"
+                className={`w-full bg-white rounded-2xl border border-brand-lavender shadow-card overflow-hidden text-left active:bg-brand-ice transition-colors ${notif.refRequestId ? 'juga-request-card' : ''}`}
               >
-                {/* Colored top strip tied to the specific request */}
-                {notifAccent && (
-                  <div className="h-1.5 w-full" style={{ background: notifAccent }} />
-                )}
                 <div className="flex items-center gap-3 px-4 py-3.5">
                   {(notif.type === 'join' || notif.type === 'interested') && actor ? (
                     <img src={actor.avatarUrl} alt={actor.nickname} className="w-9 h-9 rounded-full object-cover shrink-0" />

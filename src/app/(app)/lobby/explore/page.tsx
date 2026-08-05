@@ -8,7 +8,7 @@ import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
-import { getRequestGradient, getRequestAccentColor, REQUEST_TYPE_LABELS } from '@/lib/utils';
+import { getRequestAccentColor, REQUEST_TYPE_LABELS } from '@/lib/utils';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { activeConfirmedGirlIds, confirmedGirlIdsForRequest } from '@/lib/request-attendance';
 
@@ -42,19 +42,14 @@ function MyRequestCard({
   const visibleResponders = responders.slice(0, 3);
   const extraCount = responders.length - visibleResponders.length;
   const accent = getRequestAccentColor(request.id);
-  const gradient = getRequestGradient(request.id);
 
   return (
     <div
       onClick={() => router.push(`/requests/${request.id}`)}
-      className={`rounded-2xl shadow-sm overflow-hidden cursor-pointer transition-colors ${
+      className={`juga-request-card rounded-2xl shadow-sm overflow-hidden cursor-pointer transition-colors ${
         atCap ? 'opacity-75' : ''
       }`}
-      style={{ border: `1.5px solid ${accent}55` }}
     >
-      {/* Gradient header strip */}
-      <div className="h-1.5" style={{ background: gradient }} />
-
       <div className={`p-4 ${atCap ? 'bg-zinc-50' : 'bg-white active:bg-brand-snow'}`}>
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 flex-wrap">

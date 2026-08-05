@@ -237,4 +237,14 @@
   body .shadow-sm, body .shadow-card, body .shadow-card-pink { box-shadow: 0 18px 50px rgba(0,0,0,.24); }
   body input, body textarea, body select { accent-color: var(--juga-pink); caret-color: var(--juga-pink); }
   body input:focus, body textarea:focus, body select:focus { border-color: rgba(255,60,145,.55); --tw-ring-color: rgba(255,60,145,.18); }
+
+  /* All gathering/request cards share one calm champagne-gold outline. */
+  .juga-request-card {
+    border: 2px solid rgba(226, 184, 104, 0.88) !important;
+    background: linear-gradient(150deg, rgba(25,27,41,.98), rgba(13,14,24,.98));
+    box-shadow: 0 16px 42px rgba(0,0,0,.26), 0 0 18px rgba(215,173,98,.08), inset 0 1px 0 rgba(255,229,177,.09);
+  }
+  .juga-request-card .text-zinc-400 { color: #bfc1ce; }
+  .juga-request-card .text-zinc-500 { color: #c9cbd5; }
+  .juga-request-card .text-zinc-600 { color: #d7d8df; }
 }

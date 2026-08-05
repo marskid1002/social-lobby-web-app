@@ -191,7 +191,7 @@ export default function RequestsPage() {
             return (
               <div
                 key={req.id}
-                className="w-full bg-white rounded-2xl border border-brand-lavender shadow-card p-4 text-left"
+                className="juga-request-card w-full bg-white rounded-2xl border border-brand-lavender shadow-card p-4 text-left"
               >
                 <button onClick={() => router.push(`/requests/${req.id}`)} className="w-full text-left">
                   <div className="flex items-center gap-2 mb-2">
