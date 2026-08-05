@@ -380,24 +380,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       />
 
       {/* Sticky CTA */}
+      {(!isCreator || joiners.length === 0) && (
       <div className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 border-t border-brand-lavender bg-white px-4 py-3 pb-safe">
         {isCreator ? (
-          joiners.length > 0 ? (
-            <div className="text-center">
-              <p className="text-xs text-zinc-400 mb-1">有人已加入，請先拒絕所有人才能關閉</p>
-              <button disabled className="w-full py-3.5 rounded-2xl bg-zinc-100 text-zinc-400 font-semibold text-sm cursor-not-allowed">
-                關閉邀請（不可用）
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleClose}
-              disabled={request.status === 'closed'}
-              className="w-full py-3.5 rounded-2xl border-2 border-red-200 text-red-500 font-semibold text-sm bg-white active:bg-red-50 disabled:opacity-40 transition-colors"
-            >
-              {request.status === 'closed' ? '邀請已關閉' : '關閉邀請'}
-            </button>
-          )
+          <button
+            onClick={handleClose}
+            disabled={request.status === 'closed'}
+            className="w-full py-3.5 rounded-2xl border-2 border-red-200 text-red-500 font-semibold text-sm bg-white active:bg-red-50 disabled:opacity-40 transition-colors"
+          >
+            {request.status === 'closed' ? '邀請已關閉' : '關閉邀請'}
+          </button>
         ) : myInvite ? (
           <div className="flex gap-2">
             <button onClick={handleInviteAccept} className="flex-1 py-3.5 rounded-2xl bg-brand-sky text-brand-ink font-semibold text-sm active:scale-[0.98] transition-all">接受</button>
@@ -409,6 +401,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </button>
         ) : null}
       </div>
+      )}
 
       {/* ── Confirm reject sheet (joining → penalty) ── */}
       {showConfirmSheet && (

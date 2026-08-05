@@ -283,10 +283,10 @@ export default function InboxPage() {
         return (
           <div
             key={card.key}
-            className="relative rounded-3xl overflow-hidden shadow-card"
-            style={{ background: card.gradient }}
+            className="relative rounded-3xl overflow-hidden border border-[#d9b66f]/55 shadow-card"
+            style={{ background: 'linear-gradient(145deg, rgba(31,24,48,.98), rgba(13,15,27,.98))' }}
           >
-            <div className="absolute inset-0 bg-white/20 rounded-3xl" />
+            <div className="absolute inset-0 rounded-3xl bg-white/[0.03]" />
             <div className="relative p-4">
               <div className="flex items-center gap-3 mb-3">
                 {/* Avatar(s) */}

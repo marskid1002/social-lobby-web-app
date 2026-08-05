@@ -32,7 +32,7 @@ export function RequestHeartSlots({ total, confirmed, className = '' }: Props) {
         })}
       </div>
       <span className="text-[11px] font-semibold text-zinc-500">
-        已上台 {safeConfirmed}/{safeTotal}
+        已加入約會 {safeConfirmed}/{safeTotal}
       </span>
     </div>
   );

@@ -910,7 +910,7 @@ export default function ChatPage({ params }: ChatPageProps) {
       {isDispatchManager && activeInvite && !expired && (
         <div className="shrink-0 border-b border-brand-lavender bg-white px-4 py-3">
           <p className="mb-2 text-center text-xs font-semibold text-zinc-500">
-            請確認這位小姐的安排結果
+            請確認約會結果
           </p>
           <div className="flex gap-2">
             <button
@@ -939,7 +939,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         <div className="shrink-0 flex items-center justify-between gap-3 border-b border-pink-100 bg-pink-50 px-4 py-2.5 text-xs font-semibold text-pink-600">
           <span className="flex items-center gap-2">
             <Heart className="h-4 w-4 fill-current" />
-            小姐上台中・忙碌
+            約會中，忙碌
           </span>
           {canEndMeetup && (
             <button
