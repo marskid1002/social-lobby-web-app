@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 type Account = {
   key: string;
   accountRef: string;
-  role: 'user' | 'manager' | 'admin';
+  role: 'user' | 'manager' | 'account_admin' | 'admin';
   tier: string;
   userId: string;
   nickname: string;
@@ -185,6 +185,7 @@ const NAV: Array<{ id: Tab; label: string; short: string }> = [
 
 const ROLE_LABEL: Record<string, string> = {
   admin: '管理員',
+  account_admin: '幹部帳號管理員',
   manager: '幹部',
   user: '客戶',
 };

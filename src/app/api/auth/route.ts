@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAccount, createCustomer, verifyPassword, setInitialPassword,
   adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone,
-  activateManagerWithCode, bumpAccountSessionVersion,
+  activateManagerWithCode, activateAccountAdminWithCode, bumpAccountSessionVersion,
 } from '@/lib/auth-store';
 import { signSession, sessionCookieHeader, clearSessionCookieHeader } from '@/lib/session';
 import { requireActiveSession } from '@/lib/active-session';
@@ -75,22 +75,25 @@ export async function GET(req: NextRequest) {
       role: auth.session.role,
       tier: auth.session.tier,
       nickname: auth.account?.nickname,
+      mustChangeNickname: auth.account?.mustChangeNickname === true,
     },
   });
 }
 
 async function withSession(req: NextRequest, user: {
   id: string;
-  role: 'user' | 'manager' | 'guest' | 'admin';
+  role: 'user' | 'manager' | 'guest' | 'account_admin' | 'admin';
   tier: string;
   nickname?: string;
   sessionVersion?: number;
+  mustChangeNickname?: boolean;
 }) {
   const token = await signSession({
     userId: user.id,
     role: user.role,
     tier: user.tier,
     sessionVersion: user.sessionVersion ?? 0,
+    mustChangeNickname: user.mustChangeNickname === true,
   });
   const res = NextResponse.json({ ok: true, user });
   res.headers.set('Set-Cookie', sessionCookieHeader(token));
@@ -294,13 +297,43 @@ export async function POST(req: NextRequest) {
           tier: activated.tier,
           nickname: activated.nickname,
           sessionVersion: activated.sessionVersion,
+          mustChangeNickname: activated.mustChangeNickname === true,
+        });
+      }
+
+      // A888 只接受 A000 產生的 24 小時一次性啟用碼，不共用最高管理密鑰。
+      if (acc.role === 'account_admin' && acc.hash === null) {
+        if (!acc.activationHash || !acc.activationSalt) {
+          return NextResponse.json({
+            error: '請先由最高管理員產生一次性啟用碼',
+            needActivation: true,
+          }, { status: 403 });
+        }
+        { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
+        const activated = await activateAccountAdminWithCode(key, String(body.activationCode ?? ''), pw);
+        if (!activated) {
+          return NextResponse.json({ error: '一次性啟用碼錯誤或已逾期', needActivation: true }, { status: 403 });
+        }
+        return withSession(req, {
+          id: activated.userId,
+          role: 'account_admin',
+          tier: activated.tier,
+          nickname: activated.nickname,
+          sessionVersion: activated.sessionVersion,
         });
       }
 
       if (!verifyPassword(acc, pw)) return NextResponse.json({ error: '帳號或密碼錯誤' }, { status: 401 });
       await clearRateLimit('login-acc', key); // 成功登入 → 清掉該帳號失敗計數
       if (acc.role === 'user') return replaceCustomerSession(req, acc.key);
-      return withSession(req, { id: acc.userId, role: acc.role, tier: acc.tier, nickname: acc.nickname, sessionVersion: acc.sessionVersion });
+      return withSession(req, {
+        id: acc.userId,
+        role: acc.role,
+        tier: acc.tier,
+        nickname: acc.nickname,
+        sessionVersion: acc.sessionVersion,
+        mustChangeNickname: acc.mustChangeNickname === true,
+      });
     }
 
     return NextResponse.json({ error: 'unknown action' }, { status: 400 });

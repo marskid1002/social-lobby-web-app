@@ -11,7 +11,7 @@ import { normalizeTaiwanMobile, taiwanMobileStorageAliases } from './phone';
 
 const ACCOUNTS_KEY = kvKey('sl:accounts:v2');
 
-export type AccountRole = 'user' | 'manager' | 'admin';
+export type AccountRole = 'user' | 'manager' | 'account_admin' | 'admin';
 
 export interface Account {
   key: string;              // 登入帳號：手機（客戶）、A001（幹部）或 A000（管理員）
@@ -31,6 +31,7 @@ export interface Account {
   termsVersion?: string;    // 客戶註冊時同意的平台規範版本
   termsAcceptedAt?: string; // 由 server 產生的同意時間
   ageConfirmedAt?: string;  // 由 server 產生的年滿 18 歲確認時間
+  mustChangeNickname?: boolean; // 預設名稱的幹部首次登入後必須自行改名
 }
 
 type AccountsMap = Record<string, Account>; // key -> Account
@@ -42,9 +43,10 @@ export interface RegistrationConsentRecord {
 
 // 最高權限管理員帳號（後台 /admin 用）；首次登入需 ADMIN_SECRET 啟用
 const ADMIN_ACCOUNT = { code: 'A000', userId: 'u-016', nickname: '管理員' };
+const ACCOUNT_ADMIN_ACCOUNT = { code: 'A888', userId: 'account-admin-888', nickname: '幹部帳號管理員' };
 
 // 幹部帳號 A001~A010 對應到現有 10 個幹部 user
-const MANAGER_MAP: { code: string; userId: string; nickname: string }[] = [
+const MANAGER_MAP: { code: string; userId: string; nickname: string; mustChangeNickname?: boolean }[] = [
   { code: 'A001', userId: 'u-018', nickname: '陳幹部' },
   { code: 'A002', userId: 'u-023', nickname: '林經理' },
   { code: 'A003', userId: 'u-024', nickname: '張經理' },
@@ -66,6 +68,12 @@ const MANAGER_MAP: { code: string; userId: string; nickname: string }[] = [
   { code: 'A018', userId: 'u-508', nickname: '測試幹部8' },
   { code: 'A019', userId: 'u-509', nickname: '測試幹部9' },
   { code: 'A020', userId: 'u-510', nickname: '測試幹部10' },
+  // 正式預留幹部帳號：首次登入後必須自行設定顯示名稱。
+  { code: 'A021', userId: 'manager-021', nickname: '幹部21', mustChangeNickname: true },
+  { code: 'A022', userId: 'manager-022', nickname: '幹部22', mustChangeNickname: true },
+  { code: 'A023', userId: 'manager-023', nickname: '幹部23', mustChangeNickname: true },
+  { code: 'A024', userId: 'manager-024', nickname: '幹部24', mustChangeNickname: true },
+  { code: 'A025', userId: 'manager-025', nickname: '幹部25', mustChangeNickname: true },
   // 額外測試幹部；A1000 為 4 位數，見 normalizeKey 放寬。
   { code: 'A999', userId: 'u-511', nickname: '測試幹部11' },
   { code: 'A1000', userId: 'u-512', nickname: '測試幹部12' },
@@ -135,12 +143,36 @@ async function ensureManagerAccounts(accounts: AccountsMap): Promise<boolean> {
     };
     changed = true;
   }
+  if (!accounts[ACCOUNT_ADMIN_ACCOUNT.code]) {
+    accounts[ACCOUNT_ADMIN_ACCOUNT.code] = {
+      key: ACCOUNT_ADMIN_ACCOUNT.code,
+      role: 'account_admin',
+      tier: 'admin',
+      userId: ACCOUNT_ADMIN_ACCOUNT.userId,
+      nickname: ACCOUNT_ADMIN_ACCOUNT.nickname,
+      salt: '',
+      hash: null,
+      createdAt: new Date().toISOString(),
+      sessionVersion: 1,
+    };
+    changed = true;
+  }
   for (const m of MANAGER_MAP) {
     if (!accounts[m.code]) {
       accounts[m.code] = {
         key: m.code, role: 'manager', tier: 'vip', userId: m.userId,
         nickname: m.nickname, salt: '', hash: null, createdAt: new Date().toISOString(),
+        mustChangeNickname: Boolean(m.mustChangeNickname),
       };
+      changed = true;
+    } else if (
+      m.mustChangeNickname
+      && accounts[m.code].role === 'manager'
+      && accounts[m.code].nickname === m.nickname
+      && accounts[m.code].mustChangeNickname !== true
+    ) {
+      // 已存在的同名預留帳號也補上首次改名旗標；若管理員已改過名稱則不覆蓋。
+      accounts[m.code].mustChangeNickname = true;
       changed = true;
     }
   }
@@ -251,6 +283,13 @@ export async function createManagerAccount(nickname: string): Promise<{
   return { account, activationCode: secret.code };
 }
 
+const ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function activationIsCurrent(account: Account): boolean {
+  const createdAt = Date.parse(account.activationCreatedAt ?? '');
+  return Number.isFinite(createdAt) && Date.now() - createdAt <= ACTIVATION_TTL_MS;
+}
+
 export async function regenerateManagerActivation(key: string): Promise<string | null> {
   const accounts = await readAccounts();
   const account = accounts[normalizeKey(key)];
@@ -281,6 +320,54 @@ export async function activateManagerWithCode(
     || account.archived
     || !account.activationHash
     || !account.activationSalt
+    || !activationIsCurrent(account)
+  ) return null;
+  const candidate = hashPassword(activationCode, account.activationSalt);
+  const expected = Buffer.from(account.activationHash, 'hex');
+  const actual = Buffer.from(candidate, 'hex');
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
+  account.salt = crypto.randomBytes(16).toString('hex');
+  account.hash = hashPassword(password, account.salt);
+  delete account.activationSalt;
+  delete account.activationHash;
+  delete account.activationCreatedAt;
+  await writeAccounts(accounts);
+  return account;
+}
+
+export async function regenerateAccountAdminActivation(key: string): Promise<string | null> {
+  const accounts = await readAccounts();
+  await ensureManagerAccounts(accounts);
+  const account = accounts[normalizeKey(key)];
+  if (!account || account.role !== 'account_admin' || account.archived) return null;
+  const secret = createActivationSecret();
+  account.hash = null;
+  account.salt = '';
+  account.activationSalt = secret.salt;
+  account.activationHash = secret.hash;
+  account.activationCreatedAt = new Date().toISOString();
+  account.sessionVersion = (account.sessionVersion ?? 0) + 1;
+  await writeAccounts(accounts);
+  return secret.code;
+}
+
+export async function activateAccountAdminWithCode(
+  key: string,
+  activationCode: string,
+  password: string,
+): Promise<Account | null> {
+  const accounts = await readAccounts();
+  await ensureManagerAccounts(accounts);
+  const account = accounts[normalizeKey(key)];
+  if (
+    !account
+    || account.role !== 'account_admin'
+    || account.hash
+    || account.disabled
+    || account.archived
+    || !account.activationHash
+    || !account.activationSalt
+    || !activationIsCurrent(account)
   ) return null;
   const candidate = hashPassword(activationCode, account.activationSalt);
   const expected = Buffer.from(account.activationHash, 'hex');
@@ -301,6 +388,18 @@ export async function updateManagerNickname(key: string, nickname: string): Prom
   const safeNickname = nickname.trim().slice(0, 60);
   if (!account || account.role !== 'manager' || !safeNickname) return null;
   account.nickname = safeNickname;
+  account.mustChangeNickname = false;
+  await writeAccounts(accounts);
+  return account;
+}
+
+export async function updateOwnManagerNickname(userId: string, nickname: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  const safeNickname = nickname.trim().slice(0, 60);
+  const account = Object.values(accounts).find((item) => item.userId === userId);
+  if (!account || account.role !== 'manager' || safeNickname.length < 2) return null;
+  account.nickname = safeNickname;
+  account.mustChangeNickname = false;
   await writeAccounts(accounts);
   return account;
 }

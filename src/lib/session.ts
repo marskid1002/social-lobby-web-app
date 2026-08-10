@@ -5,9 +5,10 @@ export const SESSION_COOKIE = 'sl_session';
 
 export interface SessionPayload {
   userId: string;
-  role: 'user' | 'manager' | 'guest' | 'admin';
+  role: 'user' | 'manager' | 'guest' | 'account_admin' | 'admin';
   tier: string;
   sessionVersion?: number;
+  mustChangeNickname?: boolean;
 }
 
 // 是否為正式生產環境
@@ -52,6 +53,7 @@ export async function verifySession(token: string | undefined | null): Promise<S
       role: payload.role as SessionPayload['role'],
       tier: String(payload.tier ?? 'free'),
       sessionVersion: Number(payload.sessionVersion ?? 0),
+      mustChangeNickname: payload.mustChangeNickname === true,
     };
   } catch {
     return null;
