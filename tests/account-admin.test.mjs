@@ -38,6 +38,9 @@ test('A888 is isolated from A000 and activates with its own one-time code', { sk
 });
 
 test('reserved manager clears the rename requirement only after choosing a non-default name', { skip }, async () => {
+  const adminEdited = await authStore.updateManagerNickname('A024', '管理員代改名稱');
+  assert.equal(adminEdited?.mustChangeNickname, true);
+
   const account = await authStore.getAccount('A025');
   assert.ok(account);
   const updated = await authStore.updateOwnManagerNickname(account.userId, '王小明');

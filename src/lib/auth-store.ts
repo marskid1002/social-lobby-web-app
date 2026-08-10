@@ -388,7 +388,6 @@ export async function updateManagerNickname(key: string, nickname: string): Prom
   const safeNickname = nickname.trim().slice(0, 60);
   if (!account || account.role !== 'manager' || !safeNickname) return null;
   account.nickname = safeNickname;
-  account.mustChangeNickname = false;
   await writeAccounts(accounts);
   return account;
 }
