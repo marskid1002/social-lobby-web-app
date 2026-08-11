@@ -72,7 +72,7 @@ export interface AppState {
   photoGalleries: { id: string; urls: string[] }[]; // 各小姐的相簿（多張，跨裝置同步；id = 使用者 id）
   registeredUsers: User[]; // 手機+密碼註冊的新客戶（跨裝置同步）
   blocks: { id: string; blockerId: string; blockedId: string; active: boolean; createdAt: string }[]; // 雙向封鎖（跨裝置同步；id = `${blockerId}__${blockedId}`）
-  escorts: { id: string; managerId: string; nickname: string; createdAt: string; removed?: boolean }[]; // 幹部自建的小姐（B：跨裝置同步；merge 進 users 顯示）
+  escorts: { id: string; managerId: string; nickname: string; bio: string; defaultArea: string; createdAt: string; removed?: boolean }[]; // 幹部自建的小姐（B：跨裝置同步；merge 進 users 顯示）
 }
 
 // CLEAN_START = true：收件匣相關資料（局/回應/邀請/通知/聊天）全空，
@@ -224,12 +224,19 @@ function applyEscorts(next: AppState): AppState {
       continue;
     }
     if (idx >= 0) {
-      users[idx] = { ...users[idx], nickname: e.nickname, role: 'escort', managerId: e.managerId };
+      users[idx] = {
+        ...users[idx],
+        nickname: e.nickname,
+        bio: e.bio ?? '',
+        defaultArea: e.defaultArea ?? '信義區',
+        role: 'escort',
+        managerId: e.managerId,
+      };
     } else {
       users.push({
         id: e.id, lineUserId: e.id, nickname: e.nickname,
         avatarUrl: ESCORT_PLACEHOLDER, cardImageUrl: ESCORT_PLACEHOLDER,
-        bio: '', defaultArea: '信義區', interests: [],
+        bio: e.bio ?? '', defaultArea: e.defaultArea ?? '信義區', interests: [],
         tier: 'standard', role: 'escort', credits: 0, monthlyRequestsLeft: 0,
         lineOAFollowed: false, createdAt: e.createdAt, managerId: e.managerId,
       });
@@ -726,7 +733,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
       };
       return {
         ...prev,
-        escorts: [...prev.escorts, { id, managerId: me, nickname: name, createdAt: now }],
+        escorts: [...prev.escorts, { id, managerId: me, nickname: name, bio: '', defaultArea: '信義區', createdAt: now }],
         users: [...prev.users, newUser],
       };
     });
@@ -741,6 +748,27 @@ export function useAppState(options: { sync?: boolean } = {}) {
         users: prev.users.filter((u) => u.id !== id),
       };
     });
+  }, []);
+
+  const updateEscortProfile = useCallback((
+    id: string,
+    profile: { nickname: string; bio: string; defaultArea: string },
+  ) => {
+    const nickname = profile.nickname.trim().slice(0, 20);
+    const bio = profile.bio.trim().slice(0, 100);
+    const defaultArea = profile.defaultArea.trim().slice(0, 40);
+    if (!nickname || !defaultArea) return false;
+    let updated = false;
+    setState((prev) => {
+      const managerId = prev.currentUserId;
+      const escorts = prev.escorts.map((escort) => {
+        if (escort.id !== id || escort.managerId !== managerId || escort.removed) return escort;
+        updated = true;
+        return { ...escort, nickname, bio, defaultArea };
+      });
+      return updated ? applyEscorts({ ...prev, escorts }) : prev;
+    });
+    return updated;
   }, []);
 
   const postRequest = useCallback((req: Omit<Request, 'id' | 'creatorId' | 'createdAt' | 'expiresAt' | 'status' | 'metrics'>) => {
@@ -1529,6 +1557,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     addGalleryPhoto,
     removeGalleryPhoto,
     addEscort,
+    updateEscortProfile,
     removeEscort,
     registerCustomer,
     loginCustomer,

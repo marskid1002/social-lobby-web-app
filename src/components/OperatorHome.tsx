@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { X, Check, UserCog, Camera, Trash2 } from 'lucide-react';
+import { X, Check, UserCog, Camera, Trash2, Pencil } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
+import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 import {
   activeConfirmedGirlIds,
   confirmedCountForRequest,
@@ -64,7 +65,7 @@ async function downscaleToJpegDataUrl(file: File, maxDim = 1280, quality = 0.82)
 }
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchToRosterGirl, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto, updateUser, addEscort, removeEscort } = useAppState();
+  const { state, dispatchGirl, switchToRosterGirl, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto, updateUser, addEscort, updateEscortProfile, removeEscort } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
   const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
@@ -140,6 +141,11 @@ export function OperatorHome() {
   const [nameDraft, setNameDraft] = useState(''); // 首登設定顯示名稱
   const [addOpen, setAddOpen] = useState(false); // 新增人員彈窗
   const [newEscortName, setNewEscortName] = useState('');
+  const [editEscortId, setEditEscortId] = useState<string | null>(null);
+  const [editEscortName, setEditEscortName] = useState('');
+  const [editEscortBio, setEditEscortBio] = useState('');
+  const [editEscortCity, setEditEscortCity] = useState<AreaCity>('台北市');
+  const [editEscortArea, setEditEscortArea] = useState('信義區');
 
   // 幹部自建的小姐（B）：名單以 managerId === 本人 動態產生（一開始為空，全部由幹部自建）
   const rosterGirls = state.users.filter((u) => u.role === 'escort' && u.managerId === state.currentUserId);
@@ -153,6 +159,33 @@ export function OperatorHome() {
     setNewEscortName('');
     setAddOpen(false);
     setToast('✅ 已新增人員');
+    setTimeout(() => setToast(''), 2500);
+  }
+
+  function openEscortEditor(user: (typeof rosterGirls)[number]) {
+    const city = cityForArea(user.defaultArea);
+    setEditEscortId(user.id);
+    setEditEscortName(user.nickname);
+    setEditEscortBio(user.bio ?? '');
+    setEditEscortCity(city);
+    setEditEscortArea(user.defaultArea);
+  }
+
+  function handleEditEscortCity(nextCity: AreaCity) {
+    setEditEscortCity(nextCity);
+    setEditEscortArea(AREA_OPTIONS[nextCity][0]);
+  }
+
+  function handleSaveEscort() {
+    if (!editEscortId) return;
+    const ok = updateEscortProfile(editEscortId, {
+      nickname: editEscortName,
+      bio: editEscortBio,
+      defaultArea: editEscortArea,
+    });
+    if (!ok) return;
+    setEditEscortId(null);
+    setToast('✅ 已更新人員資料');
     setTimeout(() => setToast(''), 2500);
   }
 
@@ -369,6 +402,14 @@ export function OperatorHome() {
                 </button>
                 {/* 編輯照片（大頭照 + 相簿）*/}
                 <button
+                  onClick={() => openEscortEditor(user)}
+                  className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full border border-purple-200 bg-purple-50 text-purple-600 active:bg-purple-100"
+                  aria-label={`編輯 ${user.nickname} 的資料`}
+                  title="編輯資料"
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
                   onClick={() => setPhotoSheetGirlId(user.id)}
                   className="shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-full border border-brand-sky/30 bg-brand-sky/10 text-[11px] font-bold text-brand-sky active:opacity-80"
                   aria-label={`編輯 ${user.nickname} 的照片`}
@@ -487,6 +528,83 @@ export function OperatorHome() {
       )}
 
       {/* 新增人員 sheet（幹部自建小姐）*/}
+      {editEscortId && (
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setEditEscortId(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-brand-ink">編輯人員資料</h2>
+              <button onClick={() => setEditEscortId(null)} className="rounded-full p-1.5 text-zinc-400" aria-label="關閉">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-4">
+              <div>
+                <label className="text-sm font-semibold text-brand-ink" htmlFor="escort-name">名稱</label>
+                <input
+                  id="escort-name"
+                  value={editEscortName}
+                  onChange={(e) => setEditEscortName(e.target.value)}
+                  maxLength={20}
+                  className="mt-1.5 w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-semibold text-brand-ink" htmlFor="escort-bio">自我介紹</label>
+                  <span className="text-xs text-zinc-400">{editEscortBio.length}/100</span>
+                </div>
+                <textarea
+                  id="escort-bio"
+                  value={editEscortBio}
+                  onChange={(e) => setEditEscortBio(e.target.value)}
+                  rows={4}
+                  maxLength={100}
+                  placeholder="簡短介紹自己…"
+                  className="mt-1.5 w-full resize-none rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-brand-ink">所在區域</label>
+                <div className="mt-1.5 grid grid-cols-2 gap-2">
+                  <select
+                    value={editEscortCity}
+                    onChange={(e) => handleEditEscortCity(e.target.value as AreaCity)}
+                    className="rounded-xl border border-brand-lavender bg-white px-3 py-3 text-sm text-brand-ink"
+                    aria-label="縣市"
+                  >
+                    {AREA_CITIES.map((city) => <option key={city} value={city}>{city}</option>)}
+                  </select>
+                  <select
+                    value={editEscortArea}
+                    onChange={(e) => setEditEscortArea(e.target.value)}
+                    className="rounded-xl border border-brand-lavender bg-white px-3 py-3 text-sm text-brand-ink"
+                    aria-label="行政區"
+                  >
+                    {(AREA_OPTIONS[editEscortCity] as readonly string[]).map((area) => <option key={area} value={area}>{area}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveEscort}
+              disabled={!editEscortName.trim() || !editEscortArea}
+              className="mt-5 w-full rounded-2xl bg-purple-500 py-3.5 text-sm font-bold text-white disabled:opacity-40"
+            >
+              儲存資料
+            </button>
+          </div>
+        </div>
+      )}
+
       {addOpen && (
         <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setAddOpen(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />

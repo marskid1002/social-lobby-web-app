@@ -26,10 +26,12 @@ test('escorts create：A/B 不同 id 相同 nickname 皆成功；非本人/非 m
   assert.deepEqual(run({ escorts: [{ id: 'e', managerId: 'B', nickname: 'x', createdAt: CA }] }, mgr('A')).escorts, []);
   assert.deepEqual(run({ escorts: [{ id: 'e', managerId: 'A', nickname: 'x', createdAt: CA }] }, usr('A')).escorts, []);
 });
-test('escorts update：本人改 nickname/removed；凍結 id/managerId/createdAt；takeover 丟棄', () => {
-  const cols = { escorts: [{ id: 'esc-A', managerId: 'A', nickname: '小美', createdAt: CA }] };
-  const m = one(run({ escorts: [{ id: 'esc-A', managerId: 'HACK', createdAt: 'HACK', nickname: '安安', removed: true }] }, mgr('A'), cols).escorts);
-  assert.equal(m.managerId, 'A'); assert.equal(m.createdAt, CA); assert.equal(m.nickname, '安安'); assert.equal(m.removed, true);
+test('escorts update：本人可改名稱、簡介與區域；凍結身份欄位、takeover 丟棄', () => {
+  const cols = { escorts: [{ id: 'esc-A', managerId: 'A', nickname: '小美', bio: '', defaultArea: '信義區', createdAt: CA }] };
+  const m = one(run({ escorts: [{ id: 'esc-A', managerId: 'HACK', createdAt: 'HACK', nickname: '安安', bio: '喜歡聊天', defaultArea: '大安區', removed: true }] }, mgr('A'), cols).escorts);
+  assert.equal(m.managerId, 'A'); assert.equal(m.createdAt, CA); assert.equal(m.nickname, '安安'); assert.equal(m.bio, '喜歡聊天'); assert.equal(m.defaultArea, '大安區'); assert.equal(m.removed, true);
+  const invalid = one(run({ escorts: [{ id: 'esc-A', nickname: 'x'.repeat(21), bio: 'x'.repeat(101), defaultArea: '' }] }, mgr('A'), cols).escorts);
+  assert.equal(invalid.nickname, '小美'); assert.equal(invalid.bio, ''); assert.equal(invalid.defaultArea, '信義區');
   assert.deepEqual(run({ escorts: [{ id: 'esc-A', managerId: 'B', nickname: 'x' }] }, mgr('B'), cols).escorts, []);
   assert.deepEqual(run({ escorts: [{ id: 'esc-A', managerId: 'A', nickname: 'x' }] }, mgr('B'), cols).escorts, []);
 });

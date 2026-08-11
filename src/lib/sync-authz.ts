@@ -76,7 +76,9 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       if (existing) {
         if (s(existing.managerId) !== me) return []; // 不得接管他人 escort（即使 incoming.managerId 改成自己）
         const merged: Item = { ...existing };
-        if (typeof e.nickname === 'string') merged.nickname = e.nickname;
+        if (typeof e.nickname === 'string' && e.nickname.trim().length > 0 && e.nickname.length <= 20) merged.nickname = e.nickname.trim();
+        if (typeof e.bio === 'string' && e.bio.length <= 100) merged.bio = e.bio.trim();
+        if (typeof e.defaultArea === 'string' && e.defaultArea.trim().length > 0 && e.defaultArea.length <= 40) merged.defaultArea = e.defaultArea.trim();
         if (typeof e.removed === 'boolean' && !(e.removed && busyGirls.has(id))) merged.removed = e.removed;
         return [merged]; // id/managerId/createdAt 一律沿用 existing
       }
