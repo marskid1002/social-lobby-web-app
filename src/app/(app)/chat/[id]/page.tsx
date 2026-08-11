@@ -7,7 +7,7 @@ import { useAppState, otherIdFromThread } from '@/lib/state';
 import { uploadChatImage } from '@/lib/image';
 import type { ChatMessage } from '@/lib/mock';
 import { directInvitationThreadId } from '@/lib/chat-authz';
-import { REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 interface ChatPageProps {
   params: Promise<{ id: string }>;
@@ -472,6 +472,7 @@ export default function ChatPage({ params }: ChatPageProps) {
             <span className="font-semibold text-sm text-brand-ink truncate leading-tight">
               {groupRequest.area}
               {groupRequest.venueType ? ` · ${VENUE_TYPE_LABELS[groupRequest.venueType] ?? groupRequest.venueType}` : ''}
+              {groupRequest.partyFormat ? ` · ${PARTY_FORMAT_LABELS[groupRequest.partyFormat] ?? groupRequest.partyFormat}` : ''}
               {' · '}{REQUEST_TYPE_LABELS[groupRequest.requestType] ?? groupRequest.requestType} 群組
             </span>
             <span className="text-xs text-zinc-400 leading-tight">

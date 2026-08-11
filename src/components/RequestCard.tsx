@@ -8,7 +8,7 @@ import { zhTW } from 'date-fns/locale';
 import { useState } from 'react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { confirmedCountForRequest } from '@/lib/request-attendance';
-import { REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#FF3C91',
@@ -87,6 +87,12 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
           <span className="ml-auto text-xs font-semibold text-brand-sky">{joinAskCount} 人回應</span>
         )}
       </div>
+
+      {request.partyFormat && (
+        <p className="mb-2 text-xs font-semibold text-blue-600">
+          {PARTY_FORMAT_LABELS[request.partyFormat] ?? request.partyFormat}
+        </p>
+      )}
 
       {/* Row 3: note */}
       <p className="text-sm text-zinc-700 line-clamp-2 mb-2">{request.note}</p>

@@ -113,6 +113,17 @@ test('新發局提供指定的五種地點，並保留舊局類型顯示相容�
   assert.equal(REQUEST_TYPE_LABELS.after_party, 'After Party');
 });
 
+test('新發局必選局型，提供局有女、局無女與 1 對 1', () => {
+  const sheet = src('src/components/PostRequestSheet.tsx');
+  for (const binding of [
+    "value: 'with_women', label: '局有女'",
+    "value: 'without_women', label: '局無女'",
+    "value: 'one_on_one', label: '1 對 1'",
+  ]) assert.ok(sheet.includes(binding), `缺少局型：${binding}`);
+  assert.ok(sheet.includes('!type || !venueType || !partyFormat'), '未選局型時必須禁止送出');
+  assert.ok(sheet.includes("selected ? 'border-blue-500 bg-blue-500'"), '選取圓圈必須變藍色');
+});
+
 // ── C：matches/accept/route.ts（推播，靜態字串比對）──────────────────────────
 
 test('C：客戶接受回應／聊天室建立 → 推播文字更新，收件人/網址程式碼未變', () => {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { X, Minus, Plus } from 'lucide-react';
 import { useAppState } from '@/lib/state';
-import type { Request, RequestType, VenueType } from '@/lib/mock';
+import type { PartyFormat, Request, RequestType, VenueType } from '@/lib/mock';
 import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 import { useRouter } from 'next/navigation';
 
@@ -21,6 +21,12 @@ const VENUE_TYPES: { value: VenueType; label: string }[] = [
   { value: 'home', label: '住家' },
   { value: 'bar', label: '酒吧' },
   { value: 'motel', label: '汽旅' },
+];
+
+const PARTY_FORMATS: { value: PartyFormat; label: string }[] = [
+  { value: 'with_women', label: '局有女' },
+  { value: 'without_women', label: '局無女' },
+  { value: 'one_on_one', label: '1 對 1' },
 ];
 
 interface Props {
@@ -42,6 +48,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
   const [area, setArea] = useState(initialArea);
   const [type, setType] = useState<RequestType | null>(null);
   const [venueType, setVenueType] = useState<VenueType | null>(null);
+  const [partyFormat, setPartyFormat] = useState<PartyFormat | null>(null);
   const [count, setCount] = useState(Math.min(1, maxCount));
   const [note, setNote] = useState('');
   const [toast, setToast] = useState(false);
@@ -53,6 +60,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
     setArea(nextArea);
     setType(request?.requestType ?? null);
     setVenueType(request?.venueType ?? null);
+    setPartyFormat(request?.partyFormat ?? null);
     setCount(request?.peopleCount ?? 1);
     setNote(request?.note ?? '');
   }, [currentUser?.defaultArea, open, request]);
@@ -72,14 +80,15 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
       const updated = updateRequest(request.id, {
         area,
         venueType: venueType ?? undefined,
+        partyFormat: partyFormat ?? undefined,
         requestType: type,
         peopleCount: count,
         note,
       });
       if (!updated) return;
     } else {
-      if (!venueType) return;
-      postRequest({ area, venueType, requestType: type, peopleCount: count, note });
+      if (!venueType || !partyFormat) return;
+      postRequest({ area, venueType, partyFormat, requestType: type, peopleCount: count, note });
     }
     setToast(true);
     setTimeout(() => {
@@ -88,6 +97,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
       onSaved?.();
       setType(null);
       setVenueType(null);
+      setPartyFormat(null);
       setNote('');
       setCount(Math.min(1, maxCount));
       if (!isEditing) router.push('/inbox');
@@ -196,6 +206,33 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
               </div>
             </div>
 
+            {/* Party format — required */}
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-semibold text-brand-ink">局型</legend>
+              <div className="flex flex-wrap gap-4">
+                {PARTY_FORMATS.map((format) => {
+                  const selected = partyFormat === format.value;
+                  return (
+                    <button
+                      key={format.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setPartyFormat(format.value)}
+                      className="flex items-center gap-2 py-1 text-sm font-medium text-brand-ink"
+                    >
+                      <span className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
+                        selected ? 'border-blue-500 bg-blue-500' : 'border-zinc-300 bg-white'
+                      }`}>
+                        {selected && <span className="h-2 w-2 rounded-full bg-white" />}
+                      </span>
+                      {format.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
             {/* Count — capped by tier */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
@@ -243,7 +280,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             <div className="app-sticky-sheet-action">
               <button
                 onClick={handleSubmit}
-                disabled={!type || !venueType}
+                disabled={!type || !venueType || !partyFormat}
                 className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
               >
               {isEditing ? '儲存變更' : '發送邀請'}

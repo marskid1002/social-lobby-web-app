@@ -25,6 +25,12 @@ export const VENUE_TYPE_LABELS: Record<string, string> = {
   motel: '汽旅',
 };
 
+export const PARTY_FORMAT_LABELS: Record<string, string> = {
+  with_women: '局有女',
+  without_women: '局無女',
+  one_on_one: '1 對 1',
+};
+
 // Deterministic gradient per request — hashes the ID to one of 6 subtle palettes
 // all within the sky/pink/lavender/mint/peach/lilac family
 const REQUEST_GRADIENTS = [

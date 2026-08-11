@@ -9,7 +9,7 @@ import { zhTW } from 'date-fns/locale';
 import { MapPin, Clock, Users } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { confirmedCountForRequest } from '@/lib/request-attendance';
-import { REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_FILTERS = [
   { value: null,          label: '全部' },
@@ -210,6 +210,11 @@ export default function RequestsPage() {
                       <Users className="w-3 h-3" strokeWidth={2} /> 還剩 {slotsLeft} 位
                     </span>
                   </div>
+                  {req.partyFormat && (
+                    <p className="mb-2 text-xs font-semibold text-blue-600">
+                      {PARTY_FORMAT_LABELS[req.partyFormat] ?? req.partyFormat}
+                    </p>
+                  )}
                   <p className="text-sm text-brand-ink line-clamp-2 mb-3 leading-snug">{req.note}</p>
                   <RequestHeartSlots
                     total={req.peopleCount}
