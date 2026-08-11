@@ -71,11 +71,23 @@ export function OperatorHome() {
   const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
   const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
 
   const galleryOf = (userId: string) => state.photoGalleries.find((g) => g.id === userId)?.urls ?? [];
 
-  function pickAvatar() { uploadModeRef.current = 'avatar'; photoInputRef.current?.click(); }
-  function pickGallery() { uploadModeRef.current = 'gallery'; photoInputRef.current?.click(); }
+  function pickAvatar() {
+    uploadModeRef.current = 'avatar';
+    if (!photoInputRef.current) return;
+    photoInputRef.current.multiple = false;
+    photoInputRef.current.click();
+  }
+
+  function pickGallery() {
+    uploadModeRef.current = 'gallery';
+    if (!photoInputRef.current) return;
+    photoInputRef.current.multiple = true;
+    photoInputRef.current.click();
+  }
 
   // 失敗時 throw 帶原因的錯誤（HTTP 狀態、伺服器訊息、是否縮圖成功、約略大小），方便診斷
   async function uploadImage(girlId: string, file: File): Promise<string> {
@@ -110,22 +122,46 @@ export function OperatorHome() {
   }
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    const selectedFiles = Array.from(e.target.files ?? []);
     const girlId = photoSheetGirlId;
     const mode = uploadModeRef.current;
     e.target.value = ''; // 允許重選同一檔
-    if (!file || !girlId) return;
+    if (selectedFiles.length === 0 || !girlId) return;
+    const files = mode === 'avatar' ? selectedFiles.slice(0, 1) : selectedFiles;
     setUploading(true);
     try {
-      const url = await uploadImage(girlId, file);
-      if (mode === 'avatar') { setPhotoOverride(girlId, url); setToast('✅ 已更新大頭照'); }
-      else { addGalleryPhoto(girlId, url); setToast('✅ 已加入相簿'); }
+      if (mode === 'avatar') {
+        setUploadProgress({ current: 1, total: 1 });
+        const url = await uploadImage(girlId, files[0]);
+        setPhotoOverride(girlId, url);
+        setToast('✅ 已更新大頭照');
+      } else {
+        let successCount = 0;
+        const errors: string[] = [];
+        for (const [index, file] of files.entries()) {
+          setUploadProgress({ current: index + 1, total: files.length });
+          try {
+            const url = await uploadImage(girlId, file);
+            addGalleryPhoto(girlId, url);
+            successCount += 1;
+          } catch (err) {
+            errors.push(err instanceof Error ? err.message : `${file.name} 上傳失敗`);
+          }
+        }
+        if (successCount === 0) throw new Error(errors[0] ?? '照片上傳失敗');
+        setToast(
+          errors.length === 0
+            ? `✅ 已加入 ${successCount} 張照片`
+            : `⚠️ 已加入 ${successCount} 張，${errors.length} 張失敗`,
+        );
+      }
       setTimeout(() => setToast(''), 2500);
     } catch (err) {
       // 顯示真正原因，且停留久一點方便回報
       setToast(`⚠️ ${err instanceof Error ? err.message : '上傳失敗'}`);
       setTimeout(() => setToast(''), 8000);
     } finally {
+      setUploadProgress(null);
       setUploading(false);
     }
   }
@@ -452,6 +488,7 @@ export function OperatorHome() {
         ref={photoInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={handlePhotoChange}
       />
@@ -691,7 +728,9 @@ export function OperatorHome() {
                       disabled={uploading}
                       className="text-xs font-bold text-brand-sky active:opacity-70 disabled:opacity-60"
                     >
-                      {uploading && uploadModeRef.current === 'gallery' ? '上傳中…' : '＋ 新增照片'}
+                      {uploading && uploadModeRef.current === 'gallery'
+                        ? `上傳中 ${uploadProgress?.current ?? 1}/${uploadProgress?.total ?? 1}`
+                        : '＋ 新增照片（可多選）'}
                     </button>
                   </div>
                   {gallery.length === 0 ? (
