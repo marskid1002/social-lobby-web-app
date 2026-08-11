@@ -7,20 +7,17 @@ import { useAppState } from '@/lib/state';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-
-const TYPE_LABELS: Record<string, string> = {
-  after_party: 'After Party',
-  drinking: '喝一杯',
-  fill_spot: '補位',
-  last_minute: '臨時約會',
-  other: '其他',
-};
+import { REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#FF3C91',
   drinking:    '#F59E0B',
   fill_spot:   '#6C2EFF',
   last_minute: '#EF4444',
+  music:       '#8BD8F1',
+  dancing:     '#6C2EFF',
+  private_party: '#FF3C91',
+  dining:      '#A8E6CF',
   other:       '#9295A5',
 };
 
@@ -92,7 +89,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   }, []);
 
   const typeColor  = TYPE_COLORS[request.requestType] ?? '#9295A5';
-  const typeLabel  = TYPE_LABELS[request.requestType] ?? request.requestType;
+  const typeLabel  = REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType;
   const expiresIn  = formatDistance(new Date(request.expiresAt), new Date(), { locale: zhTW });
   const isExpired  = new Date(request.expiresAt) <= new Date();
 
@@ -197,6 +194,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </span>
             <span className="flex items-center gap-1 text-xs text-zinc-500">
               <MapPin className="w-3 h-3" strokeWidth={1.75} /> {request.area}
+              {request.venueType ? ` · ${VENUE_TYPE_LABELS[request.venueType] ?? request.venueType}` : ''}
             </span>
             <span className="flex items-center gap-1 text-xs text-zinc-500">
               <Users className="w-3 h-3" strokeWidth={1.75} /> {joiners.length}/{request.peopleCount} 人

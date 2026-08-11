@@ -9,14 +9,15 @@ import { zhTW } from 'date-fns/locale';
 import { MapPin, Clock, Users } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { confirmedCountForRequest } from '@/lib/request-attendance';
+import { REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_FILTERS = [
   { value: null,          label: '全部' },
-  { value: 'after_party', label: 'After Party' },
-  { value: 'drinking',    label: '喝一杯' },
-  { value: 'fill_spot',   label: '補位' },
-  { value: 'last_minute', label: '臨時約會' },
-  { value: 'other',       label: '其他' },
+  { value: 'drinking',    label: '喝酒' },
+  { value: 'music',       label: '音樂' },
+  { value: 'dancing',     label: '跳舞' },
+  { value: 'private_party', label: '私人派對' },
+  { value: 'dining',      label: '吃飯' },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -24,6 +25,10 @@ const TYPE_COLORS: Record<string, string> = {
   drinking:    '#F59E0B',
   fill_spot:   '#6C2EFF',
   last_minute: '#EF4444',
+  music:       '#8BD8F1',
+  dancing:     '#6C2EFF',
+  private_party: '#FF3C91',
+  dining:      '#A8E6CF',
   other:       '#9295A5',
 };
 
@@ -196,10 +201,10 @@ export default function RequestsPage() {
                 <button onClick={() => router.push(`/requests/${req.id}`)} className="w-full text-left">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
-                      {TYPE_FILTERS.find(f => f.value === req.requestType)?.label ?? req.requestType}
+                      {REQUEST_TYPE_LABELS[req.requestType] ?? req.requestType}
                     </span>
                     <span className="flex items-center gap-1 text-xs text-zinc-400">
-                      <MapPin className="w-3 h-3" strokeWidth={1.75} /> {req.area}
+                      <MapPin className="w-3 h-3" strokeWidth={1.75} /> {req.area}{req.venueType ? ` · ${VENUE_TYPE_LABELS[req.venueType] ?? req.venueType}` : ''}
                     </span>
                     <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-brand-sky">
                       <Users className="w-3 h-3" strokeWidth={2} /> 還剩 {slotsLeft} 位

@@ -7,10 +7,22 @@ export function cn(...inputs: ClassValue[]) {
 
 export const REQUEST_TYPE_LABELS: Record<string, string> = {
   after_party: 'After Party',
-  drinking: '喝一杯',
+  drinking: '喝酒',
   fill_spot: '補位',
   last_minute: '臨時約會',
+  music: '音樂',
+  dancing: '跳舞',
+  private_party: '私人派對',
+  dining: '吃飯',
   other: '其他',
+};
+
+export const VENUE_TYPE_LABELS: Record<string, string> = {
+  nightclub: '夜店',
+  clubhouse: '會所',
+  home: '住家',
+  bar: '酒吧',
+  motel: '汽旅',
 };
 
 // Deterministic gradient per request — hashes the ID to one of 6 subtle palettes

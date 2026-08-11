@@ -781,7 +781,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
 
   const updateRequest = useCallback((
     requestId: string,
-    changes: Pick<Request, 'area' | 'requestType' | 'peopleCount' | 'note'>,
+    changes: Pick<Request, 'area' | 'venueType' | 'requestType' | 'peopleCount' | 'note'>,
   ) => {
     let updated = false;
     setState((prev) => {

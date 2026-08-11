@@ -83,65 +83,34 @@ test('E：收到私人邀請（requestId=null）→ 推播內容為「有人傳�
   assert.equal(jobs[0].body, '有人傳送了私人邀請給你');
 });
 
-// ── REQUEST_TYPE_LABELS：只改顯示標籤，不得改資料值 last_minute ──────────────
+// ── 發局邀約類型與地點 ────────────────────────────────────────────────
 
-test('REQUEST_TYPE_LABELS.last_minute 顯示標籤改為「臨時約會」，鍵值仍為 last_minute', () => {
-  assert.ok(Object.prototype.hasOwnProperty.call(REQUEST_TYPE_LABELS, 'last_minute'), 'last_minute 鍵值不得被移除/改名');
+test('新發局只提供指定的五種邀約類型', () => {
+  const sheet = src('src/components/PostRequestSheet.tsx');
+  for (const binding of [
+    "value: 'drinking', label: '喝酒'",
+    "value: 'music', label: '音樂'",
+    "value: 'dancing', label: '跳舞'",
+    "value: 'private_party', label: '私人派對'",
+    "value: 'dining', label: '吃飯'",
+  ]) assert.ok(sheet.includes(binding), `缺少邀約類型：${binding}`);
+  for (const legacy of ["value: 'after_party'", "value: 'fill_spot'", "value: 'last_minute'", "value: 'other'"]) {
+    assert.ok(!sheet.includes(legacy), `新發局不應再顯示舊選項：${legacy}`);
+  }
+});
+
+test('新發局提供指定的五種地點，並保留舊局類型顯示相容性', () => {
+  const sheet = src('src/components/PostRequestSheet.tsx');
+  for (const binding of [
+    "value: 'nightclub', label: '夜店'",
+    "value: 'clubhouse', label: '會所'",
+    "value: 'home', label: '住家'",
+    "value: 'bar', label: '酒吧'",
+    "value: 'motel', label: '汽旅'",
+  ]) assert.ok(sheet.includes(binding), `缺少地點：${binding}`);
+  assert.equal(REQUEST_TYPE_LABELS.drinking, '喝酒');
   assert.equal(REQUEST_TYPE_LABELS.last_minute, '臨時約會');
-  // 其餘標籤維持不變
   assert.equal(REQUEST_TYPE_LABELS.after_party, 'After Party');
-  assert.equal(REQUEST_TYPE_LABELS.drinking, '喝一杯');
-  assert.equal(REQUEST_TYPE_LABELS.fill_spot, '補位');
-  assert.equal(REQUEST_TYPE_LABELS.other, '其他');
-});
-
-test('用詞一致性：所有使用者可見的 last_minute 標籤都統一顯示「臨時約會」，且資料鍵值不變', () => {
-  // 這些檔案各自維護一份 last_minute 顯示標籤；文案須一致，否則不同頁面會出現不同用詞。
-  const labelFiles = [
-    'src/lib/utils.ts',
-    'src/components/PostRequestSheet.tsx',
-    'src/components/RequestCard.tsx',
-    'src/components/OperatorHome.tsx',
-    'src/lib/mock/i18n.ts',
-    'src/app/(app)/requests/page.tsx',
-    'src/app/(app)/requests/[id]/page.tsx',
-    'src/app/admin/page.tsx',        // 後台原本顯示「臨時邀約」
-    'src/app/(app)/u/[id]/page.tsx', // 個人檔案頁原本顯示「臨時揪」
-  ];
-  // 曾經出現過的舊寫法，任何一個都不得殘留在上述檔案
-  const legacyLabels = ['臨時局', '臨時邀約', '臨時揪'];
-  for (const f of labelFiles) {
-    const s = src(f);
-    assert.ok(s.includes('臨時約會'), `${f} 的 last_minute 顯示標籤應為「臨時約會」`);
-    for (const legacy of legacyLabels) {
-      assert.ok(!s.includes(legacy), `${f} 不得殘留舊標籤「${legacy}」`);
-    }
-    // 只改顯示文字：資料鍵值/選項值必須保留
-    assert.ok(
-      s.includes('last_minute') || s.includes('typeLastMinute'),
-      `${f} 的資料鍵值（last_minute / typeLastMinute）不得被改動`,
-    );
-  }
-});
-
-test('用詞一致性：last_minute 資料鍵值與選項值完全未被改動（只換顯示文字）', () => {
-  // 逐檔比對「鍵值仍綁在原本的位置」，避免有人為了改文案而動到 key / value / requestType。
-  const keyBindings = [
-    ['src/lib/utils.ts', "last_minute: '臨時約會'"],
-    ['src/components/RequestCard.tsx', "last_minute: '臨時約會'"],
-    ['src/components/OperatorHome.tsx', "last_minute: '臨時約會'"],
-    ['src/app/(app)/requests/[id]/page.tsx', "last_minute: '臨時約會'"],
-    ['src/app/admin/page.tsx', "last_minute: '臨時約會'"],
-    ['src/components/PostRequestSheet.tsx', "value: 'last_minute', label: '臨時約會'"],
-    ['src/app/(app)/requests/page.tsx', "value: 'last_minute', label: '臨時約會'"],
-    ['src/app/(app)/u/[id]/page.tsx', "value: 'last_minute', label: '臨時約會'"],
-    ['src/lib/mock/i18n.ts', "typeLastMinute: '臨時約會'"],
-  ];
-  for (const [f, binding] of keyBindings) {
-    assert.ok(src(f).includes(binding), `${f} 應維持「${binding}」（鍵值不得改動）`);
-  }
-  // requestType 型別定義本身不得被更名
-  assert.ok(src('src/lib/mock/types.ts').includes("| 'last_minute'"), 'RequestType 的 last_minute 不得被改名');
 });
 
 // ── C：matches/accept/route.ts（推播，靜態字串比對）──────────────────────────

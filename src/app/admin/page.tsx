@@ -202,6 +202,10 @@ const REQUEST_TYPE_LABEL: Record<string, string> = {
   drinking: '喝酒',
   fill_spot: '臨時補位',
   last_minute: '臨時約會',
+  music: '音樂',
+  dancing: '跳舞',
+  private_party: '私人派對',
+  dining: '吃飯',
   other: '其他',
 };
 

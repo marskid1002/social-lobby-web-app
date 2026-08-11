@@ -3,16 +3,24 @@
 import { useEffect, useState } from 'react';
 import { X, Minus, Plus } from 'lucide-react';
 import { useAppState } from '@/lib/state';
-import type { Request, RequestType } from '@/lib/mock';
+import type { Request, RequestType, VenueType } from '@/lib/mock';
 import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 import { useRouter } from 'next/navigation';
 
 const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
-  { value: 'after_party', label: 'After Party', color: '#FF3C91' },
-  { value: 'drinking', label: '喝一杯', color: '#F59E0B' },
-  { value: 'fill_spot', label: '補位', color: '#6C2EFF' },
-  { value: 'last_minute', label: '臨時約會', color: '#EF4444' },
-  { value: 'other', label: '其他', color: '#9295A5' },
+  { value: 'drinking', label: '喝酒', color: '#F59E0B' },
+  { value: 'music', label: '音樂', color: '#8BD8F1' },
+  { value: 'dancing', label: '跳舞', color: '#6C2EFF' },
+  { value: 'private_party', label: '私人派對', color: '#FF3C91' },
+  { value: 'dining', label: '吃飯', color: '#A8E6CF' },
+];
+
+const VENUE_TYPES: { value: VenueType; label: string }[] = [
+  { value: 'nightclub', label: '夜店' },
+  { value: 'clubhouse', label: '會所' },
+  { value: 'home', label: '住家' },
+  { value: 'bar', label: '酒吧' },
+  { value: 'motel', label: '汽旅' },
 ];
 
 interface Props {
@@ -33,6 +41,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
   const [city, setCity] = useState<AreaCity>(() => cityForArea(initialArea));
   const [area, setArea] = useState(initialArea);
   const [type, setType] = useState<RequestType | null>(null);
+  const [venueType, setVenueType] = useState<VenueType | null>(null);
   const [count, setCount] = useState(Math.min(1, maxCount));
   const [note, setNote] = useState('');
   const [toast, setToast] = useState(false);
@@ -43,6 +52,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
     setCity(cityForArea(nextArea));
     setArea(nextArea);
     setType(request?.requestType ?? null);
+    setVenueType(request?.venueType ?? null);
     setCount(request?.peopleCount ?? 1);
     setNote(request?.note ?? '');
   }, [currentUser?.defaultArea, open, request]);
@@ -61,13 +71,15 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
     if (request) {
       const updated = updateRequest(request.id, {
         area,
+        venueType: venueType ?? undefined,
         requestType: type,
         peopleCount: count,
         note,
       });
       if (!updated) return;
     } else {
-      postRequest({ area, requestType: type, peopleCount: count, note });
+      if (!venueType) return;
+      postRequest({ area, venueType, requestType: type, peopleCount: count, note });
     }
     setToast(true);
     setTimeout(() => {
@@ -75,6 +87,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
       onClose();
       onSaved?.();
       setType(null);
+      setVenueType(null);
       setNote('');
       setCount(Math.min(1, maxCount));
       if (!isEditing) router.push('/inbox');
@@ -141,9 +154,30 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
               </div>
             </div>
 
+            {/* Venue */}
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-brand-ink">地點</label>
+              <div className="flex flex-wrap gap-2">
+                {VENUE_TYPES.map((venue) => (
+                  <button
+                    key={venue.value}
+                    type="button"
+                    onClick={() => setVenueType(venue.value)}
+                    className={`rounded-full border-2 px-4 py-2 text-sm font-medium transition-all active:scale-95 ${
+                      venueType === venue.value
+                        ? 'border-transparent bg-brand-mint text-brand-ink'
+                        : 'border-brand-lavender bg-white text-zinc-500'
+                    }`}
+                  >
+                    {venue.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Type */}
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-brand-ink">類型</label>
+              <label className="text-sm font-semibold text-brand-ink">邀約類型</label>
               <div className="flex flex-wrap gap-2">
                 {REQUEST_TYPES.map((t) => (
                   <button
@@ -209,7 +243,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             <div className="app-sticky-sheet-action">
               <button
                 onClick={handleSubmit}
-                disabled={!type}
+                disabled={!type || !venueType}
                 className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
               >
               {isEditing ? '儲存變更' : '發送邀請'}

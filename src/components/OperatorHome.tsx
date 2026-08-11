@@ -15,9 +15,13 @@ import {
 
 const TYPE_LABELS: Record<string, string> = {
   after_party: 'After Party',
-  drinking: '喝一杯',
+  drinking: '喝酒',
   fill_spot: '補位',
   last_minute: '臨時約會',
+  music: '音樂',
+  dancing: '跳舞',
+  private_party: '私人派對',
+  dining: '吃飯',
   other: '其他',
 };
 
@@ -26,6 +30,10 @@ const TYPE_COLORS: Record<string, string> = {
   drinking: '#F59E0B',
   fill_spot: '#6C2EFF',
   last_minute: '#EF4444',
+  music: '#8BD8F1',
+  dancing: '#6C2EFF',
+  private_party: '#FF3C91',
+  dining: '#A8E6CF',
   other: '#9295A5',
 };
 

@@ -7,7 +7,13 @@ export type RequestType =
   | 'drinking'
   | 'fill_spot'
   | 'last_minute'
+  | 'music'
+  | 'dancing'
+  | 'private_party'
+  | 'dining'
   | 'other';
+
+export type VenueType = 'nightclub' | 'clubhouse' | 'home' | 'bar' | 'motel';
 
 export type RequestStatus = 'open' | 'closed' | 'cancelled' | 'expired';
 
@@ -67,6 +73,7 @@ export interface Request {
   id: string;
   creatorId: string;
   area: string;
+  venueType?: VenueType;
   requestType: RequestType;
   peopleCount: number;
   note: string;

@@ -46,7 +46,8 @@ const s = (v: unknown): string | undefined => (typeof v === 'string' ? v : undef
 const asArr = (v: unknown): Item[] => (Array.isArray(v) ? (v.filter(isObj) as Item[]) : []);
 
 const REQUEST_STATUSES = new Set(['open', 'closed']);
-const REQUEST_TYPES = new Set(['after_party', 'drinking', 'fill_spot', 'last_minute', 'other']);
+const REQUEST_TYPES = new Set(['after_party', 'drinking', 'fill_spot', 'last_minute', 'music', 'dancing', 'private_party', 'dining', 'other']);
+const VENUE_TYPES = new Set(['nightclub', 'clubhouse', 'home', 'bar', 'motel']);
 const UPDATE_EVENTTYPES = new Set(['request_posted', 'response_received', 'invite_received', 'invite_accepted']);
 
 // response 狀態轉移矩陣（依 state.ts 實際流程；[from,to]）
@@ -112,6 +113,9 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
           }
           if (typeof r.requestType === 'string' && REQUEST_TYPES.has(r.requestType)) {
             merged.requestType = r.requestType;
+          }
+          if (typeof r.venueType === 'string' && VENUE_TYPES.has(r.venueType)) {
+            merged.venueType = r.venueType;
           }
           if (typeof r.peopleCount === 'number' && Number.isInteger(r.peopleCount) && r.peopleCount >= 1 && r.peopleCount <= 20) {
             merged.peopleCount = r.peopleCount;

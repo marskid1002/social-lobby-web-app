@@ -7,6 +7,7 @@ import { useAppState, otherIdFromThread } from '@/lib/state';
 import { uploadChatImage } from '@/lib/image';
 import type { ChatMessage } from '@/lib/mock';
 import { directInvitationThreadId } from '@/lib/chat-authz';
+import { REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 interface ChatPageProps {
   params: Promise<{ id: string }>;
@@ -469,7 +470,9 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
           <div className="flex flex-col min-w-0 flex-1">
             <span className="font-semibold text-sm text-brand-ink truncate leading-tight">
-              {groupRequest.area} · {groupRequest.requestType === 'after_party' ? 'After Party' : groupRequest.requestType} 群組
+              {groupRequest.area}
+              {groupRequest.venueType ? ` · ${VENUE_TYPE_LABELS[groupRequest.venueType] ?? groupRequest.venueType}` : ''}
+              {' · '}{REQUEST_TYPE_LABELS[groupRequest.requestType] ?? groupRequest.requestType} 群組
             </span>
             <span className="text-xs text-zinc-400 leading-tight">
               {allParticipants.length} 人 · {confirmedCount}/{groupInvites.length} 已確認見面
