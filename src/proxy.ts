@@ -60,7 +60,7 @@ export async function proxy(req: NextRequest) {
 
   if (APP_PAGES.some((prefix) => pathname === prefix || pathname.startsWith(prefix))) {
     if (!session) return redirectTo(req, '/login');
-    if (session.role === 'admin' || session.role === 'account_admin' || (session.role === 'manager' && session.mustChangeNickname)) {
+    if (session.role === 'account_admin' || (session.role === 'manager' && session.mustChangeNickname)) {
       return redirectTo(req, homeFor(session));
     }
   }
