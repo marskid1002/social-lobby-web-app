@@ -6,7 +6,7 @@ import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { MessageCircle, TrendingUp, MessageSquare, UserCheck, CheckCircle, Users } from 'lucide-react';
-import { getRequestGradient, REQUEST_TYPE_LABELS } from '@/lib/utils';
+import { getRequestGradient, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 import { directInvitationThreadId } from '@/lib/chat-authz';
 import { unreadMessagesFor } from '@/lib/chat-unread';
 
@@ -318,7 +318,7 @@ export default function InboxPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-brand-ink">
                     {request
-                      ? `${REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType} · ${creatorUser?.nickname ?? '某人'}`
+                      ? `${SHOW_REQUEST_CLASSIFICATION ? `${REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType} · ` : ''}${creatorUser?.nickname ?? '某人'}`
                       : isEscort
                         ? `你加入了 ${creatorUser?.nickname ?? '某人'} 的約會`
                         : `${otherUser?.nickname} 的私人邀請`}
@@ -402,7 +402,7 @@ export default function InboxPage() {
                   <Users className="w-4 h-4 text-amber-500" strokeWidth={2} />
                 </div>
               );
-              chipLabel = request ? (REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType) : null;
+              chipLabel = SHOW_REQUEST_CLASSIFICATION && request ? (REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType) : null;
               text = (
                 <>
                   <span className="font-semibold">{actor?.nickname ?? '某人'}</span>
@@ -417,7 +417,7 @@ export default function InboxPage() {
                   <UserCheck className="w-4 h-4 text-brand-sky" strokeWidth={2} />
                 </div>
               );
-              chipLabel = request ? (REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType) : null;
+              chipLabel = SHOW_REQUEST_CLASSIFICATION && request ? (REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType) : null;
               text = (
                 <>
                   <span className="font-semibold">{actor?.nickname ?? '某人'}</span>
@@ -432,7 +432,7 @@ export default function InboxPage() {
                   <TrendingUp className="w-4 h-4 text-amber-500" strokeWidth={2} />
                 </div>
               );
-              chipLabel = request ? (REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType) : null;
+              chipLabel = SHOW_REQUEST_CLASSIFICATION && request ? (REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType) : null;
               text = (
                 <>
                   {'你的約會已被查看 '}

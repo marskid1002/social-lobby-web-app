@@ -8,7 +8,7 @@ import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
-import { getRequestAccentColor, REQUEST_TYPE_LABELS } from '@/lib/utils';
+import { getRequestAccentColor, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { activeConfirmedGirlIds, confirmedGirlIdsForRequest } from '@/lib/request-attendance';
 
@@ -53,12 +53,12 @@ function MyRequestCard({
       <div className={`p-4 ${atCap ? 'bg-zinc-50' : 'bg-white active:bg-brand-snow'}`}>
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span
+            {SHOW_REQUEST_CLASSIFICATION && <span
               className="text-xs font-semibold px-2 py-0.5 rounded-full"
               style={{ backgroundColor: accent + '44', color: '#020102' }}
             >
               {REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType}
-            </span>
+            </span>}
             <span className="text-xs text-zinc-400">{request.area}</span>
             <span className="text-xs text-zinc-400">· {request.peopleCount} 人</span>
           </div>

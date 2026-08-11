@@ -5,6 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// 暫時隱藏發局分類欄位；資料仍保留，避免破壞既有局並方便日後恢復。
+export const SHOW_REQUEST_CLASSIFICATION = false;
+
 export const REQUEST_TYPE_LABELS: Record<string, string> = {
   after_party: 'After Party',
   drinking: '喝酒',

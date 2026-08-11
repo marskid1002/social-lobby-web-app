@@ -9,7 +9,7 @@ import { zhTW } from 'date-fns/locale';
 import { MapPin, Clock, Users } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { confirmedCountForRequest } from '@/lib/request-attendance';
-import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_FILTERS = [
   { value: null,          label: '全部' },
@@ -62,7 +62,7 @@ export default function RequestsPage() {
     const filtered = openRequests.filter((r) => !typeFilter || r.requestType === typeFilter);
     return (
       <div className="px-4 py-3">
-        <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
+        {SHOW_REQUEST_CLASSIFICATION && <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
           {TYPE_FILTERS.map((f) => (
             <button
               key={String(f.value)}
@@ -74,7 +74,7 @@ export default function RequestsPage() {
               {f.label}
             </button>
           ))}
-        </div>
+        </div>}
         <div className="flex flex-col gap-3">
           {filtered.map((req) => (
             <RequestCard key={req.id} request={req} variant="ledger" creator={state.users.find((u) => u.id === req.creatorId)} />
@@ -200,17 +200,17 @@ export default function RequestsPage() {
               >
                 <button onClick={() => router.push(`/requests/${req.id}`)} className="w-full text-left">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
+                    {SHOW_REQUEST_CLASSIFICATION && <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
                       {REQUEST_TYPE_LABELS[req.requestType] ?? req.requestType}
-                    </span>
+                    </span>}
                     <span className="flex items-center gap-1 text-xs text-zinc-400">
-                      <MapPin className="w-3 h-3" strokeWidth={1.75} /> {req.area}{req.venueType ? ` · ${VENUE_TYPE_LABELS[req.venueType] ?? req.venueType}` : ''}
+                      <MapPin className="w-3 h-3" strokeWidth={1.75} /> {req.area}{SHOW_REQUEST_CLASSIFICATION && req.venueType ? ` · ${VENUE_TYPE_LABELS[req.venueType] ?? req.venueType}` : ''}
                     </span>
                     <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-brand-sky">
                       <Users className="w-3 h-3" strokeWidth={2} /> 還剩 {slotsLeft} 位
                     </span>
                   </div>
-                  {req.partyFormat && (
+                  {SHOW_REQUEST_CLASSIFICATION && req.partyFormat && (
                     <p className="mb-2 text-xs font-semibold text-blue-600">
                       {PARTY_FORMAT_LABELS[req.partyFormat] ?? req.partyFormat}
                     </p>

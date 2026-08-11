@@ -6,6 +6,7 @@ import { useAppState } from '@/lib/state';
 import type { PartyFormat, Request, RequestType, VenueType } from '@/lib/mock';
 import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 import { useRouter } from 'next/navigation';
+import { SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 
 const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
   { value: 'drinking', label: '喝酒', color: '#F59E0B' },
@@ -74,21 +75,19 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
   }
 
   function handleSubmit() {
-    if (!type) return;
     if (currentUser?.tier === 'guest') return; // 訪客不可發局（伺服器也會擋）
     if (request) {
       const updated = updateRequest(request.id, {
         area,
         venueType: venueType ?? undefined,
         partyFormat: partyFormat ?? undefined,
-        requestType: type,
+        requestType: type ?? request.requestType,
         peopleCount: count,
         note,
       });
       if (!updated) return;
     } else {
-      if (!venueType || !partyFormat) return;
-      postRequest({ area, venueType, partyFormat, requestType: type, peopleCount: count, note });
+      postRequest({ area, requestType: 'other', peopleCount: count, note });
     }
     setToast(true);
     setTimeout(() => {
@@ -165,6 +164,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             </div>
 
             {/* Venue */}
+            {SHOW_REQUEST_CLASSIFICATION && (
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-brand-ink">地點</label>
               <div className="flex flex-wrap gap-2">
@@ -184,8 +184,10 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Type */}
+            {SHOW_REQUEST_CLASSIFICATION && (
             <div className="flex flex-col gap-2">
               <label className="text-sm font-semibold text-brand-ink">邀約類型</label>
               <div className="flex flex-wrap gap-2">
@@ -205,8 +207,10 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
                 ))}
               </div>
             </div>
+            )}
 
             {/* Party format — required */}
+            {SHOW_REQUEST_CLASSIFICATION && (
             <fieldset className="flex flex-col gap-2">
               <legend className="text-sm font-semibold text-brand-ink">局型</legend>
               <div className="flex flex-wrap gap-4">
@@ -232,6 +236,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
                 })}
               </div>
             </fieldset>
+            )}
 
             {/* Count — capped by tier */}
             <div className="flex flex-col gap-2">
@@ -280,7 +285,6 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             <div className="app-sticky-sheet-action">
               <button
                 onClick={handleSubmit}
-                disabled={!type || !venueType || !partyFormat}
                 className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
               >
               {isEditing ? '儲存變更' : '發送邀請'}

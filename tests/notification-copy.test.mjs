@@ -85,7 +85,7 @@ test('E：收到私人邀請（requestId=null）→ 推播內容為「有人傳�
 
 // ── 發局邀約類型與地點 ────────────────────────────────────────────────
 
-test('新發局只提供指定的五種邀約類型', () => {
+test('保留五種邀約類型定義，方便日後恢復', () => {
   const sheet = src('src/components/PostRequestSheet.tsx');
   for (const binding of [
     "value: 'drinking', label: '喝酒'",
@@ -99,7 +99,7 @@ test('新發局只提供指定的五種邀約類型', () => {
   }
 });
 
-test('新發局提供指定的五種地點，並保留舊局類型顯示相容性', () => {
+test('保留五種地點定義與舊局類型相容性，方便日後恢復', () => {
   const sheet = src('src/components/PostRequestSheet.tsx');
   for (const binding of [
     "value: 'nightclub', label: '夜店'",
@@ -113,15 +113,18 @@ test('新發局提供指定的五種地點，並保留舊局類型顯示相容�
   assert.equal(REQUEST_TYPE_LABELS.after_party, 'After Party');
 });
 
-test('新發局必選局型，提供局有女、局無女與 1 對 1', () => {
+test('邀約類型、地點與局型暫時隱藏，且不再阻擋發局', () => {
+  const utils = src('src/lib/utils.ts');
   const sheet = src('src/components/PostRequestSheet.tsx');
   for (const binding of [
     "value: 'with_women', label: '局有女'",
     "value: 'without_women', label: '局無女'",
     "value: 'one_on_one', label: '1 對 1'",
   ]) assert.ok(sheet.includes(binding), `缺少局型：${binding}`);
-  assert.ok(sheet.includes('!type || !venueType || !partyFormat'), '未選局型時必須禁止送出');
-  assert.ok(sheet.includes("selected ? 'border-blue-500 bg-blue-500'"), '選取圓圈必須變藍色');
+  assert.ok(utils.includes('export const SHOW_REQUEST_CLASSIFICATION = false'), '分類欄位開關必須關閉');
+  assert.ok(sheet.includes('SHOW_REQUEST_CLASSIFICATION &&'), '三組分類欄位必須由隱藏開關控制');
+  assert.ok(!sheet.includes('disabled={!type || !venueType || !partyFormat}'), '隱藏欄位不可阻擋發局');
+  assert.ok(sheet.includes("postRequest({ area, requestType: 'other', peopleCount: count, note })"), '新局應使用相容預設值送出');
 });
 
 // ── C：matches/accept/route.ts（推播，靜態字串比對）──────────────────────────

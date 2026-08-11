@@ -8,7 +8,7 @@ import { zhTW } from 'date-fns/locale';
 import { useState } from 'react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { confirmedCountForRequest } from '@/lib/request-attendance';
-import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#FF3C91',
@@ -77,18 +77,18 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
 
       {/* Row 2: type badge + meta */}
       <div className="flex items-center gap-2 mb-2">
-        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
+        {SHOW_REQUEST_CLASSIFICATION && <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
           {typeLabel}
-        </span>
+        </span>}
         <span className="text-xs text-zinc-500">
-          {request.area}{request.venueType ? ` · ${VENUE_TYPE_LABELS[request.venueType] ?? request.venueType}` : ''} · {request.peopleCount} 人
+          {request.area}{SHOW_REQUEST_CLASSIFICATION && request.venueType ? ` · ${VENUE_TYPE_LABELS[request.venueType] ?? request.venueType}` : ''} · {request.peopleCount} 人
         </span>
         {variant === 'inbox' && joinAskCount > 0 && (
           <span className="ml-auto text-xs font-semibold text-brand-sky">{joinAskCount} 人回應</span>
         )}
       </div>
 
-      {request.partyFormat && (
+      {SHOW_REQUEST_CLASSIFICATION && request.partyFormat && (
         <p className="mb-2 text-xs font-semibold text-blue-600">
           {PARTY_FORMAT_LABELS[request.partyFormat] ?? request.partyFormat}
         </p>

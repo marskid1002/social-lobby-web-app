@@ -7,7 +7,7 @@ import { useAppState } from '@/lib/state';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#FF3C91',
@@ -189,13 +189,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         {/* Header card — includes FOMO strip */}
         <div className="juga-request-card bg-white rounded-2xl p-4 shadow-card">
           <div className="flex items-center gap-2 mb-3">
-            <span className="px-3 py-1 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
+            {SHOW_REQUEST_CLASSIFICATION && <span className="px-3 py-1 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
               {typeLabel}
-            </span>
+            </span>}
             <span className="flex items-center gap-1 text-xs text-zinc-500">
               <MapPin className="w-3 h-3" strokeWidth={1.75} /> {request.area}
-              {request.venueType ? ` · ${VENUE_TYPE_LABELS[request.venueType] ?? request.venueType}` : ''}
-              {request.partyFormat ? ` · ${PARTY_FORMAT_LABELS[request.partyFormat] ?? request.partyFormat}` : ''}
+              {SHOW_REQUEST_CLASSIFICATION && request.venueType ? ` · ${VENUE_TYPE_LABELS[request.venueType] ?? request.venueType}` : ''}
+              {SHOW_REQUEST_CLASSIFICATION && request.partyFormat ? ` · ${PARTY_FORMAT_LABELS[request.partyFormat] ?? request.partyFormat}` : ''}
             </span>
             <span className="flex items-center gap-1 text-xs text-zinc-500">
               <Users className="w-3 h-3" strokeWidth={1.75} /> {joiners.length}/{request.peopleCount} 人

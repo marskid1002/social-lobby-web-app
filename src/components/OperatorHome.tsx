@@ -8,6 +8,7 @@ import { zhTW } from 'date-fns/locale';
 import { X, Check, UserCog, Camera, Trash2, Pencil } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
+import { SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 import {
   activeConfirmedGirlIds,
   confirmedCountForRequest,
@@ -312,12 +313,12 @@ export function OperatorHome() {
                 </div>
 
                 <div className="flex items-center gap-2 mb-2">
-                  <span
+                  {SHOW_REQUEST_CLASSIFICATION && <span
                     className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-brand-ink"
                     style={{ backgroundColor: typeColor }}
                   >
                     {typeLabel}
-                  </span>
+                  </span>}
                   <span className="text-xs text-zinc-500">{req.area} · {req.peopleCount} 人</span>
                 </div>
 

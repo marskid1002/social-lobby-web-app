@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 
 type Account = {
   key: string;
@@ -625,7 +626,7 @@ export default function AdminPage() {
                           }`} />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-bold">
-                              {flow.creatorName} · {REQUEST_TYPE_LABEL[flow.requestType] ?? flow.requestType}
+                              {flow.creatorName}{SHOW_REQUEST_CLASSIFICATION ? ` · ${REQUEST_TYPE_LABEL[flow.requestType] ?? flow.requestType}` : ''}
                             </p>
                             <p className={`truncate text-xs ${flow.health === 'error' ? 'text-red-600' : 'text-zinc-500'}`}>
                               {flow.issue}
