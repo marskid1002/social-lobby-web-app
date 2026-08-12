@@ -143,6 +143,19 @@ type ManagerRoster = {
   members: RosterMember[];
 };
 
+type EscortGallery = {
+  id: string;
+  nickname: string;
+  bio: string;
+  defaultArea: string;
+  createdAt: string;
+  managerId: string;
+  managerAccount: string;
+  managerName: string;
+  avatarUrl: string;
+  photos: string[];
+};
+
 type SystemStatus = {
   ready: boolean;
   redisConfigured: boolean;
@@ -180,14 +193,16 @@ type DashboardData = {
   issues: IssueReport[];
   devices: DeviceSummary[];
   managerRosters: ManagerRoster[];
+  escortGalleries: EscortGallery[];
 };
 
-type Tab = 'overview' | 'flows' | 'accounts' | 'reports' | 'chats' | 'system' | 'danger';
+type Tab = 'overview' | 'flows' | 'accounts' | 'galleries' | 'reports' | 'chats' | 'system' | 'danger';
 
 const NAV: Array<{ id: Tab; label: string; short: string }> = [
   { id: 'overview', label: '營運總覽', short: '總覽' },
   { id: 'flows', label: '流程診斷', short: '流程' },
   { id: 'accounts', label: '帳號管理', short: '帳號' },
+  { id: 'galleries', label: '小姐相簿總覽', short: '相簿' },
   { id: 'reports', label: '檢舉中心', short: '檢舉' },
   { id: 'chats', label: '聊天室查詢', short: '聊天' },
   { id: 'system', label: '系統狀態', short: '系統' },
@@ -268,6 +283,9 @@ const fmtTime = (iso?: string) => {
   });
 };
 
+const escortImages = (escort: EscortGallery): string[] =>
+  [...new Set([escort.avatarUrl, ...escort.photos].filter(Boolean))];
+
 function StatusDot({ ok }: { ok: boolean }) {
   return <span className={`inline-block h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />;
 }
@@ -312,6 +330,7 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState('');
   const [rosterOpen, setRosterOpen] = useState<string | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState<{ escortId: string; index: number } | null>(null);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -380,6 +399,52 @@ export default function AdminPage() {
       )
     );
   }, [data, search]);
+
+  const filteredEscortGalleries = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!data) return [];
+    const galleries = data.escortGalleries ?? [];
+    if (!query) return galleries;
+    return galleries.filter((escort) =>
+      [
+        escort.nickname,
+        escort.defaultArea,
+        escort.managerAccount,
+        escort.managerName,
+        escort.managerId,
+      ].some((value) => value.toLowerCase().includes(query))
+    );
+  }, [data, search]);
+
+  useEffect(() => {
+    if (!galleryOpen || !data) return;
+    const escort = data.escortGalleries.find((item) => item.id === galleryOpen.escortId);
+    const images = escort ? escortImages(escort) : [];
+    if (images.length === 0) {
+      setGalleryOpen(null);
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setGalleryOpen(null);
+      if (event.key === 'ArrowLeft') {
+        setGalleryOpen((current) => current
+          ? { ...current, index: (current.index - 1 + images.length) % images.length }
+          : null);
+      }
+      if (event.key === 'ArrowRight') {
+        setGalleryOpen((current) => current
+          ? { ...current, index: (current.index + 1) % images.length }
+          : null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [galleryOpen, data]);
 
   const filteredChats = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -968,6 +1033,96 @@ export default function AdminPage() {
               </section>
             )}
 
+            {tab === 'galleries' && (
+              <section>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold">小姐相簿總覽</h1>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      僅 A000 可查看所有小姐的大頭照、相簿與所屬帳號。
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full bg-pink-100 px-3 py-1 text-xs font-bold text-pink-700">
+                    共 {data.escortGalleries?.length ?? 0} 位
+                  </span>
+                </div>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="搜尋小姐、地區或所屬帳號"
+                  className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-pink-400"
+                />
+
+                {filteredEscortGalleries.length > 0 ? (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {filteredEscortGalleries.map((escort) => {
+                      const images = escortImages(escort);
+                      const coverImage = images[0];
+                      return (
+                        <article key={escort.id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                          <div className="flex items-center gap-3 border-b border-zinc-100 p-4">
+                            {coverImage ? (
+                              <button
+                                type="button"
+                                onClick={() => setGalleryOpen({ escortId: escort.id, index: 0 })}
+                                className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-zinc-100"
+                              >
+                                <img src={coverImage} alt={`${escort.nickname} 大頭照`} className="h-full w-full object-cover" />
+                              </button>
+                            ) : (
+                              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-zinc-100 text-xs text-zinc-400">
+                                無照片
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-bold text-zinc-900">{escort.nickname}</p>
+                              <p className="mt-1 truncate text-xs text-zinc-500">
+                                {escort.managerAccount} · {escort.managerName}
+                              </p>
+                              <p className="mt-1 text-xs text-zinc-400">
+                                {escort.defaultArea || '未填地區'} · {images.length} 張照片
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="p-4">
+                            {escort.bio && (
+                              <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-zinc-500">{escort.bio}</p>
+                            )}
+                            {images.length > 0 ? (
+                              <div className="grid grid-cols-4 gap-2">
+                                {images.map((url, index) => (
+                                  <button
+                                    key={`${url}-${index}`}
+                                    type="button"
+                                    onClick={() => setGalleryOpen({ escortId: escort.id, index })}
+                                    className="aspect-square overflow-hidden rounded-xl bg-zinc-100 transition hover:opacity-80"
+                                  >
+                                    <img
+                                      src={url}
+                                      alt={`${escort.nickname} 照片 ${index + 1}`}
+                                      loading="lazy"
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="rounded-xl bg-zinc-50 py-6 text-center text-xs text-zinc-400">尚未上傳照片</p>
+                            )}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-400">
+                    找不到符合條件的小姐
+                  </p>
+                )}
+              </section>
+            )}
+
             {tab === 'reports' && (
               <section>
                 <h1 className="text-2xl font-bold">回報與檢舉中心</h1>
@@ -1259,6 +1414,73 @@ export default function AdminPage() {
           </div>
         </main>
       </div>
+
+      {galleryOpen && (() => {
+        const escort = data.escortGalleries.find((item) => item.id === galleryOpen.escortId);
+        if (!escort) return null;
+        const images = escortImages(escort);
+        if (images.length === 0) return null;
+        const index = Math.min(galleryOpen.index, images.length - 1);
+        return (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${escort.nickname} 相簿`}
+            onClick={() => setGalleryOpen(null)}
+          >
+            <div className="relative flex h-full w-full max-w-6xl flex-col" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-center justify-between pb-3 text-white">
+                <div>
+                  <p className="font-bold">{escort.nickname}</p>
+                  <p className="text-xs text-white/60">{index + 1} / {images.length}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGalleryOpen(null)}
+                  className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-2xl leading-none hover:bg-white/20"
+                  aria-label="關閉相簿"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="relative min-h-0 flex-1">
+                <img
+                  src={images[index]}
+                  alt={`${escort.nickname} 照片 ${index + 1}`}
+                  className="h-full w-full object-contain"
+                />
+                {images.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryOpen({
+                        escortId: escort.id,
+                        index: (index - 1 + images.length) % images.length,
+                      })}
+                      className="absolute left-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-2xl text-white hover:bg-black/70"
+                      aria-label="上一張"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryOpen({
+                        escortId: escort.id,
+                        index: (index + 1) % images.length,
+                      })}
+                      className="absolute right-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-2xl text-white hover:bg-black/70"
+                      aria-label="下一張"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {deleteTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">

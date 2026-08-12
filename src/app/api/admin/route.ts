@@ -185,6 +185,8 @@ export async function GET(req: NextRequest) {
     invitations,
     chatMessages,
     escorts,
+    photoOverrides,
+    photoGalleries,
     presence,
     auditLogs,
     traceEvents,
@@ -199,6 +201,8 @@ export async function GET(req: NextRequest) {
     getCollection('invitations'),
     getCollection('chatMessages'),
     getCollection('escorts'),
+    getCollection('photoOverrides'),
+    getCollection('photoGalleries'),
     getCollection('presence'),
     listAdminAudit(),
     listFlowTraces({ limit: 1000 }),
@@ -226,9 +230,50 @@ export async function GET(req: NextRequest) {
     ...issue,
     screenshots: screenshots?.map((screenshot) => ({ id: screenshot.id })) ?? [],
   }));
+  const avatarByEscort = new Map(
+    photoOverrides.map((item) => [stringValue(item.id), stringValue(item.avatarUrl)]),
+  );
+  const galleryByEscort = new Map(
+    photoGalleries.map((item) => [
+      stringValue(item.id),
+      Array.isArray(item.urls) ? item.urls.map(stringValue).filter(Boolean) : [],
+    ]),
+  );
+  const accountByUserId = new Map(accounts.map((account) => [account.userId, account]));
+  const escortGalleries = escorts
+    .filter((escort) => !escort.removed)
+    .map((escort) => {
+      const id = stringValue(escort.id);
+      const managerId = stringValue(escort.managerId);
+      const manager = accountByUserId.get(managerId);
+      return {
+        id,
+        nickname: stringValue(escort.nickname) || '未命名',
+        bio: stringValue(escort.bio),
+        defaultArea: stringValue(escort.defaultArea),
+        createdAt: stringValue(escort.createdAt),
+        managerId,
+        managerAccount: manager?.key || managerId,
+        managerName: manager?.nickname || '找不到所屬帳號',
+        avatarUrl: avatarByEscort.get(id) || '',
+        photos: galleryByEscort.get(id) || [],
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return NextResponse.json(
-    { accounts, reports, dashboard, managerRosters, system, auditLogs, traceEvents, issues: safeIssues, devices },
+    {
+      accounts,
+      reports,
+      dashboard,
+      managerRosters,
+      escortGalleries,
+      system,
+      auditLogs,
+      traceEvents,
+      issues: safeIssues,
+      devices,
+    },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }
