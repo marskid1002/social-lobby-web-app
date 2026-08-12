@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     const activationCode = await regenerateManagerActivation(key);
     if (!activationCode) return NextResponse.json({ error: '無法產生啟用碼' }, { status: 400 });
     await Promise.all([removeDevicesForUser(target.userId), removeSubscriptionsForUser(target.userId)]);
-    await audit(auth.session.userId, action, key, '24 小時一次性啟用碼');
+    await audit(auth.session.userId, action, key, '一次性啟用碼（使用或重發後失效）');
     return NextResponse.json({ ok: true, account: key, activationCode });
   }
 

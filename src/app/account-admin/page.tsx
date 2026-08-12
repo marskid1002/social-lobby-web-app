@@ -40,7 +40,7 @@ export default function AccountAdminPage() {
       const data = await response.json();
       if (!response.ok || !data.ok) return setMessage(data.error ?? '操作失敗');
       if (data.activationCode) {
-        setMessage(`${data.account} 一次性啟用碼：${data.activationCode}（24 小時內使用，只顯示這一次）`);
+        setMessage(`${data.account} 一次性啟用碼：${data.activationCode}（使用或重發後失效，只顯示這一次）`);
       } else {
         setMessage('操作完成');
       }

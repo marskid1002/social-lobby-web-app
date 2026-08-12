@@ -289,7 +289,7 @@ export async function POST(req: NextRequest) {
         { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
         const activated = await activateManagerWithCode(key, String(body.activationCode ?? ''), pw);
         if (!activated) {
-          return NextResponse.json({ error: '個人啟用碼錯誤或已失效', needActivation: true }, { status: 403 });
+          return NextResponse.json({ error: '個人啟用碼錯誤或已被重發', needActivation: true }, { status: 403 });
         }
         return withSession(req, {
           id: activated.userId,
@@ -301,7 +301,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // A888 只接受 A000 產生的 24 小時一次性啟用碼，不共用最高管理密鑰。
+      // A888 只接受 A000 產生的一次性啟用碼，不共用最高管理密鑰。
       if (acc.role === 'account_admin' && acc.hash === null) {
         if (!acc.activationHash || !acc.activationSalt) {
           return NextResponse.json({
@@ -312,7 +312,7 @@ export async function POST(req: NextRequest) {
         { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
         const activated = await activateAccountAdminWithCode(key, String(body.activationCode ?? ''), pw);
         if (!activated) {
-          return NextResponse.json({ error: '一次性啟用碼錯誤或已逾期', needActivation: true }, { status: 403 });
+          return NextResponse.json({ error: '一次性啟用碼錯誤或已被重發', needActivation: true }, { status: 403 });
         }
         return withSession(req, {
           id: activated.userId,

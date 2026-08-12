@@ -283,13 +283,6 @@ export async function createManagerAccount(nickname: string): Promise<{
   return { account, activationCode: secret.code };
 }
 
-const ACTIVATION_TTL_MS = 24 * 60 * 60 * 1000;
-
-function activationIsCurrent(account: Account): boolean {
-  const createdAt = Date.parse(account.activationCreatedAt ?? '');
-  return Number.isFinite(createdAt) && Date.now() - createdAt <= ACTIVATION_TTL_MS;
-}
-
 export async function regenerateManagerActivation(key: string): Promise<string | null> {
   const accounts = await readAccounts();
   const account = accounts[normalizeKey(key)];
@@ -320,7 +313,6 @@ export async function activateManagerWithCode(
     || account.archived
     || !account.activationHash
     || !account.activationSalt
-    || !activationIsCurrent(account)
   ) return null;
   const candidate = hashPassword(activationCode, account.activationSalt);
   const expected = Buffer.from(account.activationHash, 'hex');
@@ -367,7 +359,6 @@ export async function activateAccountAdminWithCode(
     || account.archived
     || !account.activationHash
     || !account.activationSalt
-    || !activationIsCurrent(account)
   ) return null;
   const candidate = hashPassword(activationCode, account.activationSalt);
   const expected = Buffer.from(account.activationHash, 'hex');

@@ -216,9 +216,9 @@ export default function LoginPage() {
                   <input
                     value={activationCode}
                     onChange={(e) => setActivationCode(e.target.value)}
-                    placeholder="幹部啟用碼（首次登入）"
+                    placeholder="一次性啟用碼（首次登入）"
                     className={inputCls}
-                    aria-label="幹部啟用碼"
+                    aria-label="一次性啟用碼"
                   />
                 )}
                 {info && <p className={styles.info}>{info}</p>}

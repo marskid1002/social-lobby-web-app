@@ -13,9 +13,16 @@ export interface IssueReport {
   threadId?: string;
   traceId?: string;
   lastErrorCode?: string;
+  screenshots?: IssueScreenshot[];
   userAgent: string;
   createdAt: string;
   resolved: boolean;
+}
+
+export interface IssueScreenshot {
+  id: string;
+  storageKey: string;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
 }
 
 const memoryIssues: IssueReport[] = [];
@@ -34,6 +41,7 @@ export async function addIssueReport(input: {
   threadId?: string;
   traceId?: string;
   lastErrorCode?: string;
+  screenshots?: IssueScreenshot[];
   userAgent: string;
 }): Promise<IssueReport> {
   const issue: IssueReport = {
@@ -48,6 +56,15 @@ export async function addIssueReport(input: {
     ...(safeText(input.threadId, 256) ? { threadId: safeText(input.threadId, 256) } : {}),
     ...(safeText(input.traceId, 128) ? { traceId: safeText(input.traceId, 128) } : {}),
     ...(safeText(input.lastErrorCode, 160) ? { lastErrorCode: safeText(input.lastErrorCode, 160) } : {}),
+    ...(input.screenshots?.length
+      ? {
+          screenshots: input.screenshots.slice(0, 3).map((screenshot) => ({
+            id: safeText(screenshot.id, 128) ?? crypto.randomUUID(),
+            storageKey: screenshot.storageKey,
+            contentType: screenshot.contentType,
+          })),
+        }
+      : {}),
   };
   const redis = getRedis();
   if (redis) {
@@ -57,6 +74,14 @@ export async function addIssueReport(input: {
     if (memoryIssues.length > MAX_ISSUES) memoryIssues.length = MAX_ISSUES;
   }
   return issue;
+}
+
+export async function getIssueReport(id: string): Promise<IssueReport | null> {
+  const redis = getRedis();
+  if (redis) {
+    return await redis.hget(ISSUES_KEY, id) as IssueReport | null;
+  }
+  return memoryIssues.find((issue) => issue.id === id) ?? null;
 }
 
 export async function listIssueReports(limit = 500): Promise<IssueReport[]> {

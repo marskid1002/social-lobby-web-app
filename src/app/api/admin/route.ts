@@ -222,9 +222,13 @@ export async function GET(req: NextRequest) {
     responses,
     invitations,
   });
+  const safeIssues = issues.map(({ screenshots, ...issue }) => ({
+    ...issue,
+    screenshots: screenshots?.map((screenshot) => ({ id: screenshot.id })) ?? [],
+  }));
 
   return NextResponse.json(
-    { accounts, reports, dashboard, managerRosters, system, auditLogs, traceEvents, issues, devices },
+    { accounts, reports, dashboard, managerRosters, system, auditLogs, traceEvents, issues: safeIssues, devices },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }
@@ -460,7 +464,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: '重設失敗' }, { status: 400 });
         }
         await removeDevicesForUser(target.userId);
-        await audit(admin, action, auditTarget, 'A888 密碼已清除並產生 24 小時一次性啟用碼');
+        await audit(admin, action, auditTarget, 'A888 密碼已清除並產生一次性啟用碼');
         return NextResponse.json({ ok: true, account: accountKey, activationCode });
       }
       const ok = await adminResetPassword(accountKey);

@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
+import {
+  PARTY_FORMAT_LABELS,
+  REQUEST_TYPE_LABELS,
+  SHOW_REQUEST_CLASSIFICATION,
+  VENUE_TYPE_LABELS,
+} from '@/lib/utils';
 
 type Account = {
   key: string;
@@ -38,6 +43,7 @@ type IssueReport = {
   threadId?: string;
   traceId?: string;
   lastErrorCode?: string;
+  screenshots?: { id: string }[];
   userAgent: string;
   createdAt: string;
   resolved: boolean;
@@ -56,6 +62,10 @@ type Flow = {
   creatorName: string;
   area: string;
   requestType: string;
+  venueType: string;
+  partyFormat: string;
+  peopleCount: number;
+  note: string;
   status: string;
   createdAt: string;
   expiresAt: string;
@@ -255,13 +265,26 @@ function StatusDot({ ok }: { ok: boolean }) {
   return <span className={`inline-block h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />;
 }
 
-function MetricCard({ label, value, alert = false }: { label: string; value: number | string; alert?: boolean }) {
-  return (
-    <div className={`rounded-2xl border p-4 ${alert ? 'border-red-200 bg-red-50' : 'border-zinc-200 bg-white'}`}>
+function MetricCard({
+  label,
+  value,
+  alert = false,
+  onClick,
+}: {
+  label: string;
+  value: number | string;
+  alert?: boolean;
+  onClick?: () => void;
+}) {
+  const className = `rounded-2xl border p-4 text-left ${alert ? 'border-red-200 bg-red-50' : 'border-zinc-200 bg-white'} ${onClick ? 'cursor-pointer transition hover:border-sky-300 hover:shadow-sm' : ''}`;
+  const content = <>
       <p className="text-xs font-medium text-zinc-500">{label}</p>
       <p className={`mt-2 text-2xl font-bold ${alert ? 'text-red-600' : 'text-zinc-900'}`}>{value}</p>
-    </div>
-  );
+      {onClick && <p className="mt-1 text-[11px] font-semibold text-sky-600">查看詳細內容 →</p>}
+    </>;
+  return onClick
+    ? <button type="button" onClick={onClick} className={className}>{content}</button>
+    : <div className={className}>{content}</div>;
 }
 
 export default function AdminPage() {
@@ -561,7 +584,18 @@ export default function AdminPage() {
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                   <MetricCard label="全部帳號" value={overview.accounts} />
                   <MetricCard label="客戶／幹部" value={`${overview.customers} / ${overview.managers}`} />
-                  <MetricCard label="進行中的局" value={overview.openRequests} />
+                  <MetricCard
+                    label="進行中的局"
+                    value={overview.openRequests}
+                    onClick={overview.openRequests > 0 ? () => {
+                      const active = data.dashboard.flows.find((flow) =>
+                        flow.status === 'open' && Date.parse(flow.expiresAt) >= Date.now()
+                      );
+                      setFlowOpen(active?.requestId ?? null);
+                      setSearch('');
+                      setTab('flows');
+                    } : undefined}
+                  />
                   <MetricCard label="有效聊天室" value={overview.activeChats} />
                   <MetricCard label="聊天室訊息" value={overview.messages} />
                   <MetricCard label="待處理檢舉" value={overview.pendingReports} alert={overview.pendingReports > 0} />
@@ -639,6 +673,28 @@ export default function AdminPage() {
                         </button>
                         {isOpen && (
                           <div className="border-t border-zinc-100 bg-zinc-50 p-4">
+                            <div className="mb-4 rounded-xl border border-sky-100 bg-sky-50 p-4">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-sm font-bold text-zinc-900">局的完整內容</p>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700">
+                                  {flow.status === 'open' && Date.parse(flow.expiresAt) >= Date.now() ? '進行中' : flow.status}
+                                </span>
+                              </div>
+                              <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                                <p><span className="text-zinc-500">發局人：</span><span className="font-semibold text-zinc-900">{flow.creatorName}</span></p>
+                                <p><span className="text-zinc-500">地區：</span><span className="font-semibold text-zinc-900">{flow.area || '未填寫'}</span></p>
+                                <p><span className="text-zinc-500">地點：</span><span className="font-semibold text-zinc-900">{(VENUE_TYPE_LABELS[flow.venueType] ?? flow.venueType) || '未填寫'}</span></p>
+                                <p><span className="text-zinc-500">邀約類型：</span><span className="font-semibold text-zinc-900">{(REQUEST_TYPE_LABELS[flow.requestType] ?? flow.requestType) || '未填寫'}</span></p>
+                                <p><span className="text-zinc-500">局型：</span><span className="font-semibold text-zinc-900">{(PARTY_FORMAT_LABELS[flow.partyFormat] ?? flow.partyFormat) || '未填寫'}</span></p>
+                                <p><span className="text-zinc-500">人數：</span><span className="font-semibold text-zinc-900">{flow.peopleCount > 0 ? `${flow.peopleCount} 人` : '未填寫'}</span></p>
+                                <p><span className="text-zinc-500">發布時間：</span><span className="font-semibold text-zinc-900">{fmtTime(flow.createdAt)}</span></p>
+                                <p><span className="text-zinc-500">有效期限：</span><span className="font-semibold text-zinc-900">{fmtTime(flow.expiresAt)}</span></p>
+                              </div>
+                              <div className="mt-3 rounded-xl bg-white p-3">
+                                <p className="text-xs font-bold text-zinc-500">備註</p>
+                                <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-800">{flow.note || '沒有填寫備註'}</p>
+                              </div>
+                            </div>
                             <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2 lg:grid-cols-4">
                               <p>局編號：<span className="font-mono text-zinc-800">{flow.requestId}</span></p>
                               <p>Trace：<span className="font-mono text-zinc-800">{traceId ?? '尚無真實紀錄'}</span></p>
@@ -788,13 +844,6 @@ export default function AdminPage() {
                                 編輯名稱
                               </button>
                               <button
-                                disabled={Boolean(busy) || Boolean(account.archived)}
-                                onClick={() => runAction('regenerate-manager-activation', { account: account.accountRef })}
-                                className="rounded-lg border border-sky-300 px-3 py-1.5 text-xs font-semibold text-sky-700 disabled:opacity-40"
-                              >
-                                重發啟用碼
-                              </button>
-                              <button
                                 disabled={Boolean(busy)}
                                 onClick={() => runAction(
                                   account.archived ? 'unarchive-manager' : 'archive-manager',
@@ -811,7 +860,13 @@ export default function AdminPage() {
                             onClick={() => runAction('reset', { account: account.accountRef })}
                             className="rounded-lg border border-sky-300 px-3 py-1.5 text-xs font-semibold text-sky-700"
                           >
-                            重設密碼
+                            {account.role === 'manager' || account.role === 'account_admin'
+                              ? account.hasPassword
+                                ? '重設並產生新啟用碼'
+                                : account.hasActivationCode
+                                  ? '重發啟用碼'
+                                  : '產生啟用碼'
+                              : '重設密碼'}
                           </button>
                           <button
                             disabled={Boolean(busy)}
@@ -902,6 +957,29 @@ export default function AdminPage() {
                           </span>
                         </div>
                         <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-700">{issue.description}</p>
+                        {issue.screenshots && issue.screenshots.length > 0 && (
+                          <div className="mt-3">
+                            <p className="mb-2 text-xs font-bold text-zinc-600">使用者截圖（{issue.screenshots.length} 張）</p>
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                              {issue.screenshots.map((screenshot, index) => {
+                                const src = `/api/admin/issue-image?issueId=${encodeURIComponent(issue.id)}&screenshotId=${encodeURIComponent(screenshot.id)}`;
+                                return (
+                                  <a
+                                    key={screenshot.id}
+                                    href={src}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="group relative aspect-video overflow-hidden rounded-xl border border-zinc-200 bg-zinc-100"
+                                    title="點擊放大截圖"
+                                  >
+                                    <img src={src} alt={`問題截圖 ${index + 1}`} className="h-full w-full object-cover transition group-hover:scale-[1.02]" />
+                                    <span className="absolute inset-x-0 bottom-0 bg-black/60 px-2 py-1 text-center text-[10px] font-semibold text-white">點擊放大</span>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                         <div className="mt-3 grid gap-1 text-xs text-zinc-500 sm:grid-cols-2">
                           <p>Trace：<span className="break-all font-mono text-zinc-800">{issue.traceId ?? '—'}</span></p>
                           <p>局：<span className="break-all font-mono text-zinc-800">{issue.requestId ?? '—'}</span></p>

@@ -30,6 +30,10 @@ export interface AdminFlow {
   creatorName: string;
   area: string;
   requestType: string;
+  venueType: string;
+  partyFormat: string;
+  peopleCount: number;
+  note: string;
   status: string;
   createdAt: string;
   expiresAt: string;
@@ -252,6 +256,10 @@ export function buildAdminDashboard(input: {
       creatorName: accountName(input.accounts, text(request.creatorId)),
       area: text(request.area),
       requestType: text(request.requestType),
+      venueType: text(request.venueType),
+      partyFormat: text(request.partyFormat),
+      peopleCount: typeof request.peopleCount === 'number' ? request.peopleCount : 0,
+      note: text(request.note),
       status: text(request.status),
       createdAt: text(request.createdAt),
       expiresAt: text(request.expiresAt),
