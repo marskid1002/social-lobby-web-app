@@ -1,8 +1,8 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, MoreVertical, UserPlus, UserCheck, MapPin, Clock, Users } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, MoreVertical, UserPlus, UserCheck, MapPin, Clock, Users, X } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
@@ -32,9 +32,58 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const [toast, setToast] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const touchStartX = useRef<number | null>(null);
 
   const gallery = state.photoGalleries.find((g) => g.id === id)?.urls ?? [];
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousOverscrollBehavior = document.body.style.overscrollBehavior;
+    document.body.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setLightboxIndex(null);
+      if (event.key === 'ArrowLeft') {
+        setLightboxIndex((current) => current === null ? null : (current - 1 + gallery.length) % gallery.length);
+      }
+      if (event.key === 'ArrowRight') {
+        setLightboxIndex((current) => current === null ? null : (current + 1) % gallery.length);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overscrollBehavior = previousOverscrollBehavior;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [gallery.length, lightboxIndex]);
+
+  function showPreviousPhoto() {
+    setLightboxIndex((current) => current === null ? null : (current - 1 + gallery.length) % gallery.length);
+  }
+
+  function showNextPhoto() {
+    setLightboxIndex((current) => current === null ? null : (current + 1) % gallery.length);
+  }
+
+  function handleLightboxTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    touchStartX.current = event.touches[0]?.clientX ?? null;
+  }
+
+  function handleLightboxTouchEnd(event: React.TouchEvent<HTMLDivElement>) {
+    const startX = touchStartX.current;
+    const endX = event.changedTouches[0]?.clientX;
+    touchStartX.current = null;
+    if (startX === null || endX === undefined || gallery.length < 2) return;
+    const distance = endX - startX;
+    if (Math.abs(distance) < 50) return;
+    if (distance > 0) showPreviousPhoto();
+    else showNextPhoto();
+  }
 
   // Private invite form state
   const [inviteType, setInviteType] = useState<RequestType>('drinking');
@@ -225,10 +274,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {gallery.map((url) => (
+              {gallery.map((url, index) => (
                 <button
                   key={url}
-                  onClick={() => setLightbox(url)}
+                  onClick={() => setLightboxIndex(index)}
                   className="aspect-square rounded-2xl overflow-hidden active:scale-[0.97] transition-transform"
                   aria-label="查看照片"
                 >
@@ -241,19 +290,51 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* 相簿大圖 lightbox */}
-      {lightbox && (
+      {lightboxIndex !== null && gallery[lightboxIndex] && (
         <div
-          className="fixed inset-0 z-[80] bg-black/85 flex items-center justify-center p-4"
-          onClick={() => setLightbox(null)}
+          className="fixed inset-0 z-[80] flex touch-none items-center justify-center overflow-hidden bg-black/90 p-4 overscroll-none"
+          onClick={() => setLightboxIndex(null)}
+          onTouchStart={handleLightboxTouchStart}
+          onTouchEnd={handleLightboxTouchEnd}
+          role="dialog"
+          aria-modal="true"
+          aria-label="相簿照片預覽"
         >
-          <img src={lightbox} alt="" className="max-w-full max-h-full rounded-2xl object-contain" />
+          <img
+            src={gallery[lightboxIndex]}
+            alt={`${user.nickname} 的相簿照片 ${lightboxIndex + 1}`}
+            className="max-h-full max-w-full select-none rounded-2xl object-contain"
+            draggable={false}
+            onClick={(event) => event.stopPropagation()}
+          />
           <button
-            onClick={() => setLightbox(null)}
+            onClick={(event) => { event.stopPropagation(); setLightboxIndex(null); }}
             className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center"
             aria-label="關閉"
           >
-            <ArrowLeft className="w-5 h-5 rotate-45" />
+            <X className="w-5 h-5" />
           </button>
+          {gallery.length > 1 && (
+            <>
+              <button
+                onClick={(event) => { event.stopPropagation(); showPreviousPhoto(); }}
+                className="absolute left-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm"
+                aria-label="上一張照片"
+              >
+                <ChevronLeft className="h-7 w-7" />
+              </button>
+              <button
+                onClick={(event) => { event.stopPropagation(); showNextPhoto(); }}
+                className="absolute right-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm"
+                aria-label="下一張照片"
+              >
+                <ChevronRight className="h-7 w-7" />
+              </button>
+              <div className="absolute bottom-5 rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white">
+                {lightboxIndex + 1} / {gallery.length}
+              </div>
+            </>
+          )}
         </div>
       )}
 
