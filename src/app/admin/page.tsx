@@ -220,6 +220,13 @@ const REQUEST_TYPE_LABEL: Record<string, string> = {
   other: '其他',
 };
 
+const REQUEST_STATUS_LABEL: Record<string, string> = {
+  open: '進行中',
+  closed: '已完成',
+  cancelled: '已取消',
+  expired: '已過期',
+};
+
 const ACTION_LABEL: Record<string, string> = {
   reset: '重設密碼',
   disable: '停用帳號',
@@ -673,76 +680,106 @@ export default function AdminPage() {
                         </button>
                         {isOpen && (
                           <div className="border-t border-zinc-100 bg-zinc-50 p-4">
-                            <div className="mb-4 rounded-xl border border-sky-100 bg-sky-50 p-4">
+                            <div className="rounded-2xl border border-[#3b4052] bg-[#10131f] p-5 text-[#f7f7fa] shadow-lg">
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-bold text-zinc-900">局的完整內容</p>
-                                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700">
-                                  {flow.status === 'open' && Date.parse(flow.expiresAt) >= Date.now() ? '進行中' : flow.status}
+                                <div>
+                                  <p className="text-lg font-black text-white">局的完整內容</p>
+                                  <p className="mt-1 text-xs text-[#aeb3c2]">{flow.creatorName} 發布的邀約</p>
+                                </div>
+                                <span className={`rounded-full px-3 py-1.5 text-xs font-black ${
+                                  flow.status === 'open' && Date.parse(flow.expiresAt) >= Date.now()
+                                    ? 'bg-[#123d32] text-[#57e2ae]'
+                                    : 'bg-[#303442] text-[#d5d8e2]'
+                                }`}>
+                                  {flow.status === 'open' && Date.parse(flow.expiresAt) >= Date.now()
+                                    ? '進行中'
+                                    : REQUEST_STATUS_LABEL[flow.status] ?? flow.status}
                                 </span>
                               </div>
-                              <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                                <p><span className="text-zinc-500">發局人：</span><span className="font-semibold text-zinc-900">{flow.creatorName}</span></p>
-                                <p><span className="text-zinc-500">地區：</span><span className="font-semibold text-zinc-900">{flow.area || '未填寫'}</span></p>
-                                <p><span className="text-zinc-500">地點：</span><span className="font-semibold text-zinc-900">{(VENUE_TYPE_LABELS[flow.venueType] ?? flow.venueType) || '未填寫'}</span></p>
-                                <p><span className="text-zinc-500">邀約類型：</span><span className="font-semibold text-zinc-900">{(REQUEST_TYPE_LABELS[flow.requestType] ?? flow.requestType) || '未填寫'}</span></p>
-                                <p><span className="text-zinc-500">局型：</span><span className="font-semibold text-zinc-900">{(PARTY_FORMAT_LABELS[flow.partyFormat] ?? flow.partyFormat) || '未填寫'}</span></p>
-                                <p><span className="text-zinc-500">人數：</span><span className="font-semibold text-zinc-900">{flow.peopleCount > 0 ? `${flow.peopleCount} 人` : '未填寫'}</span></p>
-                                <p><span className="text-zinc-500">發布時間：</span><span className="font-semibold text-zinc-900">{fmtTime(flow.createdAt)}</span></p>
-                                <p><span className="text-zinc-500">有效期限：</span><span className="font-semibold text-zinc-900">{fmtTime(flow.expiresAt)}</span></p>
+                              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                {[
+                                  ['地區', flow.area || '未填寫'],
+                                  ['地點', (VENUE_TYPE_LABELS[flow.venueType] ?? flow.venueType) || '未填寫'],
+                                  ['邀約類型', (REQUEST_TYPE_LABELS[flow.requestType] ?? flow.requestType) || '未填寫'],
+                                  ['局型', (PARTY_FORMAT_LABELS[flow.partyFormat] ?? flow.partyFormat) || '未填寫'],
+                                  ['需求人數', flow.peopleCount > 0 ? `${flow.peopleCount} 人` : '未填寫'],
+                                  ['發布時間', fmtTime(flow.createdAt)],
+                                  ['有效期限', fmtTime(flow.expiresAt)],
+                                ].map(([label, value]) => (
+                                  <div key={label} className="rounded-xl border border-[#303647] bg-[#1a1e2c] px-3.5 py-3">
+                                    <p className="text-[11px] font-bold text-[#999fb0]">{label}</p>
+                                    <p className="mt-1 break-words text-sm font-black text-white">{value}</p>
+                                  </div>
+                                ))}
                               </div>
-                              <div className="mt-3 rounded-xl bg-white p-3">
-                                <p className="text-xs font-bold text-zinc-500">備註</p>
-                                <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-800">{flow.note || '沒有填寫備註'}</p>
+                              <div className="mt-4 rounded-xl border border-[#584939] bg-[#211c19] p-4">
+                                <p className="text-[11px] font-bold text-[#d4aa72]">客戶備註</p>
+                                <p className="mt-1 whitespace-pre-wrap break-words text-base font-bold leading-relaxed text-white">{flow.note || '沒有填寫備註'}</p>
+                              </div>
+                              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {[
+                                  ['收到回應', flow.responseCount],
+                                  ['已接受安排', flow.joiningCount],
+                                  ['相關聊天室', flow.chatCount],
+                                  ['聊天室訊息', flow.messageCount],
+                                ].map(([label, value]) => (
+                                  <div key={label} className="rounded-xl bg-[#252a3a] p-3 text-center">
+                                    <p className="text-xl font-black text-white">{value}</p>
+                                    <p className="mt-1 text-[11px] font-bold text-[#aeb3c2]">{label}</p>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                            <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2 lg:grid-cols-4">
-                              <p>局編號：<span className="font-mono text-zinc-800">{flow.requestId}</span></p>
-                              <p>Trace：<span className="font-mono text-zinc-800">{traceId ?? '尚無真實紀錄'}</span></p>
-                              <p>狀態：<span className="text-zinc-800">{flow.status}</span></p>
-                              <p>回應／同意：<span className="text-zinc-800">{flow.responseCount} / {flow.joiningCount}</span></p>
-                              <p>聊天室／訊息：<span className="text-zinc-800">{flow.chatCount} / {flow.messageCount}</span></p>
-                            </div>
-                            <div className="mt-4 grid gap-2 sm:grid-cols-5">
-                              {flow.steps.map((step, index) => (
-                                <div key={step.key} className="relative rounded-xl border border-zinc-200 bg-white p-3">
-                                  <p className="text-[10px] font-bold text-zinc-400">步驟 {index + 1}</p>
-                                  <p className="mt-1 text-xs font-semibold">{step.label}</p>
-                                  <p className={`mt-2 text-[11px] font-bold ${
-                                    step.state === 'done'
-                                      ? 'text-emerald-600'
-                                      : step.state === 'error' ? 'text-red-600' : 'text-amber-600'
-                                  }`}>
-                                    {step.state === 'done' ? '成功' : step.state === 'error' ? '失敗' : '等待中'}
-                                  </p>
-                                  <p className="mt-1 text-[10px] text-zinc-400">{fmtTime(step.at)}</p>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="mt-4 rounded-xl border border-zinc-200 bg-white p-3">
-                              <p className="text-xs font-bold text-zinc-700">伺服器事件時間軸</p>
-                              {traceEvents.length === 0 ? (
-                                <p className="mt-2 text-xs text-zinc-400">這筆局建立於追蹤功能上線前，尚無事件紀錄。</p>
-                              ) : (
-                                <div className="mt-2 space-y-2">
-                                  {traceEvents.map((event) => (
-                                    <div key={event.id} className="flex flex-col gap-1 border-l-2 border-zinc-200 pl-3 text-xs sm:flex-row sm:items-center">
-                                      <span className={`font-bold ${
-                                        event.outcome === 'failure'
-                                          ? 'text-red-600'
-                                          : event.outcome === 'skipped' ? 'text-amber-600' : 'text-emerald-600'
-                                      }`}>
-                                        {TRACE_LABEL[event.eventType] ?? event.eventType}
-                                      </span>
-                                      <span className="text-zinc-400">{fmtTime(event.createdAt)}</span>
-                                      {event.actorUserId && <span className="text-zinc-500">操作者：{accountName(event.actorUserId)}</span>}
-                                      {event.threadId && <span className="font-mono text-zinc-400">{event.threadId}</span>}
-                                      {event.code && <span className="text-amber-600">{event.code}</span>}
-                                      {event.detail && <span className="text-zinc-400">{event.detail}</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
+
+                            <details className="mt-3 rounded-xl border border-zinc-200 bg-white p-4">
+                              <summary className="cursor-pointer text-sm font-bold text-zinc-700">系統診斷資訊（排查問題時再看）</summary>
+                              <div className="mt-4 grid gap-2 text-xs text-zinc-500 sm:grid-cols-2 lg:grid-cols-3">
+                                <p>局編號：<span className="break-all font-mono text-zinc-800">{flow.requestId}</span></p>
+                                <p>追蹤碼：<span className="break-all font-mono text-zinc-800">{traceId ?? '尚無紀錄'}</span></p>
+                                <p>系統狀態：<span className="text-zinc-800">{flow.status}</span></p>
+                              </div>
+                              <div className="mt-4 grid gap-2 sm:grid-cols-5">
+                                {flow.steps.map((step, index) => (
+                                  <div key={step.key} className="relative rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                    <p className="text-[10px] font-bold text-zinc-400">步驟 {index + 1}</p>
+                                    <p className="mt-1 text-xs font-semibold">{step.label}</p>
+                                    <p className={`mt-2 text-[11px] font-bold ${
+                                      step.state === 'done'
+                                        ? 'text-emerald-600'
+                                        : step.state === 'error' ? 'text-red-600' : 'text-amber-600'
+                                    }`}>
+                                      {step.state === 'done' ? '成功' : step.state === 'error' ? '失敗' : '等待中'}
+                                    </p>
+                                    <p className="mt-1 text-[10px] text-zinc-400">{fmtTime(step.at)}</p>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                                <p className="text-xs font-bold text-zinc-700">伺服器事件時間軸</p>
+                                {traceEvents.length === 0 ? (
+                                  <p className="mt-2 text-xs text-zinc-400">這筆局建立於追蹤功能上線前，尚無事件紀錄。</p>
+                                ) : (
+                                  <div className="mt-2 space-y-2">
+                                    {traceEvents.map((event) => (
+                                      <div key={event.id} className="flex flex-col gap-1 border-l-2 border-zinc-200 pl-3 text-xs sm:flex-row sm:items-center">
+                                        <span className={`font-bold ${
+                                          event.outcome === 'failure'
+                                            ? 'text-red-600'
+                                            : event.outcome === 'skipped' ? 'text-amber-600' : 'text-emerald-600'
+                                        }`}>
+                                          {TRACE_LABEL[event.eventType] ?? event.eventType}
+                                        </span>
+                                        <span className="text-zinc-400">{fmtTime(event.createdAt)}</span>
+                                        {event.actorUserId && <span className="text-zinc-500">操作者：{accountName(event.actorUserId)}</span>}
+                                        {event.threadId && <span className="font-mono text-zinc-400">{event.threadId}</span>}
+                                        {event.code && <span className="text-amber-600">{event.code}</span>}
+                                        {event.detail && <span className="text-zinc-400">{event.detail}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </details>
                           </div>
                         )}
                       </div>
