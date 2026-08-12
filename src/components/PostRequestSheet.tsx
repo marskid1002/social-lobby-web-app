@@ -8,12 +8,12 @@ import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/are
 import { useRouter } from 'next/navigation';
 import { SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 
-const REQUEST_TYPES: { value: RequestType; label: string; color: string }[] = [
-  { value: 'drinking', label: '喝酒', color: '#F59E0B' },
-  { value: 'music', label: '音樂', color: '#8BD8F1' },
-  { value: 'dancing', label: '跳舞', color: '#6C2EFF' },
-  { value: 'private_party', label: '私人派對', color: '#FF3C91' },
-  { value: 'dining', label: '吃飯', color: '#A8E6CF' },
+const REQUEST_TYPES: { value: RequestType; label: string }[] = [
+  { value: 'drinking', label: '喝酒' },
+  { value: 'music', label: '音樂' },
+  { value: 'dancing', label: '跳舞' },
+  { value: 'private_party', label: '私人派對' },
+  { value: 'dining', label: '吃飯' },
 ];
 
 const VENUE_TYPES: { value: VenueType; label: string }[] = [
@@ -176,7 +176,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
                     onClick={() => setVenueType(venue.value)}
                     className={`rounded-full border-2 px-4 py-2 text-sm font-medium transition-all active:scale-95 ${
                       venueType === venue.value
-                        ? 'border-transparent bg-brand-mint text-brand-ink'
+                        ? 'border-[#FF3C91] bg-[#FF3C91] text-white shadow-sm'
                         : 'border-brand-lavender bg-white text-zinc-500'
                     }`}
                   >
@@ -198,10 +198,9 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
                     onClick={() => setType(t.value)}
                     className={`px-4 py-2 rounded-full text-sm font-medium border-2 transition-all active:scale-95 ${
                       type === t.value
-                        ? 'border-transparent text-brand-ink'
+                        ? 'border-[#6C2EFF] bg-[#6C2EFF] text-white shadow-sm'
                         : 'border-brand-lavender text-zinc-500 bg-white'
                     }`}
-                    style={type === t.value ? { backgroundColor: t.color } : {}}
                   >
                     {t.label}
                   </button>
