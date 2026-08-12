@@ -75,19 +75,20 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
   }
 
   function handleSubmit() {
+    if (!type || !venueType || !partyFormat) return;
     if (currentUser?.tier === 'guest') return; // 訪客不可發局（伺服器也會擋）
     if (request) {
       const updated = updateRequest(request.id, {
         area,
-        venueType: venueType ?? undefined,
-        partyFormat: partyFormat ?? undefined,
-        requestType: type ?? request.requestType,
+        venueType,
+        partyFormat,
+        requestType: type,
         peopleCount: count,
         note,
       });
       if (!updated) return;
     } else {
-      postRequest({ area, requestType: 'other', peopleCount: count, note });
+      postRequest({ area, venueType, partyFormat, requestType: type, peopleCount: count, note });
     }
     setToast(true);
     setTimeout(() => {
@@ -285,6 +286,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             <div className="app-sticky-sheet-action">
               <button
                 onClick={handleSubmit}
+                disabled={!type || !venueType || !partyFormat}
                 className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
               >
               {isEditing ? '儲存變更' : '發送邀請'}

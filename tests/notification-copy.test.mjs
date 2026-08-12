@@ -113,7 +113,7 @@ test('保留五種地點定義與舊局類型相容性，方便日後恢復', ()
   assert.equal(REQUEST_TYPE_LABELS.after_party, 'After Party');
 });
 
-test('邀約類型、地點與局型暫時隱藏，且不再阻擋發局', () => {
+test('邀約類型、地點與局型已開啟，且三項皆為發局必選', () => {
   const utils = src('src/lib/utils.ts');
   const sheet = src('src/components/PostRequestSheet.tsx');
   for (const binding of [
@@ -121,10 +121,10 @@ test('邀約類型、地點與局型暫時隱藏，且不再阻擋發局', () =>
     "value: 'without_women', label: '局無女'",
     "value: 'one_on_one', label: '1 對 1'",
   ]) assert.ok(sheet.includes(binding), `缺少局型：${binding}`);
-  assert.ok(utils.includes('export const SHOW_REQUEST_CLASSIFICATION = false'), '分類欄位開關必須關閉');
-  assert.ok(sheet.includes('SHOW_REQUEST_CLASSIFICATION &&'), '三組分類欄位必須由隱藏開關控制');
-  assert.ok(!sheet.includes('disabled={!type || !venueType || !partyFormat}'), '隱藏欄位不可阻擋發局');
-  assert.ok(sheet.includes("postRequest({ area, requestType: 'other', peopleCount: count, note })"), '新局應使用相容預設值送出');
+  assert.ok(utils.includes('export const SHOW_REQUEST_CLASSIFICATION = true'), '分類欄位開關必須開啟');
+  assert.ok(sheet.includes('disabled={!type || !venueType || !partyFormat}'), '三項未選齊時必須禁止發局');
+  assert.ok(sheet.includes('if (!type || !venueType || !partyFormat) return'), '送出處理也必須驗證三項必選');
+  assert.ok(sheet.includes('postRequest({ area, venueType, partyFormat, requestType: type, peopleCount: count, note })'), '新局必須保存三項分類');
 });
 
 // ── C：matches/accept/route.ts（推播，靜態字串比對）──────────────────────────
