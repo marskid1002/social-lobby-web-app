@@ -181,11 +181,11 @@ export default function InboxPage() {
         .filter(
           (u) =>
             u.userId === state.currentUserId &&
-            (u.eventType === 'milestone_views' || u.eventType === 'plaza_reply')
+            (u.eventType === 'milestone_views' || u.eventType === 'plaza_reply' || u.eventType === 'request_posted')
         )
         .map((u) => ({
           id: u.id,
-          type: u.eventType as 'milestone_views' | 'plaza_reply',
+          type: u.eventType as 'milestone_views' | 'plaza_reply' | 'request_posted',
           actorId: u.actorId,
           refRequestId: u.refRequestId,
           refPostId: u.refPostId,
@@ -438,6 +438,20 @@ export default function InboxPage() {
                   {'你的約會已被查看 '}
                   <span className="font-semibold text-amber-600">{(notif as { milestoneCount?: number }).milestoneCount} 次</span>
                   {'！'}
+                </>
+              );
+              onTap = () => notif.refRequestId && router.push(`/requests/${notif.refRequestId}`);
+            } else if (notif.type === 'request_posted') {
+              icon = (
+                <div className="w-9 h-9 rounded-full bg-brand-sky/20 flex items-center justify-center shrink-0">
+                  <MessageCircle className="w-4 h-4 text-brand-sky" strokeWidth={2} />
+                </div>
+              );
+              text = (
+                <>
+                  <span className="font-semibold">{actor?.nickname ?? '客戶'}</span>
+                  {' 發布了新局'}
+                  {request && <span className="text-zinc-400"> · {request.area}</span>}
                 </>
               );
               onTap = () => notif.refRequestId && router.push(`/requests/${notif.refRequestId}`);

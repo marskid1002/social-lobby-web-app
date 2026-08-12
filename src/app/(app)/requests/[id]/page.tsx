@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Clock, MapPin, Users, Share2, Pencil } from 'lucide-react';
+import { ArrowLeft, BellRing, Clock, MapPin, Users, Share2, Pencil } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
@@ -42,6 +42,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const [toast, setToast] = useState('');
   const [acceptingResponseId, setAcceptingResponseId] = useState<string | null>(null);
   const [showEditSheet, setShowEditSheet] = useState(false);
+  const [reminderBusy, setReminderBusy] = useState(false);
+  const [nextReminderAt, setNextReminderAt] = useState(0);
+  const [reminderClock, setReminderClock] = useState(() => Date.now());
 
   const rejectTargetId  = useRef<string | null>(null);
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
@@ -92,6 +95,34 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const typeLabel  = REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType;
   const expiresIn  = formatDistance(new Date(request.expiresAt), new Date(), { locale: zhTW });
   const isExpired  = new Date(request.expiresAt) <= new Date();
+  const reminderSeconds = Math.max(0, Math.ceil((nextReminderAt - reminderClock) / 1000));
+  const reminderCountdown = `${Math.floor(reminderSeconds / 60)}:${String(reminderSeconds % 60).padStart(2, '0')}`;
+
+  useEffect(() => {
+    if (!isCreator || request.status !== 'open' || isExpired) return;
+    const controller = new AbortController();
+    fetch(`/api/requests/remind?requestId=${encodeURIComponent(id)}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({})) as { nextReminderAt?: number };
+        if (response.ok && typeof data.nextReminderAt === 'number') {
+          setNextReminderAt(data.nextReminderAt);
+          setReminderClock(Date.now());
+        }
+      })
+      .catch((error) => {
+        if ((error as Error).name !== 'AbortError') console.error('[request reminder status]', error);
+      });
+    return () => controller.abort();
+  }, [id, isCreator, request.status, request.expiresAt, isExpired]);
+
+  useEffect(() => {
+    if (nextReminderAt <= Date.now()) return;
+    const timer = window.setInterval(() => setReminderClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [nextReminderAt]);
 
 
   function showToast(msg: string) {
@@ -163,6 +194,32 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     showToast('連結已複製');
   }
 
+  async function handleReminder() {
+    if (!request || reminderBusy || reminderSeconds > 0 || request.status !== 'open' || isExpired) return;
+    setReminderBusy(true);
+    try {
+      const response = await fetch('/api/requests/remind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId: id }),
+      });
+      const data = await response.json().catch(() => ({})) as {
+        error?: string;
+        nextReminderAt?: number;
+      };
+      if (typeof data.nextReminderAt === 'number') {
+        setNextReminderAt(data.nextReminderAt);
+        setReminderClock(Date.now());
+      }
+      if (!response.ok) throw new Error(data.error || '提醒發送失敗');
+      showToast('已提醒有新局');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '提醒發送失敗，請稍後再試');
+    } finally {
+      setReminderBusy(false);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-brand-snow pb-32">
       {/* Top bar */}
@@ -229,6 +286,27 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             </span>
           </div>
         </div>
+
+        {isCreator && request.status === 'open' && !isExpired && (
+          <div className="rounded-2xl bg-white p-4 shadow-card">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-sky/20">
+                <BellRing className="h-5 w-5 text-brand-sky" strokeWidth={1.75} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-brand-ink">讓更多人即時看到這個局</p>
+                <p className="mt-0.5 text-xs text-zinc-400">每 5 分鐘可提醒一次</p>
+              </div>
+              <button
+                onClick={handleReminder}
+                disabled={reminderBusy || reminderSeconds > 0}
+                className="shrink-0 rounded-xl bg-brand-sky px-4 py-2.5 text-xs font-bold text-brand-ink transition-all active:scale-95 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
+              >
+                {reminderBusy ? '發送中…' : reminderSeconds > 0 ? reminderCountdown : '提醒有新局'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Escort inline join CTA — right below the request info */}
         {isEscort && !isCreator && (
