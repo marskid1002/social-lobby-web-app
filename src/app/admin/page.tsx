@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   PARTY_FORMAT_LABELS,
   REQUEST_TYPE_LABELS,
@@ -1458,10 +1459,10 @@ export default function AdminPage() {
                         escortId: escort.id,
                         index: (index - 1 + images.length) % images.length,
                       })}
-                      className="absolute left-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-2xl text-white hover:bg-black/70"
+                      className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
                       aria-label="上一張"
                     >
-                      ‹
+                      <ChevronLeft className="h-6 w-6" strokeWidth={2.25} />
                     </button>
                     <button
                       type="button"
@@ -1469,10 +1470,10 @@ export default function AdminPage() {
                         escortId: escort.id,
                         index: (index + 1) % images.length,
                       })}
-                      className="absolute right-2 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-2xl text-white hover:bg-black/70"
+                      className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
                       aria-label="下一張"
                     >
-                      ›
+                      <ChevronRight className="h-6 w-6" strokeWidth={2.25} />
                     </button>
                   </>
                 )}
