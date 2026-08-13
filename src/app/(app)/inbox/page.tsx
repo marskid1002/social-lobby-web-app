@@ -10,12 +10,28 @@ import { getRequestGradient, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION } 
 import { directInvitationThreadId } from '@/lib/chat-authz';
 import { unreadMessagesFor } from '@/lib/chat-unread';
 
+type SystemMessage = {
+  id: string;
+  recipientId: string;
+  recipientAccount: string;
+  recipientName: string;
+  recipientRole: 'user' | 'manager';
+  title: string;
+  content: string;
+  createdAt: string;
+  readAt?: string;
+};
+
 export default function InboxPage() {
   const { state, currentUser, clearInboxUnread, markUpdatesRead, confirmMeetup, refreshShared } = useAppState();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedMatchId = searchParams.get('match');
   const openedFromPush = searchParams.get('src') === 'push';
+  const requestedSystemMessageId = searchParams.get('systemMessage');
+  const [systemMessages, setSystemMessages] = useState<SystemMessage[]>([]);
+  const [systemMessageOpen, setSystemMessageOpen] = useState<string | null>(requestedSystemMessageId);
+  const [systemMessagesLoaded, setSystemMessagesLoaded] = useState(false);
   const [matchRefreshAttempts, setMatchRefreshAttempts] = useState(0);
   const requestedMatch = requestedMatchId
     ? state.invitations.find((invitation) => invitation.id === requestedMatchId && invitation.status === 'accepted')
@@ -56,6 +72,44 @@ export default function InboxPage() {
       .map((u) => u.id);
     if (unreadIds.length > 0) markUpdatesRead(unreadIds);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/system-messages', { cache: 'no-store' })
+      .then(async (response) => response.ok ? response.json() : { messages: [] })
+      .then((result) => {
+        if (cancelled) return;
+        setSystemMessages(Array.isArray(result.messages) ? result.messages : []);
+        setSystemMessagesLoaded(true);
+      })
+      .catch(() => { if (!cancelled) setSystemMessagesLoaded(true); });
+    return () => { cancelled = true; };
+  }, [state.currentUserId]);
+
+  async function openSystemMessage(message: SystemMessage) {
+    setSystemMessageOpen(message.id);
+    if (message.readAt) return;
+    const response = await fetch('/api/system-messages', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: message.id }),
+    });
+    const result = await response.json().catch(() => ({})) as { readAt?: string };
+    if (response.ok && result.readAt) {
+      setSystemMessages((current) => current.map((item) =>
+        item.id === message.id ? { ...item, readAt: result.readAt } : item));
+      window.dispatchEvent(new Event('system-message-read'));
+    }
+  }
+
+  useEffect(() => {
+    if (!requestedSystemMessageId || !systemMessagesLoaded) return;
+    const message = systemMessages.find((item) => item.id === requestedSystemMessageId);
+    if (message) openSystemMessage(message);
+    router.replace('/inbox');
+    // 僅處理推播帶入的訊息一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedSystemMessageId, systemMessagesLoaded]);
 
   // ── Match cards — one per request ───────────────────────────────────────────
 
@@ -200,7 +254,7 @@ export default function InboxPage() {
 
   const matchIsLoading = Boolean(requestedMatchId && !requestedMatchReady && matchRefreshAttempts < 10);
   const matchLoadFailed = Boolean(requestedMatchId && !requestedMatchReady && matchRefreshAttempts >= 10);
-  const isEmpty = matchCards.length === 0 && allNotifs.length === 0 && !matchIsLoading && !matchLoadFailed;
+  const isEmpty = systemMessagesLoaded && systemMessages.length === 0 && matchCards.length === 0 && allNotifs.length === 0 && !matchIsLoading && !matchLoadFailed;
 
   if (isEmpty) {
     return (
@@ -232,6 +286,25 @@ export default function InboxPage() {
 
   return (
     <div className="px-4 py-4 flex flex-col gap-4">
+      {systemMessages.map((message) => (
+        <button
+          key={message.id}
+          type="button"
+          onClick={() => openSystemMessage(message)}
+          className={`w-full rounded-2xl border bg-white p-4 text-left shadow-card transition active:bg-brand-ice ${message.readAt ? 'border-brand-lavender' : 'border-brand-pink'}`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] font-bold text-brand-pink">JUGA 官方通知</span>
+            {!message.readAt && <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-label="未讀" />}
+          </div>
+          <p className="mt-1 text-sm font-bold text-brand-ink">{message.title}</p>
+          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-500">{message.content}</p>
+          <p className="mt-2 text-[11px] text-zinc-400">
+            {formatDistanceToNow(new Date(message.createdAt), { locale: zhTW, addSuffix: true })}
+            {' · '}{message.readAt ? '已讀' : '未讀'}
+          </p>
+        </button>
+      ))}
       {matchIsLoading && (
         <div className="rounded-2xl border border-brand-lavender bg-white p-4 text-center shadow-card">
           <p className="text-sm font-semibold text-brand-ink">聊天室建立中…</p>
@@ -510,6 +583,42 @@ export default function InboxPage() {
           })}
         </div>
       )}
+
+      {systemMessageOpen && (() => {
+        const message = systemMessages.find((item) => item.id === systemMessageOpen);
+        if (!message) return null;
+        return (
+          <div className="app-modal-layer fixed inset-0 flex items-center justify-center px-4" onClick={() => setSystemMessageOpen(null)}>
+            <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" />
+            <article
+              role="dialog"
+              aria-modal="true"
+              aria-label="JUGA 官方通知"
+              className="relative w-full max-w-[400px] rounded-3xl bg-white p-5 shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-brand-pink">JUGA 官方通知</p>
+                  <h2 className="mt-2 text-lg font-bold text-brand-ink">{message.title}</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSystemMessageOpen(null)}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-100 text-xl text-zinc-500"
+                  aria-label="關閉"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-700">{message.content}</p>
+              <p className="mt-5 border-t border-zinc-100 pt-3 text-xs text-zinc-400">
+                {new Date(message.createdAt).toLocaleString('zh-Hant-TW')}
+              </p>
+            </article>
+          </div>
+        );
+      })()}
     </div>
   );
 }

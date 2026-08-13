@@ -14,7 +14,7 @@
 import type { SessionPayload } from './session';
 import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage } from './chat-authz';
 import { chatExpiresAtFrom } from './chat-lifetime';
-import { activeConfirmedGirlIds } from './request-attendance';
+import { activeConfirmedGirlIds, confirmedCountForRequest } from './request-attendance';
 import { REQUEST_ACTIVE_MS, REQUEST_RETENTION_MS } from './data-retention';
 
 type Item = Record<string, unknown>;
@@ -45,7 +45,6 @@ const isObj = (v: unknown): v is Item => typeof v === 'object' && v !== null && 
 const s = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const asArr = (v: unknown): Item[] => (Array.isArray(v) ? (v.filter(isObj) as Item[]) : []);
 
-const REQUEST_STATUSES = new Set(['open', 'closed']);
 const REQUEST_TYPES = new Set(['after_party', 'drinking', 'fill_spot', 'last_minute', 'music', 'dancing', 'private_party', 'dining', 'other']);
 const VENUE_TYPES = new Set(['nightclub', 'clubhouse', 'home', 'bar', 'motel']);
 const PARTY_FORMATS = new Set(['with_women', 'without_women', 'one_on_one']);
@@ -95,9 +94,14 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
     const id = s(e.id); if (!id) continue;
     if (s(e.managerId) === me || s(idx.escorts.get(id)?.managerId) === me) { if (e.removed === true) managed.delete(id); else managed.add(id); }
   }
-  // ── 2) presence / photoOverrides / photoGalleries：僅 manager 且 item.id ∈ managedGirlIds ──
-  for (const k of ['presence', 'photoOverrides', 'photoGalleries'] as const) {
+  // ── 2) presence / photoOverrides：僅 manager 且 item.id ∈ managedGirlIds ──
+  for (const k of ['presence', 'photoOverrides'] as const) {
     if (k in out) out[k] = asArr(out[k]).filter((it) => { const id = s(it.id); return !!id && isManager && managed.has(id); });
+  }
+  // Gallery writes use the dedicated atomic API. Ignore generic snapshot writes so an
+  // older client or a late request cannot overwrite the latest server-side gallery.
+  if ('photoGalleries' in out) {
+    out.photoGalleries = [];
   }
 
   // ── 3) requests：create creatorId===me；update 以 server existing.creatorId===me，
@@ -109,7 +113,26 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       if (existing) {
         if (s(existing.creatorId) !== me) return [];
         const merged: Item = { ...existing };
-        if (typeof r.status === 'string' && REQUEST_STATUSES.has(r.status)) merged.status = r.status;
+        const oldCount = Number(existing.peopleCount);
+        const nextCount = Number(r.peopleCount);
+        const confirmedCount = confirmedCountForRequest(
+          id,
+          [...idx.responses.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
+          [...idx.invitations.values()].map((item) => ({ id: s(item.id) ?? '', ...item })),
+        );
+        const canReopenFullRequest = s(existing.status) === 'closed'
+          && Date.parse(s(existing.expiresAt) ?? '') > now
+          && Number.isInteger(oldCount)
+          && confirmedCount >= oldCount
+          && Number.isInteger(nextCount)
+          && nextCount > oldCount
+          && nextCount <= 20;
+        if (canReopenFullRequest) {
+          merged.peopleCount = nextCount;
+          merged.status = 'open';
+          return [merged];
+        }
+        if (s(existing.status) === 'open' && r.status === 'closed') merged.status = 'closed';
         if (s(existing.status) === 'open') {
           if (typeof r.area === 'string' && r.area.trim().length > 0 && r.area.length <= 40) {
             merged.area = r.area.trim();
@@ -123,7 +146,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
           if (typeof r.partyFormat === 'string' && PARTY_FORMATS.has(r.partyFormat)) {
             merged.partyFormat = r.partyFormat;
           }
-          if (typeof r.peopleCount === 'number' && Number.isInteger(r.peopleCount) && r.peopleCount >= 1 && r.peopleCount <= 20) {
+          if (typeof r.peopleCount === 'number' && Number.isInteger(r.peopleCount) && r.peopleCount >= Math.max(1, confirmedCount) && r.peopleCount <= 20) {
             merged.peopleCount = r.peopleCount;
           }
           if (typeof r.note === 'string' && r.note.length <= 200) {

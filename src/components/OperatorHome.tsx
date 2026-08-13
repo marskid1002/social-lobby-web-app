@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAppState } from '@/lib/state';
+import { refreshShared, useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { X, Check, UserCog, Camera, Trash2, Pencil } from 'lucide-react';
@@ -66,7 +66,7 @@ async function downscaleToJpegDataUrl(file: File, maxDim = 1280, quality = 0.82)
 }
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchToRosterGirl, setUserPresence, setPhotoOverride, resetPhotoOverride, addGalleryPhoto, removeGalleryPhoto, updateUser, addEscort, updateEscortProfile, removeEscort } = useAppState();
+  const { state, dispatchGirl, switchToRosterGirl, setUserPresence, setPhotoOverride, resetPhotoOverride, updateUser, addEscort, updateEscortProfile, removeEscort } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
   const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
@@ -109,7 +109,11 @@ export function OperatorHome() {
     const res = await fetch('/api/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: girlId, dataUrl }),
+      body: JSON.stringify({
+        userId: girlId,
+        dataUrl,
+        kind: uploadModeRef.current === 'gallery' ? 'gallery' : 'managed-photo',
+      }),
     });
     if (!res.ok) {
       let detail = String(res.status);
@@ -119,6 +123,22 @@ export function OperatorHome() {
     const data = await res.json();
     if (!data?.url) throw new Error('上傳失敗：伺服器未回傳網址');
     return data.url as string;
+  }
+
+  async function saveGalleryChanges(girlId: string, changes: { append?: string[]; remove?: string[] }) {
+    const res = await fetch('/api/gallery', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ escortId: girlId, append: changes.append ?? [], remove: changes.remove ?? [] }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      if (data.error === 'escort ownership not found') {
+        throw new Error('小姐所屬資料尚未同步完成，請重新整理後再試');
+      }
+      throw new Error(`相簿儲存失敗（${res.status}）`);
+    }
+    await refreshShared();
   }
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -136,23 +156,23 @@ export function OperatorHome() {
         setPhotoOverride(girlId, url);
         setToast('✅ 已更新大頭照');
       } else {
-        let successCount = 0;
+        const uploadedUrls: string[] = [];
         const errors: string[] = [];
         for (const [index, file] of files.entries()) {
           setUploadProgress({ current: index + 1, total: files.length });
           try {
             const url = await uploadImage(girlId, file);
-            addGalleryPhoto(girlId, url);
-            successCount += 1;
+            uploadedUrls.push(url);
           } catch (err) {
-            errors.push(err instanceof Error ? err.message : `${file.name} 上傳失敗`);
+            errors.push(`${file.name}：${err instanceof Error ? err.message : '上傳失敗'}`);
           }
         }
-        if (successCount === 0) throw new Error(errors[0] ?? '照片上傳失敗');
+        if (uploadedUrls.length === 0) throw new Error(errors[0] ?? '照片上傳失敗');
+        await saveGalleryChanges(girlId, { append: uploadedUrls });
         setToast(
           errors.length === 0
-            ? `✅ 已加入 ${successCount} 張照片`
-            : `⚠️ 已加入 ${successCount} 張，${errors.length} 張失敗`,
+            ? `✅ 已加入 ${uploadedUrls.length} 張照片`
+            : `⚠️ 已加入 ${uploadedUrls.length} 張，${errors.length} 張失敗`,
         );
       }
       setTimeout(() => setToast(''), 2500);
@@ -197,6 +217,21 @@ export function OperatorHome() {
     setAddOpen(false);
     setToast('✅ 已新增人員');
     setTimeout(() => setToast(''), 2500);
+  }
+
+  async function handleRemoveGalleryPhoto(girlId: string, url: string) {
+    if (uploading) return;
+    setUploading(true);
+    try {
+      await saveGalleryChanges(girlId, { remove: [url] });
+      setToast('已刪除相簿照片');
+      setTimeout(() => setToast(''), 2500);
+    } catch (err) {
+      setToast(`⚠️ ${err instanceof Error ? err.message : '刪除失敗'}`);
+      setTimeout(() => setToast(''), 5000);
+    } finally {
+      setUploading(false);
+    }
   }
 
   function openEscortEditor(user: (typeof rosterGirls)[number]) {
@@ -741,7 +776,8 @@ export function OperatorHome() {
                         <div key={url} className="relative aspect-square">
                           <img src={url} alt="" className="w-full h-full rounded-xl object-cover" />
                           <button
-                            onClick={() => removeGalleryPhoto(girl.id, url)}
+                            onClick={() => void handleRemoveGalleryPhoto(girl.id, url)}
+                            disabled={uploading}
                             className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center shadow ring-2 ring-white active:scale-90"
                             aria-label="刪除這張照片"
                           >

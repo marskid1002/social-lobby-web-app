@@ -157,6 +157,22 @@ type EscortGallery = {
   photos: string[];
 };
 
+type SystemMessage = {
+  id: string;
+  recipientId: string;
+  recipientAccount: string;
+  recipientName: string;
+  recipientRole: 'user' | 'manager';
+  title: string;
+  content: string;
+  senderId: string;
+  createdAt: string;
+  readAt?: string;
+  pushSent: number;
+  pushTotal: number;
+  pushSkipped?: string;
+};
+
 type SystemStatus = {
   ready: boolean;
   redisConfigured: boolean;
@@ -195,15 +211,17 @@ type DashboardData = {
   devices: DeviceSummary[];
   managerRosters: ManagerRoster[];
   escortGalleries: EscortGallery[];
+  systemMessages: SystemMessage[];
 };
 
-type Tab = 'overview' | 'flows' | 'accounts' | 'galleries' | 'reports' | 'chats' | 'system' | 'danger';
+type Tab = 'overview' | 'flows' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
 
 const NAV: Array<{ id: Tab; label: string; short: string }> = [
   { id: 'overview', label: '營運總覽', short: '總覽' },
   { id: 'flows', label: '流程診斷', short: '流程' },
   { id: 'accounts', label: '帳號管理', short: '帳號' },
   { id: 'galleries', label: '小姐相簿總覽', short: '相簿' },
+  { id: 'messages', label: '系統訊息', short: '訊息' },
   { id: 'reports', label: '檢舉中心', short: '檢舉' },
   { id: 'chats', label: '聊天室查詢', short: '聊天' },
   { id: 'system', label: '系統狀態', short: '系統' },
@@ -332,6 +350,10 @@ export default function AdminPage() {
   const [lastRefreshedAt, setLastRefreshedAt] = useState('');
   const [rosterOpen, setRosterOpen] = useState<string | null>(null);
   const [galleryOpen, setGalleryOpen] = useState<{ escortId: string; index: number } | null>(null);
+  const [messageRecipientId, setMessageRecipientId] = useState('');
+  const [messageTitle, setMessageTitle] = useState('');
+  const [messageContent, setMessageContent] = useState('');
+  const [messagePreviewOpen, setMessagePreviewOpen] = useState(false);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -534,6 +556,39 @@ export default function AdminPage() {
       }));
     } catch {
       showToast('對話載入失敗');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function sendSystemMessage() {
+    const recipient = data?.accounts.find((account) => account.userId === messageRecipientId);
+    if (!recipient || !messageTitle.trim() || !messageContent.trim()) return;
+    setBusy('send-system-message');
+    try {
+      const response = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send-system-message',
+          recipientId: recipient.userId,
+          title: messageTitle.trim(),
+          content: messageContent.trim(),
+          confirmation: recipient.userId,
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: string };
+      if (!response.ok || !result.ok) {
+        showToast(result.error || '訊息發送失敗');
+        return;
+      }
+      setMessagePreviewOpen(false);
+      setMessageTitle('');
+      setMessageContent('');
+      showToast('官方通知已建立並嘗試推播');
+      await load();
+    } catch {
+      showToast('訊息發送失敗，請稍後再試');
     } finally {
       setBusy('');
     }
@@ -1124,6 +1179,103 @@ export default function AdminPage() {
               </section>
             )}
 
+            {tab === 'messages' && (
+              <section>
+                <h1 className="text-2xl font-bold">系統訊息</h1>
+                <p className="mt-1 text-sm text-zinc-500">以 JUGA 官方通知傳送給單一客戶或管理帳號。</p>
+
+                <div className="mt-4 rounded-2xl border border-sky-200 bg-white p-4">
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-bold text-zinc-600" htmlFor="system-message-recipient">收件人</label>
+                      <select
+                        id="system-message-recipient"
+                        value={messageRecipientId}
+                        onChange={(event) => setMessageRecipientId(event.target.value)}
+                        className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none focus:border-sky-400"
+                      >
+                        <option value="">請選擇收件人</option>
+                        {data.accounts
+                          .filter((account) =>
+                            (account.role === 'user' || account.role === 'manager')
+                            && !account.disabled
+                            && !account.archived)
+                          .sort((a, b) => a.key.localeCompare(b.key))
+                          .map((account) => (
+                            <option key={account.userId} value={account.userId}>
+                              {account.key} · {account.nickname} · {ROLE_LABEL[account.role]}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-zinc-600" htmlFor="system-message-title">標題</label>
+                      <input
+                        id="system-message-title"
+                        value={messageTitle}
+                        onChange={(event) => setMessageTitle(event.target.value.slice(0, 60))}
+                        placeholder="例如：帳號資料提醒"
+                        className="mt-1.5 w-full rounded-xl border border-zinc-200 px-3 py-3 text-sm outline-none focus:border-sky-400"
+                      />
+                      <p className="mt-1 text-right text-[11px] text-zinc-400">{messageTitle.length}/60</p>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <label className="text-xs font-bold text-zinc-600" htmlFor="system-message-content">訊息內容</label>
+                    <textarea
+                      id="system-message-content"
+                      value={messageContent}
+                      onChange={(event) => setMessageContent(event.target.value.slice(0, 1000))}
+                      rows={6}
+                      placeholder="請勿傳送密碼、啟用碼或不必要的個人資料。"
+                      className="mt-1.5 w-full resize-y rounded-xl border border-zinc-200 px-3 py-3 text-sm leading-relaxed outline-none focus:border-sky-400"
+                    />
+                    <div className="mt-1 flex items-center justify-between text-[11px]">
+                      <span className="text-amber-600">發送後不可修改，並會保留操作紀錄。</span>
+                      <span className="text-zinc-400">{messageContent.length}/1000</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!messageRecipientId || !messageTitle.trim() || !messageContent.trim() || Boolean(busy)}
+                    onClick={() => setMessagePreviewOpen(true)}
+                    className="mt-4 rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+                  >
+                    預覽並確認
+                  </button>
+                </div>
+
+                <h2 className="mt-6 text-sm font-bold text-zinc-800">最近發送紀錄</h2>
+                <div className="mt-3 space-y-3">
+                  {(data.systemMessages ?? []).map((message) => (
+                    <article key={message.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="font-bold text-zinc-900">{message.title}</p>
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {message.recipientAccount} · {message.recipientName} · {ROLE_LABEL[message.recipientRole]}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-2 text-[10px] font-bold">
+                          <span className={`rounded-full px-2 py-1 ${message.readAt ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {message.readAt ? `已讀 ${fmtTime(message.readAt)}` : '未讀'}
+                          </span>
+                          <span className="rounded-full bg-zinc-100 px-2 py-1 text-zinc-600">
+                            推播 {message.pushSent}/{message.pushTotal}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-3 whitespace-pre-wrap rounded-xl bg-zinc-50 p-3 text-sm leading-relaxed text-zinc-700">{message.content}</p>
+                      <p className="mt-2 text-xs text-zinc-400">{fmtTime(message.createdAt)} · {message.id}</p>
+                    </article>
+                  ))}
+                  {(data.systemMessages ?? []).length === 0 && (
+                    <p className="rounded-2xl bg-white p-6 text-center text-sm text-zinc-400">尚未發送任何系統訊息</p>
+                  )}
+                </div>
+              </section>
+            )}
+
             {tab === 'reports' && (
               <section>
                 <h1 className="text-2xl font-bold">回報與檢舉中心</h1>
@@ -1415,6 +1567,45 @@ export default function AdminPage() {
           </div>
         </main>
       </div>
+
+      {messagePreviewOpen && (() => {
+        const recipient = data.accounts.find((account) => account.userId === messageRecipientId);
+        if (!recipient) return null;
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4" onClick={() => setMessagePreviewOpen(false)}>
+            <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <h2 className="text-lg font-bold">確認發送官方通知</h2>
+              <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm">
+                <p><span className="text-zinc-500">收件人：</span><b>{recipient.key} · {recipient.nickname}</b></p>
+                <p className="mt-1"><span className="text-zinc-500">身分：</span>{ROLE_LABEL[recipient.role]}</p>
+              </div>
+              <div className="mt-4 rounded-xl bg-zinc-50 p-4">
+                <p className="text-xs font-bold text-sky-700">JUGA 官方通知</p>
+                <p className="mt-2 font-bold text-zinc-900">{messageTitle.trim()}</p>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">{messageContent.trim()}</p>
+              </div>
+              <p className="mt-3 text-xs text-amber-600">請確認帳號與內容。發送後不能修改或收回。</p>
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMessagePreviewOpen(false)}
+                  className="flex-1 rounded-xl bg-zinc-100 py-3 text-sm font-semibold"
+                >
+                  返回修改
+                </button>
+                <button
+                  type="button"
+                  disabled={busy === 'send-system-message'}
+                  onClick={sendSystemMessage}
+                  className="flex-1 rounded-xl bg-sky-600 py-3 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  {busy === 'send-system-message' ? '發送中…' : '確認發送'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {galleryOpen && (() => {
         const escort = data.escortGalleries.find((item) => item.id === galleryOpen.escortId);

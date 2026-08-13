@@ -34,10 +34,11 @@ interface Props {
   open: boolean;
   onClose: () => void;
   request?: Request;
+  increaseOnly?: boolean;
   onSaved?: () => void;
 }
 
-export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
+export function PostRequestSheet({ open, onClose, request, increaseOnly = false, onSaved }: Props) {
   const { currentUser, postRequest, updateRequest } = useAppState();
   const router = useRouter();
   const isEditing = Boolean(request);
@@ -62,9 +63,9 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
     setType(request?.requestType ?? null);
     setVenueType(request?.venueType ?? null);
     setPartyFormat(request?.partyFormat ?? null);
-    setCount(request?.peopleCount ?? 1);
+    setCount(request ? Math.min(maxCount, request.peopleCount + (increaseOnly ? 1 : 0)) : 1);
     setNote(request?.note ?? '');
-  }, [currentUser?.defaultArea, open, request]);
+  }, [currentUser?.defaultArea, increaseOnly, open, request]);
 
   const districtOptions = AREA_OPTIONS[city] as readonly string[];
   const isLegacyArea = area !== '' && !districtOptions.includes(area);
@@ -76,6 +77,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
 
   function handleSubmit() {
     if (!type || !venueType || !partyFormat) return;
+    if (increaseOnly && request && count <= request.peopleCount) return;
     if (currentUser?.tier === 'guest') return; // 訪客不可發局（伺服器也會擋）
     if (request) {
       const updated = updateRequest(request.id, {
@@ -133,13 +135,19 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
 
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-brand-ink">{isEditing ? '編輯邀請' : '發布邀請'}</h2>
+          <h2 className="text-lg font-semibold text-brand-ink">{increaseOnly ? '增加人數' : isEditing ? '編輯邀請' : '發布邀請'}</h2>
           <button onClick={onClose} className="p-1.5 rounded-full hover:bg-brand-snow" aria-label="關閉">
             <X className="w-5 h-5 text-zinc-500" strokeWidth={1.75} />
           </button>
         </div>
 
         <div className="flex flex-col gap-5">
+            {increaseOnly && request && (
+              <div className="rounded-2xl bg-brand-snow px-4 py-3 text-sm text-zinc-500">
+                目前已額滿 {request.peopleCount} 人；增加後會重新開放邀請，原本的人選與聊天室不會變動。
+              </div>
+            )}
+            {!increaseOnly && <>
             {/* Area */}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-semibold text-brand-ink">區域</label>
@@ -238,6 +246,8 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             </fieldset>
             )}
 
+            </>}
+
             {/* Count — capped by tier */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
@@ -246,8 +256,9 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
               </div>
               <div className="flex items-center gap-4">
                 <button
-                  onClick={() => setCount((c) => Math.max(1, c - 1))}
-                  className="w-10 h-10 rounded-full border-2 border-brand-lavender flex items-center justify-center active:bg-brand-ice transition-colors"
+                  onClick={() => setCount((c) => Math.max(increaseOnly && request ? request.peopleCount + 1 : 1, c - 1))}
+                  disabled={Boolean(increaseOnly && request && count <= request.peopleCount + 1)}
+                  className="w-10 h-10 rounded-full border-2 border-brand-lavender flex items-center justify-center active:bg-brand-ice transition-colors disabled:opacity-35"
                   aria-label="減少人數"
                 >
                   <Minus className="w-4 h-4 text-brand-ink" strokeWidth={2} />
@@ -263,6 +274,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
               </div>
             </div>
 
+            {!increaseOnly && <>
             {/* Note */}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-semibold text-brand-ink">備註</label>
@@ -277,6 +289,8 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
               <p className="text-xs text-zinc-400 text-right">{note.length}/200</p>
             </div>
 
+            </>}
+
             <p className="text-xs text-zinc-400 text-center">
               {isEditing ? '原本的有效期限不會因編輯而延長' : '邀請有效時間：2 小時'}
             </p>
@@ -285,10 +299,10 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
             <div className="app-sticky-sheet-action">
               <button
                 onClick={handleSubmit}
-                disabled={!type || !venueType || !partyFormat}
+                disabled={!type || !venueType || !partyFormat || Boolean(increaseOnly && request && count <= request.peopleCount)}
                 className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
               >
-              {isEditing ? '儲存變更' : '發送邀請'}
+              {increaseOnly ? '確認增加人數' : isEditing ? '儲存變更' : '發送邀請'}
               </button>
             </div>
           </div>
@@ -296,7 +310,7 @@ export function PostRequestSheet({ open, onClose, request, onSaved }: Props) {
 
       {toast && (
         <div className="app-toast-layer absolute bottom-12 left-1/2 -translate-x-1/2 bg-brand-ink text-white text-sm rounded-full px-5 py-2.5 shadow-lg">
-          {isEditing ? '邀請已更新' : '邀請已發送'}
+          {increaseOnly ? '已增加人數並重新開放' : isEditing ? '邀請已更新' : '邀請已發送'}
         </div>
       )}
     </div>

@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Home, Sparkles, Bell, User, Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PostRequestSheet } from './PostRequestSheet';
 import { useAppState } from '@/lib/state';
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
 export function BottomNav() {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [systemUnreadCount, setSystemUnreadCount] = useState(0);
   const { state, currentUser, unreadCount } = useAppState();
   const isEscort = currentUser?.role === 'escort';
   const isGuest = currentUser?.tier === 'guest'; // 訪客唯讀：不顯示發局，避免按了假成功（伺服器會 403）
@@ -29,7 +30,26 @@ export function BottomNav() {
     state.chatReads,
     state.currentUserId,
   );
-  const inboxBadgeCount = unreadCount + chatUnreadCount + (state.inboxUnread ? 1 : 0);
+  const inboxBadgeCount = unreadCount + chatUnreadCount + systemUnreadCount + (state.inboxUnread ? 1 : 0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => fetch('/api/system-messages', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (!cancelled && typeof result?.unreadCount === 'number') setSystemUnreadCount(result.unreadCount);
+      })
+      .catch(() => {});
+    refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    const onRead = () => refresh();
+    window.addEventListener('system-message-read', onRead);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('system-message-read', onRead);
+    };
+  }, [state.currentUserId]);
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');

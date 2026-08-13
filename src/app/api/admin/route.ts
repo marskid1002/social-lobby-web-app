@@ -32,6 +32,13 @@ import { isSmsConfigured } from '@/lib/sms';
 import { listFlowTraces } from '@/lib/flow-trace-store';
 import { listIssueReports, setIssueResolved } from '@/lib/issue-store';
 import { listDeviceSummaries, removeDevicesForUser } from '@/lib/device-store';
+import { rateLimit } from '@/lib/rate-limit';
+import { sendWebPushToUsers } from '@/lib/push-service';
+import {
+  createSystemMessage,
+  listSystemMessages,
+  updateSystemMessagePush,
+} from '@/lib/system-message-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,6 +199,7 @@ export async function GET(req: NextRequest) {
     traceEvents,
     issues,
     devices,
+    systemMessages,
     system,
   ] = await Promise.all([
     listAccounts().then((list) => list.map(safeAccount)),
@@ -208,6 +216,7 @@ export async function GET(req: NextRequest) {
     listFlowTraces({ limit: 1000 }),
     listIssueReports(),
     listDeviceSummaries(),
+    listSystemMessages(),
     getSystemStatus(),
   ]);
 
@@ -268,6 +277,7 @@ export async function GET(req: NextRequest) {
       dashboard,
       managerRosters,
       escortGalleries,
+      systemMessages,
       system,
       auditLogs,
       traceEvents,
@@ -305,6 +315,47 @@ export async function POST(req: NextRequest) {
     const action = stringValue(body.action);
     const account = stringValue(body.account);
     const confirmation = stringValue(body.confirmation);
+
+    if (action === 'send-system-message') {
+      const recipientId = stringValue(body.recipientId);
+      const title = stringValue(body.title).trim();
+      const content = stringValue(body.content).trim();
+      if (!recipientId || title.length < 1 || title.length > 60 || content.length < 1 || content.length > 1000) {
+        return NextResponse.json({ error: '標題需為 1–60 字，內容需為 1–1000 字' }, { status: 400 });
+      }
+      const recipient = await getAccountByUserId(recipientId);
+      if (!recipient || !['user', 'manager'].includes(recipient.role) || recipient.disabled || recipient.archived) {
+        return NextResponse.json({ error: '收件人不存在或目前無法接收訊息' }, { status: 400 });
+      }
+      if (confirmation !== recipient.userId) {
+        return NextResponse.json({ error: '收件人確認資料不一致，請重新確認' }, { status: 400 });
+      }
+      const limited = await rateLimit('admin-system-message', `${admin.userId}:${recipient.userId}`, 1, 30);
+      if (!limited.ok) {
+        return NextResponse.json({ error: `請等待 ${limited.retryAfter} 秒後再傳給同一位使用者` }, { status: 429 });
+      }
+      const message = await createSystemMessage({
+        recipientId: recipient.userId,
+        recipientAccount: safeAccount(recipient).key,
+        recipientName: recipient.nickname,
+        recipientRole: recipient.role as 'user' | 'manager',
+        title,
+        content,
+        senderId: admin.userId,
+      });
+      const push = await sendWebPushToUsers(
+        [recipient.userId],
+        `JUGA 官方通知：${title}`,
+        '你收到一則官方通知，點擊登入查看內容',
+        `/inbox?systemMessage=${encodeURIComponent(message.id)}`,
+      ).catch((error) => {
+        console.error('[admin system message push]', error instanceof Error ? error.name : 'UnknownError');
+        return { sent: 0, total: 0, skipped: 'push error' };
+      });
+      const saved = await updateSystemMessagePush(message.id, push) ?? message;
+      await audit(admin, action, recipient.userId, `messageId=${message.id};titleLength=${title.length};contentLength=${content.length}`);
+      return NextResponse.json({ ok: true, message: saved });
+    }
 
     if (action === 'create-manager') {
       const nickname = stringValue(body.nickname).trim();

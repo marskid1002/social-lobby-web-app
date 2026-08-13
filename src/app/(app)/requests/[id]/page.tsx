@@ -2,12 +2,13 @@
 
 import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, BellRing, Clock, MapPin, Users, Share2, Pencil } from 'lucide-react';
+import { ArrowLeft, BellRing, Clock, MapPin, Users, Share2, Pencil, Plus } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { confirmedCountForRequest } from '@/lib/request-attendance';
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#FF3C91',
@@ -41,7 +42,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   } = useAppState();
   const [toast, setToast] = useState('');
   const [acceptingResponseId, setAcceptingResponseId] = useState<string | null>(null);
-  const [showEditSheet, setShowEditSheet] = useState(false);
+  const [editMode, setEditMode] = useState<'edit' | 'increase' | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
   const [nextReminderAt, setNextReminderAt] = useState(0);
   const [reminderClock, setReminderClock] = useState(() => Date.now());
@@ -74,6 +75,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const interestedList = responses.filter((r) => r.responseStatus === 'interested');
   const joiners        = responses.filter((r) => r.responseStatus === 'joining');
   const isAtCap        = request.status === 'closed'; // #5 派工無上限：僅已關閉才視為不可加入
+  const confirmedCount = confirmedCountForRequest(id, state.responses, state.invitations);
+  const isFull = confirmedCount >= request.peopleCount;
 
   // FOMO viewers (exclude anyone who has already responded)
   const respondedIds = new Set(responses.map((r) => r.userId));
@@ -95,6 +98,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const typeLabel  = REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType;
   const expiresIn  = formatDistance(new Date(request.expiresAt), new Date(), { locale: zhTW });
   const isExpired  = new Date(request.expiresAt) <= new Date();
+  const canEditRequest = isCreator && request.status === 'open' && !isExpired;
+  const canIncreaseRequest = isCreator && request.status === 'closed' && isFull && !isExpired && request.peopleCount < 20;
   const reminderSeconds = Math.max(0, Math.ceil((nextReminderAt - reminderClock) / 1000));
   const reminderCountdown = `${Math.floor(reminderSeconds / 60)}:${String(reminderSeconds % 60).padStart(2, '0')}`;
 
@@ -228,15 +233,6 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           <ArrowLeft className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
         </button>
         <h1 className="flex-1 text-base font-semibold text-brand-ink">邀請詳情</h1>
-        {isCreator && request.status === 'open' && (
-          <button
-            onClick={() => setShowEditSheet(true)}
-            className="p-1.5 rounded-full hover:bg-brand-ice"
-            aria-label="編輯邀請"
-          >
-            <Pencil className="w-5 h-5 text-zinc-500" strokeWidth={1.75} />
-          </button>
-        )}
         <button onClick={handleShare} className="p-1.5 rounded-full hover:bg-brand-ice" aria-label="分享">
           <Share2 className="w-5 h-5 text-zinc-500" strokeWidth={1.75} />
         </button>
@@ -245,7 +241,8 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       <div className="px-4 py-4 flex flex-col gap-4">
         {/* Header card — includes FOMO strip */}
         <div className="juga-request-card bg-white rounded-2xl p-4 shadow-card">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
             {SHOW_REQUEST_CLASSIFICATION && <span className="px-3 py-1 rounded-full text-xs font-semibold text-white" style={{ backgroundColor: typeColor }}>
               {typeLabel}
             </span>}
@@ -257,6 +254,19 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             <span className="flex items-center gap-1 text-xs text-zinc-500">
               <Users className="w-3 h-3" strokeWidth={1.75} /> {joiners.length}/{request.peopleCount} 人
             </span>
+            </div>
+            {(canEditRequest || canIncreaseRequest) && (
+              <button
+                onClick={() => setEditMode(canIncreaseRequest ? 'increase' : 'edit')}
+                className="flex shrink-0 items-center gap-1 rounded-full border border-brand-lavender bg-white px-3 py-1.5 text-xs font-bold text-brand-ink active:bg-brand-snow"
+                aria-label={canIncreaseRequest ? '增加人數' : '編輯邀請'}
+              >
+                {canIncreaseRequest
+                  ? <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                  : <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                {canIncreaseRequest ? '增加人數' : '編輯邀請'}
+              </button>
+            )}
           </div>
 
           <p className="text-sm text-brand-ink mb-3 leading-relaxed">{request.note}</p>
@@ -450,9 +460,10 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       <PostRequestSheet
-        open={showEditSheet}
-        onClose={() => setShowEditSheet(false)}
+        open={editMode !== null}
+        onClose={() => setEditMode(null)}
         request={isCreator ? request : undefined}
+        increaseOnly={editMode === 'increase'}
         onSaved={() => showToast('邀請資料已更新')}
       />
 

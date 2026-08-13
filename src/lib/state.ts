@@ -17,7 +17,7 @@ import type { User, OnlineStatus, Request, Response, Invitation, UpdateEvent, Fo
 import type { TeaserMessage } from '@/lib/mock/chat';
 import { chatExpiresAtFrom } from '@/lib/chat-lifetime';
 import { shouldRedirectExpiredSession } from '@/lib/session-redirect';
-import { activeConfirmedGirlIds } from '@/lib/request-attendance';
+import { activeConfirmedGirlIds, confirmedCountForRequest } from '@/lib/request-attendance';
 import { planDataRetention } from '@/lib/data-retention';
 import type { SharedState } from '@/lib/sync-store';
 
@@ -814,15 +814,27 @@ export function useAppState(options: { sync?: boolean } = {}) {
     let updated = false;
     setState((prev) => {
       const target = prev.requests.find((request) => request.id === requestId);
-      if (!target || target.creatorId !== prev.currentUserId || target.status !== 'open') {
+      if (!target || target.creatorId !== prev.currentUserId) {
         return prev;
       }
+      const isActive = new Date(target.expiresAt).getTime() > Date.now();
+      const confirmedCount = confirmedCountForRequest(requestId, prev.responses, prev.invitations);
+      const canIncreaseFullRequest = target.status === 'closed'
+        && isActive
+        && confirmedCount >= target.peopleCount
+        && Number.isInteger(changes.peopleCount)
+        && changes.peopleCount > target.peopleCount
+        && changes.peopleCount <= 20;
+      if (target.status !== 'open' && !canIncreaseFullRequest) return prev;
+      if (target.status === 'open' && changes.peopleCount < confirmedCount) return prev;
       updated = true;
       return {
         ...prev,
         requests: prev.requests.map((request) => {
           if (request.id !== requestId) return request;
-          return { ...request, ...changes };
+          return canIncreaseFullRequest
+            ? { ...request, peopleCount: changes.peopleCount, status: 'open' as const }
+            : { ...request, ...changes };
         }),
       };
     });
@@ -1404,27 +1416,6 @@ export function useAppState(options: { sync?: boolean } = {}) {
     setPhotoOverride(userId, seed?.avatarUrl ?? '');
   }, [setPhotoOverride]);
 
-  // 相簿：新增一張照片（跨裝置同步）
-  const addGalleryPhoto = useCallback((userId: string, url: string) => {
-    setState((prev) => {
-      const exists = prev.photoGalleries.some((g) => g.id === userId);
-      const photoGalleries = exists
-        ? prev.photoGalleries.map((g) => (g.id === userId ? { ...g, urls: [...g.urls, url] } : g))
-        : [...prev.photoGalleries, { id: userId, urls: [url] }];
-      return { ...prev, photoGalleries };
-    });
-  }, []);
-
-  // 相簿：刪除一張照片（跨裝置同步）
-  const removeGalleryPhoto = useCallback((userId: string, url: string) => {
-    setState((prev) => ({
-      ...prev,
-      photoGalleries: prev.photoGalleries.map((g) =>
-        g.id === userId ? { ...g, urls: g.urls.filter((u) => u !== url) } : g
-      ),
-    }));
-  }, []);
-
   // 幹部以旗下小姐身份操作（記錄原幹部，供返回）
   const switchToRosterGirl = useCallback((girlId: string) => {
     setState((prev) => ({
@@ -1554,8 +1545,6 @@ export function useAppState(options: { sync?: boolean } = {}) {
     setUserPresence,
     setPhotoOverride,
     resetPhotoOverride,
-    addGalleryPhoto,
-    removeGalleryPhoto,
     addEscort,
     updateEscortProfile,
     removeEscort,

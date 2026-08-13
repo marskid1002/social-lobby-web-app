@@ -110,6 +110,81 @@ export async function mergeShared(patch: Partial<SharedState>): Promise<SharedSt
   return getShared();
 }
 
+export interface PhotoGalleryRecord extends Item {
+  id: string;
+  urls: string[];
+}
+
+const UPDATE_GALLERY_SCRIPT = `
+local raw = redis.call('HGET', KEYS[1], ARGV[1])
+local current = {}
+if raw then
+  local ok, decoded = pcall(cjson.decode, raw)
+  if ok and type(decoded) == 'table' and type(decoded.urls) == 'table' then
+    current = decoded.urls
+  end
+end
+
+local incoming = cjson.decode(ARGV[2])
+local remove = cjson.decode(ARGV[3])
+local removed = {}
+for _, url in ipairs(remove) do removed[url] = true end
+
+local seen = {}
+local result = {}
+for _, url in ipairs(current) do
+  if type(url) == 'string' and not removed[url] and not seen[url] then
+    seen[url] = true
+    table.insert(result, url)
+  end
+end
+for _, url in ipairs(incoming) do
+  if type(url) == 'string' and not removed[url] and not seen[url] then
+    seen[url] = true
+    table.insert(result, url)
+  end
+end
+
+local record = { id = ARGV[1], urls = result }
+local encoded = cjson.encode(record)
+redis.call('HSET', KEYS[1], ARGV[1], encoded)
+return encoded
+`;
+
+/** Atomically append/remove gallery URLs so concurrent uploads cannot overwrite newer photos. */
+export async function updatePhotoGallery(
+  userId: string,
+  changes: { append?: string[]; remove?: string[] },
+): Promise<PhotoGalleryRecord> {
+  const append = [...new Set(changes.append ?? [])];
+  const remove = [...new Set(changes.remove ?? [])];
+  const redis = getRedis();
+  if (redis) {
+    const raw = await redis.eval(
+      UPDATE_GALLERY_SCRIPT,
+      [hashKey('photoGalleries')],
+      [userId, JSON.stringify(append), JSON.stringify(remove)],
+    );
+    const parsed = parseItem(raw);
+    return {
+      id: userId,
+      urls: Array.isArray(parsed?.urls)
+        ? parsed.urls.filter((url): url is string => typeof url === 'string')
+        : [],
+    };
+  }
+
+  const existing = mem.photoGalleries[userId];
+  const removed = new Set(remove);
+  const urls = [...new Set([
+    ...(Array.isArray(existing?.urls) ? existing.urls.filter((url): url is string => typeof url === 'string') : []),
+    ...append,
+  ])].filter((url) => !removed.has(url));
+  const record: PhotoGalleryRecord = { id: userId, urls };
+  mem.photoGalleries[userId] = record;
+  return record;
+}
+
 /** 從某集合刪除一筆（跨裝置刪除用）。 */
 export async function deleteSharedItem(key: SharedKey, id: string): Promise<void> {
   const redis = getRedis();
