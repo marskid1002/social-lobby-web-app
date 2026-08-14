@@ -13,7 +13,7 @@ import {
 type Account = {
   key: string;
   accountRef: string;
-  role: 'user' | 'manager' | 'account_admin' | 'admin';
+  role: 'user' | 'manager' | 'account_admin' | 'account_viewer' | 'admin';
   tier: string;
   userId: string;
   nickname: string;
@@ -232,6 +232,7 @@ const NAV: Array<{ id: Tab; label: string; short: string }> = [
 const ROLE_LABEL: Record<string, string> = {
   admin: '管理員',
   account_admin: '幹部帳號管理員',
+  account_viewer: '幹部稽查員',
   manager: '幹部',
   user: '客戶',
 };
@@ -1007,7 +1008,7 @@ export default function AdminPage() {
                             onClick={() => runAction('reset', { account: account.accountRef })}
                             className="rounded-lg border border-sky-300 px-3 py-1.5 text-xs font-semibold text-sky-700"
                           >
-                            {account.role === 'manager' || account.role === 'account_admin'
+                            {account.role === 'manager' || account.role === 'account_admin' || account.role === 'account_viewer'
                               ? account.hasPassword
                                 ? '重設並產生新啟用碼'
                                 : account.hasActivationCode

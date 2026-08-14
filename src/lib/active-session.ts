@@ -38,6 +38,10 @@ function sessionExpired(): NextResponse {
   return NextResponse.json({ error: '登入狀態已失效，請重新登入' }, { status: 401 });
 }
 
+function viewerForbidden(): NextResponse {
+  return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+}
+
 export async function requireActiveSession(req: Request): Promise<ActiveSessionResult> {
   const session = await getSessionFromRequest(req);
   if (!session) return { ok: false, response: unauthorized() };
@@ -51,6 +55,15 @@ export async function requireActiveSession(req: Request): Promise<ActiveSessionR
   if (account.disabled || account.archived) return { ok: false, response: accountDisabled() }; // 已停用/封存 → 403
   if ((session.sessionVersion ?? 0) !== (account.sessionVersion ?? 0)) {
     return { ok: false, response: sessionExpired() };
+  }
+
+  // A777 是獨立唯讀身分。除了確認自身 session 與讀取專用稽查資料外，
+  // 所有 Route Handler 都在共同授權層拒絕，不能只依賴前端隱藏或 Proxy。
+  if (account.role === 'account_viewer') {
+    const pathname = new URL(req.url).pathname;
+    if (pathname !== '/api/auth' && pathname !== '/api/account-admin') {
+      return { ok: false, response: viewerForbidden() };
+    }
   }
 
   return { ok: true, session, account, isGuest: false };

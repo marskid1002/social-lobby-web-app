@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 const authStore = await import('@/lib/auth-store');
 const sessionStore = await import('@/lib/session');
+const activeSession = await import('@/lib/active-session');
 const accountAdminRoute = await import('@/app/api/account-admin/route');
 
 const REDIS = Boolean(
@@ -41,12 +42,13 @@ test('A888 is isolated from A000 and activates with its own one-time code', { sk
 
 test('A777 is a read-only observer limited to A001-A010', { skip }, async () => {
   const viewer = await authStore.getAccount('A777');
-  assert.equal(viewer?.role, 'account_admin');
-  assert.equal(viewer?.nickname, '幹部狀態查看員');
+  assert.equal(viewer?.role, 'account_viewer');
+  assert.equal(viewer?.nickname, '幹部稽查員');
+  assert.equal(viewer?.hash, null);
 
   const token = await sessionStore.signSession({
     userId: viewer.userId,
-    role: 'account_admin',
+    role: 'account_viewer',
     tier: viewer.tier,
     sessionVersion: viewer.sessionVersion,
   });
@@ -65,6 +67,27 @@ test('A777 is a read-only observer limited to A001-A010', { skip }, async () => 
     body: JSON.stringify({ action: 'disable', account: 'A001' }),
   }));
   assert.equal(postResponse.status, 403);
+});
+
+test('A777 requires an activation code before setting its own password', { skip }, async () => {
+  const activationCode = await authStore.regenerateAccountAdminActivation('A777');
+  assert.ok(activationCode);
+  const activated = await authStore.activateAccountAdminWithCode('A777', activationCode, 'Strong!Pass8');
+  assert.equal(activated?.role, 'account_viewer');
+  assert.ok(activated?.hash);
+  const reused = await authStore.activateAccountAdminWithCode('A777', activationCode, 'Other!Pass9');
+  assert.equal(reused, null);
+
+  const token = await sessionStore.signSession({
+    userId: activated.userId,
+    role: 'account_viewer',
+    tier: activated.tier,
+    sessionVersion: activated.sessionVersion,
+  });
+  const headers = { cookie: `${sessionStore.SESSION_COOKIE}=${encodeURIComponent(token)}` };
+  const blocked = await activeSession.requireActiveSession(new Request('http://localhost/api/issues', { headers }));
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.response.status, 403);
 });
 
 test('reserved manager clears the rename requirement only after choosing a non-default name', { skip }, async () => {

@@ -85,7 +85,7 @@ export default function LoginPage() {
       }
       const u = data.user;
       if (u.role === 'admin') { switchUser(u.id); setTimeout(() => router.push('/admin'), 250); return; }
-      if (u.role === 'account_admin') { setTimeout(() => router.push('/account-admin'), 250); return; }
+      if (u.role === 'account_admin' || u.role === 'account_viewer') { setTimeout(() => router.push('/account-admin'), 250); return; }
       if (u.role === 'manager') switchUser(u.id);
       else loginCustomer(u.id, u.nickname);
       setTimeout(() => router.push(u.mustChangeNickname ? '/complete-profile' : '/lobby/explore'), 250);

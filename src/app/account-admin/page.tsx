@@ -68,7 +68,7 @@ export default function AccountAdminPage() {
         <header className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm text-pink-300">{account}</p>
-            <h1 className="text-2xl font-semibold">{readOnly ? '幹部狀態查看' : '幹部帳號管理'}</h1>
+            <h1 className="text-2xl font-semibold">{readOnly ? '幹部稽查員' : '幹部帳號管理'}</h1>
           </div>
           <button onClick={logout} className="rounded-lg border border-white/15 px-4 py-2 text-sm">登出</button>
         </header>

@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { getRedis, kvKey } from './kv';
 import { normalizeTaiwanMobile, taiwanMobileStorageAliases } from './phone';
+import { removeDevicesForUser } from './device-store';
+import { removeSubscriptionsForUser } from './push-store';
 
 /**
  * 帳號儲存層（帳號 + 密碼）。
@@ -11,7 +13,7 @@ import { normalizeTaiwanMobile, taiwanMobileStorageAliases } from './phone';
 
 const ACCOUNTS_KEY = kvKey('sl:accounts:v2');
 
-export type AccountRole = 'user' | 'manager' | 'account_admin' | 'admin';
+export type AccountRole = 'user' | 'manager' | 'account_admin' | 'account_viewer' | 'admin';
 
 export interface Account {
   key: string;              // 登入帳號：手機（客戶）、A001（幹部）或 A000（管理員）
@@ -32,6 +34,7 @@ export interface Account {
   termsAcceptedAt?: string; // 由 server 產生的同意時間
   ageConfirmedAt?: string;  // 由 server 產生的年滿 18 歲確認時間
   mustChangeNickname?: boolean; // 預設名稱的幹部首次登入後必須自行改名
+  securityVersion?: number;     // 特殊帳號的一次性安全遷移版本
 }
 
 type AccountsMap = Record<string, Account>; // key -> Account
@@ -47,10 +50,7 @@ const ACCOUNT_ADMIN_ACCOUNT = { code: 'A888', userId: 'account-admin-888', nickn
 const ACCOUNT_VIEWER_ACCOUNT = {
   code: 'A777',
   userId: 'account-viewer-777',
-  nickname: '幹部狀態查看員',
-  // 初始密碼為部署時另外安全交付的一組高強度隨機值；程式只保存 scrypt salt/hash。
-  salt: '76ca0523fc6c4e322f1cbb2ab537689f',
-  hash: '9598cb7f57837bb0c48a50fe17b4da78e534cd50e8019f5e9eb53734735470dc4ccb32e36c605355e5f98839884ae6f7b95c5ce7ce0d933b572d9557ebcc6a8e',
+  nickname: '幹部稽查員',
 };
 
 // 幹部帳號 A001~A010 對應到現有 10 個幹部 user
@@ -168,16 +168,33 @@ async function ensureManagerAccounts(accounts: AccountsMap): Promise<boolean> {
   if (!accounts[ACCOUNT_VIEWER_ACCOUNT.code]) {
     accounts[ACCOUNT_VIEWER_ACCOUNT.code] = {
       key: ACCOUNT_VIEWER_ACCOUNT.code,
-      // 沿用後台隔離角色，實際讀寫範圍再由 /api/account-admin 依帳號代碼鎖定。
-      role: 'account_admin',
+      role: 'account_viewer',
       tier: 'admin',
       userId: ACCOUNT_VIEWER_ACCOUNT.userId,
       nickname: ACCOUNT_VIEWER_ACCOUNT.nickname,
-      salt: ACCOUNT_VIEWER_ACCOUNT.salt,
-      hash: ACCOUNT_VIEWER_ACCOUNT.hash,
+      salt: '',
+      hash: null,
       createdAt: new Date().toISOString(),
       sessionVersion: 1,
+      securityVersion: 1,
     };
+    changed = true;
+  } else if ((accounts[ACCOUNT_VIEWER_ACCOUNT.code].securityVersion ?? 0) < 1) {
+    // 舊版 A777 曾內建預設密碼。部署後只遷移一次：清除密碼並撤銷全部舊 JWT。
+    const viewer = accounts[ACCOUNT_VIEWER_ACCOUNT.code];
+    viewer.role = 'account_viewer';
+    viewer.nickname = ACCOUNT_VIEWER_ACCOUNT.nickname;
+    viewer.hash = null;
+    viewer.salt = '';
+    delete viewer.activationSalt;
+    delete viewer.activationHash;
+    delete viewer.activationCreatedAt;
+    viewer.sessionVersion = (viewer.sessionVersion ?? 0) + 1;
+    viewer.securityVersion = 1;
+    await Promise.all([
+      removeDevicesForUser(viewer.userId),
+      removeSubscriptionsForUser(viewer.userId),
+    ]);
     changed = true;
   }
   for (const m of MANAGER_MAP) {
@@ -354,7 +371,7 @@ export async function regenerateAccountAdminActivation(key: string): Promise<str
   const accounts = await readAccounts();
   await ensureManagerAccounts(accounts);
   const account = accounts[normalizeKey(key)];
-  if (!account || account.role !== 'account_admin' || account.archived) return null;
+  if (!account || !['account_admin', 'account_viewer'].includes(account.role) || account.archived) return null;
   const secret = createActivationSecret();
   account.hash = null;
   account.salt = '';
@@ -376,7 +393,7 @@ export async function activateAccountAdminWithCode(
   const account = accounts[normalizeKey(key)];
   if (
     !account
-    || account.role !== 'account_admin'
+    || !['account_admin', 'account_viewer'].includes(account.role)
     || account.hash
     || account.disabled
     || account.archived

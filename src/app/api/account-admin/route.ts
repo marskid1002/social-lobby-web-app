@@ -32,8 +32,13 @@ async function requireA888(req: NextRequest) {
 async function requireAccountConsole(req: NextRequest) {
   const auth = await requireActiveSession(req);
   if (!auth.ok) return auth;
-  const allowedAccount = auth.account?.key === 'A888' || auth.account?.key === 'A777';
-  if (auth.session.role !== 'account_admin' || auth.account?.role !== 'account_admin' || !allowedAccount) {
+  const isAdmin = auth.session.role === 'account_admin'
+    && auth.account?.role === 'account_admin'
+    && auth.account.key === 'A888';
+  const isViewer = auth.session.role === 'account_viewer'
+    && auth.account?.role === 'account_viewer'
+    && auth.account.key === 'A777';
+  if (!isAdmin && !isViewer) {
     return { ok: false as const, response: NextResponse.json({ error: 'forbidden' }, { status: 403 }) };
   }
   return auth;

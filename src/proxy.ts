@@ -6,7 +6,7 @@ const PROTECTED_APIS = ['/api/sync', '/api/notify', '/api/subscribe', '/api/uplo
 
 function homeFor(session: SessionPayload): string {
   if (session.role === 'admin') return '/admin';
-  if (session.role === 'account_admin') return '/account-admin';
+  if (session.role === 'account_admin' || session.role === 'account_viewer') return '/account-admin';
   if (session.role === 'manager' && session.mustChangeNickname) return '/complete-profile';
   return '/lobby/explore';
 }
@@ -31,12 +31,16 @@ export async function proxy(req: NextRequest) {
   }
 
   if (pathname === '/account-admin' || pathname.startsWith('/account-admin/') || pathname.startsWith('/api/account-admin')) {
-    if (!session || session.role !== 'account_admin') {
+    if (!session || !['account_admin', 'account_viewer'].includes(session.role)) {
       return pathname.startsWith('/api/')
         ? NextResponse.json({ error: 'forbidden' }, { status: 403 })
         : redirectTo(req, '/login');
     }
     return NextResponse.next();
+  }
+
+  if (session?.role === 'account_viewer' && pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
   if (pathname === '/complete-profile' || pathname.startsWith('/api/account')) {
@@ -51,7 +55,7 @@ export async function proxy(req: NextRequest) {
 
   if (PROTECTED_APIS.some((prefix) => pathname.startsWith(prefix))) {
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    if (session.role === 'account_admin') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    if (session.role === 'account_admin' || session.role === 'account_viewer') return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     if (session.role === 'manager' && session.mustChangeNickname) {
       return NextResponse.json({ error: 'profile completion required' }, { status: 403 });
     }
@@ -60,7 +64,7 @@ export async function proxy(req: NextRequest) {
 
   if (APP_PAGES.some((prefix) => pathname === prefix || pathname.startsWith(prefix))) {
     if (!session) return redirectTo(req, '/login');
-    if (session.role === 'account_admin' || (session.role === 'manager' && session.mustChangeNickname)) {
+    if (session.role === 'account_admin' || session.role === 'account_viewer' || (session.role === 'manager' && session.mustChangeNickname)) {
       return redirectTo(req, homeFor(session));
     }
   }

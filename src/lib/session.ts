@@ -5,7 +5,7 @@ export const SESSION_COOKIE = 'sl_session';
 
 export interface SessionPayload {
   userId: string;
-  role: 'user' | 'manager' | 'guest' | 'account_admin' | 'admin';
+  role: 'user' | 'manager' | 'guest' | 'account_admin' | 'account_viewer' | 'admin';
   tier: string;
   sessionVersion?: number;
   mustChangeNickname?: boolean;

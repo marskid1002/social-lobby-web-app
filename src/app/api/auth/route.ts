@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
 
 async function withSession(req: NextRequest, user: {
   id: string;
-  role: 'user' | 'manager' | 'guest' | 'account_admin' | 'admin';
+  role: 'user' | 'manager' | 'guest' | 'account_admin' | 'account_viewer' | 'admin';
   tier: string;
   nickname?: string;
   sessionVersion?: number;
@@ -302,7 +302,7 @@ export async function POST(req: NextRequest) {
       }
 
       // A888 只接受 A000 產生的一次性啟用碼，不共用最高管理密鑰。
-      if (acc.role === 'account_admin' && acc.hash === null) {
+      if ((acc.role === 'account_admin' || acc.role === 'account_viewer') && acc.hash === null) {
         if (!acc.activationHash || !acc.activationSalt) {
           return NextResponse.json({
             error: '請先由最高管理員產生一次性啟用碼',
@@ -316,7 +316,7 @@ export async function POST(req: NextRequest) {
         }
         return withSession(req, {
           id: activated.userId,
-          role: 'account_admin',
+          role: activated.role,
           tier: activated.tier,
           nickname: activated.nickname,
           sessionVersion: activated.sessionVersion,
