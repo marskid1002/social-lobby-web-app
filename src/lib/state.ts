@@ -215,8 +215,11 @@ function applyRegisteredUsers(next: AppState): AppState {
 // 把幹部自建的小姐（escorts）併入 users 供顯示/派工/聊天；removed 的則從 users 移除
 function applyEscorts(next: AppState): AppState {
   const escorts = next.escorts ?? [];
-  if (!escorts.length) return next;
-  const users = [...next.users];
+  const escortIds = new Set(escorts.filter((escort) => !escort.removed).map((escort) => escort.id));
+  // Manager-created escorts use esc-. Remove cached users whose authoritative record is gone.
+  const users = next.users.filter((user) => (
+    user.role !== 'escort' || !user.id.startsWith('esc-') || escortIds.has(user.id)
+  ));
   for (const e of escorts) {
     const idx = users.findIndex((u) => u.id === e.id);
     if (e.removed) {
@@ -460,7 +463,8 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
     if (!serverArr) continue;
     // 丟棄早於「清除時間戳」的本機殘留，避免 union 把已清資料保留下來
     const localArr = droppedBeforeReset(key, (globalState[key] as unknown as { id: string }[]) ?? []);
-    let merged = unionById(localArr, serverArr);
+    // Escorts are authoritative so a stale browser cache cannot resurrect a hard-deleted record.
+    let merged = key === 'escorts' ? [...serverArr] : unionById(localArr, serverArr);
     // 疊回尚未確認送達 server 的本機項目：server 版本不得覆蓋（#10）；但別把清除前的舊項目塞回
     const uc = unconfirmed[key];
     if (uc && uc.size) {
@@ -739,15 +743,24 @@ export function useAppState(options: { sync?: boolean } = {}) {
     });
   }, []);
 
-  const removeEscort = useCallback((id: string) => {
-    setState((prev) => {
-      if (activeConfirmedGirlIds(prev.responses, prev.invitations).has(id)) return prev;
-      return {
-        ...prev,
-        escorts: prev.escorts.map((e) => (e.id === id ? { ...e, removed: true } : e)),
-        users: prev.users.filter((u) => u.id !== id),
-      };
-    });
+  const removeEscort = useCallback(async (id: string) => {
+    const res = await fetch(`/api/escorts/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(data.error || '刪除失敗，請稍後再試');
+    }
+    setState((prev) => ({
+      ...prev,
+      escorts: prev.escorts.filter((escort) => escort.id !== id),
+      users: prev.users.filter((user) => user.id !== id),
+      presence: prev.presence.filter((item) => item.id !== id),
+      photoOverrides: prev.photoOverrides.filter((item) => item.id !== id),
+      photoGalleries: prev.photoGalleries.filter((item) => item.id !== id),
+      rosters: prev.rosters.map((roster) => ({
+        ...roster,
+        girlIds: roster.girlIds.filter((girlId) => girlId !== id),
+      })),
+    }));
   }, []);
 
   const updateEscortProfile = useCallback((

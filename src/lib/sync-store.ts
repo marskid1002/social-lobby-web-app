@@ -77,6 +77,16 @@ async function deleteSharedItems(remove: Partial<Record<SharedKey, string[]>>): 
   }
 }
 
+/** Permanently remove an escort and records keyed directly by that escort id. */
+export async function permanentlyDeleteEscort(escortId: string): Promise<void> {
+  await deleteSharedItems({
+    escorts: [escortId],
+    presence: [escortId],
+    photoOverrides: [escortId],
+    photoGalleries: [escortId],
+  });
+}
+
 export async function getShared(): Promise<SharedState> {
   const plan = planDataRetention(await readSharedRaw());
   await deleteSharedItems(plan.remove);

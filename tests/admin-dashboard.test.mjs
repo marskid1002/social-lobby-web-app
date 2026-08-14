@@ -28,7 +28,7 @@ const FUTURE = '2026-07-31T12:00:00.000Z';
 const RECENT = new Date(Date.now() - 5 * 60_000).toISOString();       // 5 分鐘前
 const RECENT_LATER = new Date(Date.now() - 4 * 60_000).toISOString(); // 4 分鐘前（晚於 RECENT，維持訊息先後順序）
 
-test('幹部人員統計：依 managerId 隔離，並區分現有、移除、上班與忙碌', () => {
+test('幹部人員統計：依 managerId 隔離，且不顯示舊的軟刪除資料', () => {
   const rosters = buildAdminManagerRosters({
     accounts: [
       account('A001', 'manager-a', '幹部 A', 'manager'),
@@ -56,12 +56,12 @@ test('幹部人員統計：依 managerId 隔離，並區分現有、移除、上
   assert.deepEqual(
     rosters.map(({ managerId, activeCount, removedCount, totalCreated }) => ({ managerId, activeCount, removedCount, totalCreated })),
     [
-      { managerId: 'manager-a', activeCount: 1, removedCount: 1, totalCreated: 2 },
+      { managerId: 'manager-a', activeCount: 1, removedCount: 0, totalCreated: 1 },
       { managerId: 'manager-b', activeCount: 1, removedCount: 0, totalCreated: 1 },
     ],
   );
   assert.equal(rosters[0].members.find((member) => member.id === 'girl-a1').status, 'online');
-  assert.equal(rosters[0].members.find((member) => member.id === 'girl-a2').status, 'removed');
+  assert.equal(rosters[0].members.some((member) => member.id === 'girl-a2'), false);
   assert.equal(rosters[1].members[0].status, 'busy');
 });
 

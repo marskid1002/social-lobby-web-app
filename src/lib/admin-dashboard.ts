@@ -121,13 +121,11 @@ export function buildAdminManagerRosters(input: {
     .filter((account) => account.role === 'manager')
     .map((account) => {
       const members = input.escorts
-        .filter((escort) => text(escort.managerId) === account.userId)
+        .filter((escort) => text(escort.managerId) === account.userId && escort.removed !== true)
         .sort(byOldest)
         .map((escort): AdminRosterMember => {
-          const removed = escort.removed === true;
-          const status = removed
-            ? 'removed'
-            : busyIds.has(escort.id)
+          const removed = false;
+          const status = busyIds.has(escort.id)
               ? 'busy'
               : onlineById.get(escort.id)
                 ? 'online'
@@ -140,11 +138,10 @@ export function buildAdminManagerRosters(input: {
             status,
           };
         });
-      const removedCount = members.filter((member) => member.removed).length;
       return {
         managerId: account.userId,
-        activeCount: members.length - removedCount,
-        removedCount,
+        activeCount: members.length,
+        removedCount: 0,
         totalCreated: members.length,
         members,
       };
