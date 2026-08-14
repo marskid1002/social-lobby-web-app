@@ -3,11 +3,10 @@
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Home, Sparkles, Bell, User, Plus } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PostRequestSheet } from './PostRequestSheet';
 import { useAppState } from '@/lib/state';
-import { totalUnreadMessages } from '@/lib/chat-unread';
 
 const NAV_ITEMS = [
   { href: '/lobby/explore', icon: Home,        label: '首頁' },
@@ -17,39 +16,17 @@ const NAV_ITEMS = [
   { href: '/me',            icon: User,        label: '我的' },
 ];
 
-export function BottomNav() {
+interface Props {
+  inboxUnreadCount: number;
+}
+
+export function BottomNav({ inboxUnreadCount }: Props) {
   const pathname = usePathname();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [systemUnreadCount, setSystemUnreadCount] = useState(0);
-  const { state, currentUser, unreadCount } = useAppState();
+  const { currentUser } = useAppState();
   const isEscort = currentUser?.role === 'escort';
   const isGuest = currentUser?.tier === 'guest'; // 訪客唯讀：不顯示發局，避免按了假成功（伺服器會 403）
   const hideFab = isEscort || isGuest;
-  const chatUnreadCount = totalUnreadMessages(
-    state.chatMessages,
-    state.chatReads,
-    state.currentUserId,
-  );
-  const inboxBadgeCount = unreadCount + chatUnreadCount + systemUnreadCount + (state.inboxUnread ? 1 : 0);
-
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = () => fetch('/api/system-messages', { cache: 'no-store' })
-      .then((response) => response.ok ? response.json() : null)
-      .then((result) => {
-        if (!cancelled && typeof result?.unreadCount === 'number') setSystemUnreadCount(result.unreadCount);
-      })
-      .catch(() => {});
-    refresh();
-    const timer = window.setInterval(refresh, 30_000);
-    const onRead = () => refresh();
-    window.addEventListener('system-message-read', onRead);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      window.removeEventListener('system-message-read', onRead);
-    };
-  }, [state.currentUserId]);
 
   function isActive(href: string) {
     if (href === '/lobby/explore') return pathname.startsWith('/lobby');
@@ -85,7 +62,7 @@ export function BottomNav() {
               );
             }
             const active = isActive(item.href);
-            const showNotifBadge = item.href === '/inbox' && inboxBadgeCount > 0;
+            const showNotifBadge = item.href === '/inbox' && inboxUnreadCount > 0;
             return (
               <Link
                 key={item.href}
@@ -100,7 +77,7 @@ export function BottomNav() {
                   />
                   {showNotifBadge && (
                     <span className="absolute -top-2.5 -right-3 min-w-4 h-4 rounded-full bg-red-500 border border-brand-lavender px-1 text-[9px] font-bold leading-[14px] text-center text-white">
-                      {inboxBadgeCount > 99 ? '99+' : inboxBadgeCount}
+                      {inboxUnreadCount > 99 ? '99+' : inboxUnreadCount}
                     </span>
                   )}
                 </div>

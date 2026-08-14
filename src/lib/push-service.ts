@@ -28,12 +28,17 @@ export interface PushResult {
   skipped?: string;
 }
 
+export interface PushOptions {
+  badgeKey?: string;
+}
+
 /** Server-only push sender. Call only after the related server write has succeeded. */
 export async function sendWebPushToUsers(
   userIds: string[],
   title: string,
   body: string,
   url = '/',
+  options: PushOptions = {},
 ): Promise<PushResult> {
   const targetIds = [...new Set(userIds.map(String).filter(Boolean))].slice(0, MAX_RECIPIENTS);
   if (targetIds.length === 0) return { sent: 0, skipped: 'no target users' };
@@ -45,7 +50,15 @@ export async function sendWebPushToUsers(
   const subscriptions = await getSubscriptionsForUsers(targetIds);
   if (subscriptions.length === 0) return { sent: 0 };
 
-  const payload = JSON.stringify({ title: safeTitle, body: safeBody, url: safeUrl });
+  const safeBadgeKey = typeof options.badgeKey === 'string' && options.badgeKey.length <= 256
+    ? options.badgeKey
+    : undefined;
+  const payload = JSON.stringify({
+    title: safeTitle,
+    body: safeBody,
+    url: safeUrl,
+    ...(safeBadgeKey ? { badgeKey: safeBadgeKey } : {}),
+  });
   const results = await Promise.allSettled(
     subscriptions.map((subscription) => webpush.sendNotification(subscription, payload)),
   );

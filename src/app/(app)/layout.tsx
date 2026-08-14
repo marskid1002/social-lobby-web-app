@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { TopBar } from '@/components/TopBar';
 import { BottomNav } from '@/components/BottomNav';
 import { ProfileDrawer } from '@/components/ProfileDrawer';
@@ -14,6 +14,13 @@ import { PullToRefresh } from '@/components/PullToRefresh';
 import { IssueReporter } from '@/components/IssueReporter';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
+import { syncAppBadge } from '@/lib/app-badge';
+import {
+  newRequestAttentionKeys,
+  pendingAttendanceAttentionKeys,
+  uniqueAttentionKeys,
+  unreadChatAttentionKeys,
+} from '@/lib/attention-badge';
 import { Suspense } from 'react';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -91,6 +98,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // 幹部以旗下小姐身份操作中（有記錄原幹部）
   const isActingAsRosterGirl = !!state.actingFromManagerId && currentUser?.role === 'escort';
+  const isManager = currentUser?.role === 'manager';
+  const attentionKeys = useMemo(() => uniqueAttentionKeys(
+    isManager ? newRequestAttentionKeys(state.requests, state.responses, state.currentUserId) : [],
+    unreadChatAttentionKeys(state.chatMessages, state.chatReads, state.currentUserId),
+    isManager ? pendingAttendanceAttentionKeys(state.invitations, state.currentUserId) : [],
+  ), [
+    isManager,
+    state.chatMessages,
+    state.chatReads,
+    state.currentUserId,
+    state.invitations,
+    state.requests,
+    state.responses,
+  ]);
+  const inboxUnreadCount = attentionKeys.length;
+
+  useEffect(() => {
+    syncAppBadge(inboxUnreadCount, attentionKeys);
+  }, [inboxUnreadCount, attentionKeys]);
 
   function handleReturnToManager() {
     returnToManager();
@@ -118,6 +144,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           showSearch={pathname.startsWith('/lobby')}
           onSearchChange={setSearchQuery}
           onOpenDrawer={() => setDrawerOpen(true)}
+          inboxUnreadCount={inboxUnreadCount}
         />
       )}
       {currentUser?.role === 'admin' && (isUserProfile || isStore || isChat) && (
@@ -157,7 +184,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      {showBottomNav && <BottomNav />}
+      {showBottomNav && <BottomNav inboxUnreadCount={inboxUnreadCount} />}
       <ProfileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       <DualIdentityBadge />
       <NotificationWatcher />

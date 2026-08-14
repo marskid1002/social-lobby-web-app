@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
         '客戶已答應約會！',
         `${auth.account?.nickname ?? '某位客戶'} 已同意，聊天室已經開好囉`,
         `/inbox?match=${encodeURIComponent(String(result.invitation.id))}&src=push`,
+        { badgeKey: `attendance:${result.invitation.id}` },
       ).catch((error) => {
         console.error('[match accept push]', error instanceof Error ? error.name : 'UnknownError');
         return { sent: 0, total: 0, skipped: 'push error' };

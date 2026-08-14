@@ -11,10 +11,11 @@ interface Props {
   showSearch?: boolean;
   onSearchChange?: (v: string) => void;
   onOpenDrawer: () => void;
+  inboxUnreadCount: number;
 }
 
-export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Props) {
-  const { currentUser, unreadCount } = useAppState();
+export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer, inboxUnreadCount }: Props) {
+  const { currentUser } = useAppState();
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [searchVal, setSearchVal] = useState('');
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,9 +85,9 @@ export function TopBar({ title, showSearch, onSearchChange, onOpenDrawer }: Prop
         )}
         <Link href="/inbox" className="relative shrink-0 p-1.5 rounded-full hover:bg-brand-ice transition-colors" aria-label="通知">
           <Bell className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
-          {unreadCount > 0 && (
-            <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-brand-pink rounded-full flex items-center justify-center text-[9px] font-bold text-brand-ink">
-              {unreadCount > 9 ? '9+' : unreadCount}
+          {inboxUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-red-500 border border-white px-1 text-[9px] font-bold leading-[14px] text-center text-white">
+              {inboxUnreadCount > 99 ? '99+' : inboxUnreadCount}
             </span>
           )}
         </Link>

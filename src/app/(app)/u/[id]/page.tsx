@@ -153,7 +153,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   }
 
   return (
-    <div className="min-h-screen bg-brand-snow">
+    <div className="min-h-screen bg-white">
       <div className="relative flex items-center justify-between bg-white px-4 py-3">
         <button
           onClick={() => router.back()}

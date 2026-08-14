@@ -116,6 +116,7 @@ export async function deliverAuthorizedPushes(
       job.title,
       job.body,
       job.url,
+      job.kind === 'request' ? { badgeKey: `request:${job.entityId}` } : undefined,
     ).catch((error) => {
       console.error('[authorized sync push]', error instanceof Error ? error.name : 'UnknownError');
       return { sent: 0, total: 0, skipped: 'push error' };

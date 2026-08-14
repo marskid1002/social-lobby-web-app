@@ -129,6 +129,7 @@ export async function POST(req: NextRequest) {
         `${auth.account?.nickname ?? '對方'} 傳來訊息`,
         preview,
         chatUrl,
+        { badgeKey: `chat:${body.threadId}:${messageRequestId ?? ''}` },
       ).catch((error) => {
         console.error('[chat message push]', error instanceof Error ? error.name : 'UnknownError');
         return { sent: 0, total: 0, skipped: 'push error' };

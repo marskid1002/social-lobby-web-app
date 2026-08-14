@@ -120,6 +120,7 @@ export async function POST(req: NextRequest) {
       '有新的局',
       `${auth.account?.nickname ?? '客戶'}提醒有新局${area}，點擊查看詳情`,
       `/requests/${encodeURIComponent(requestId)}`,
+      { badgeKey: `request:${requestId}` },
     ).catch((pushError) => {
       console.error('[request reminder push]', pushError instanceof Error ? pushError.name : 'UnknownError');
       return { sent: 0, total: 0, skipped: 'push error' };
