@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const authStore = await import('@/lib/auth-store');
 const sessionStore = await import('@/lib/session');
 const activeSession = await import('@/lib/active-session');
+const syncStore = await import('@/lib/sync-store');
 const accountAdminRoute = await import('@/app/api/account-admin/route');
 const authRoute = await import('@/app/api/auth/route');
 
@@ -47,6 +48,21 @@ test('A777 is a read-only observer limited to A001-A010', { skip }, async () => 
   assert.equal(viewer?.nickname, '幹部稽查員');
   assert.equal(viewer?.hash, null);
 
+  const manager = await authStore.getAccount('A001');
+  assert.ok(manager);
+  const now = new Date().toISOString();
+  await syncStore.mergeShared({
+    escorts: [{
+      id: 'a777-roster-test-member',
+      managerId: manager.userId,
+      nickname: '稽查測試小姐',
+      avatarUrl: 'https://example.invalid/private-photo.jpg',
+      bio: '不應回傳的自介',
+      createdAt: now,
+    }],
+    presence: [{ id: 'a777-roster-test-member', online: true, updatedAt: now }],
+  });
+
   const token = await sessionStore.signSession({
     userId: viewer.userId,
     role: 'account_viewer',
@@ -61,6 +77,18 @@ test('A777 is a read-only observer limited to A001-A010', { skip }, async () => 
   assert.deepEqual(getBody.managers.map((manager) => manager.key), [
     'A001', 'A002', 'A003', 'A004', 'A005', 'A006', 'A007', 'A008', 'A009', 'A010',
   ]);
+
+  const roster = getBody.rosters.find((item) => item.managerKey === 'A001');
+  assert.ok(roster);
+  assert.equal(roster.activeCount >= 1, true);
+  assert.equal(roster.totalCreated >= 1, true);
+  const member = roster.members.find((item) => item.nickname === '稽查測試小姐');
+  assert.deepEqual(member, { nickname: '稽查測試小姐', status: 'online' });
+  assert.equal('managerId' in roster, false);
+  assert.equal('id' in member, false);
+  assert.equal('createdAt' in member, false);
+  assert.equal(JSON.stringify(getBody).includes('private-photo.jpg'), false);
+  assert.equal(JSON.stringify(getBody).includes('不應回傳的自介'), false);
 
   const postResponse = await accountAdminRoute.POST(new Request('http://localhost/api/account-admin', {
     method: 'POST',

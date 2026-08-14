@@ -16,6 +16,7 @@ import { getCollection, mergeShared } from '@/lib/sync-store';
 import { removeDevicesForUser } from '@/lib/device-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
+import { buildAdminManagerRosters, type AdminAccountSummary } from '@/lib/admin-dashboard';
 
 export const dynamic = 'force-dynamic';
 const READ_ONLY_MANAGER_KEYS = new Set(Array.from({ length: 10 }, (_, index) => `A${String(index + 1).padStart(3, '0')}`));
@@ -66,11 +67,51 @@ export async function GET(req: NextRequest) {
   const accountKey = auth.account?.key;
   if (!accountKey) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   const readOnly = accountKey === 'A777';
-  const managers = (await listAccounts())
+  const accounts = await listAccounts();
+  const managerAccounts = accounts
     .filter((account) => account.role === 'manager' && (!readOnly || READ_ONLY_MANAGER_KEYS.has(account.key)))
-    .map(safeManager)
     .sort((a, b) => a.key.localeCompare(b.key));
-  return NextResponse.json({ managers, readOnly, account: accountKey }, { headers: { 'Cache-Control': 'no-store' } });
+  const managers = managerAccounts
+    .map(safeManager);
+  let rosters: Array<{
+    managerKey: string;
+    activeCount: number;
+    removedCount: number;
+    totalCreated: number;
+    members: Array<{ nickname: string; status: 'online' | 'offline' | 'busy' | 'removed' }>;
+  }> = [];
+
+  if (readOnly) {
+    const [escorts, presence, responses, invitations] = await Promise.all([
+      getCollection('escorts'),
+      getCollection('presence'),
+      getCollection('responses'),
+      getCollection('invitations'),
+    ]);
+    const rosterAccounts: AdminAccountSummary[] = managerAccounts.map((account) => ({
+      key: account.key,
+      role: account.role,
+      tier: account.tier,
+      userId: account.userId,
+      nickname: account.nickname,
+      hasPassword: Boolean(account.hash),
+      disabled: Boolean(account.disabled),
+      archived: Boolean(account.archived),
+      createdAt: account.createdAt,
+    }));
+    const managerKeyByUserId = new Map(managerAccounts.map((account) => [account.userId, account.key]));
+    rosters = buildAdminManagerRosters({ accounts: rosterAccounts, escorts, presence, responses, invitations })
+      .map((roster) => ({
+        managerKey: managerKeyByUserId.get(roster.managerId) ?? '',
+        activeCount: roster.activeCount,
+        removedCount: roster.removedCount,
+        totalCreated: roster.totalCreated,
+        members: roster.members.map((member) => ({ nickname: member.nickname, status: member.status })),
+      }))
+      .filter((roster) => Boolean(roster.managerKey));
+  }
+
+  return NextResponse.json({ managers, rosters, readOnly, account: accountKey }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req: NextRequest) {

@@ -12,9 +12,28 @@ type Manager = {
   mustChangeNickname: boolean;
 };
 
+type RosterStatus = 'online' | 'offline' | 'busy' | 'removed';
+
+type ManagerRoster = {
+  managerKey: string;
+  activeCount: number;
+  removedCount: number;
+  totalCreated: number;
+  members: Array<{ nickname: string; status: RosterStatus }>;
+};
+
+const ROSTER_STATUS: Record<RosterStatus, { label: string; className: string }> = {
+  online: { label: '上線', className: 'bg-emerald-400/15 text-emerald-300' },
+  offline: { label: '離線', className: 'bg-zinc-500/15 text-zinc-400' },
+  busy: { label: '忙碌', className: 'bg-amber-400/15 text-amber-300' },
+  removed: { label: '已移除', className: 'bg-red-400/15 text-red-300' },
+};
+
 export default function AccountAdminPage() {
   const router = useRouter();
   const [managers, setManagers] = useState<Manager[]>([]);
+  const [rosters, setRosters] = useState<ManagerRoster[]>([]);
+  const [expandedManager, setExpandedManager] = useState<string | null>(null);
   const [nickname, setNickname] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -26,6 +45,7 @@ export default function AccountAdminPage() {
     if (response.status === 401 || response.status === 403) return router.replace('/login');
     const data = await response.json();
     setManagers(data.managers ?? []);
+    setRosters(data.rosters ?? []);
     setReadOnly(data.readOnly === true);
     setAccount(typeof data.account === 'string' ? data.account : 'A888');
   }, [router]);
@@ -96,6 +116,39 @@ export default function AccountAdminPage() {
                   <div className="font-medium">{manager.nickname}</div>
                   <div className="mt-1 text-xs text-zinc-500">{manager.archived ? '已封存' : manager.disabled ? '已停用' : manager.hasPassword ? '已啟用' : '待啟用'}{manager.mustChangeNickname ? '・登入後須改名' : ''}</div>
                 </div>
+                {readOnly && (() => {
+                  const roster = rosters.find((item) => item.managerKey === manager.key);
+                  const expanded = expandedManager === manager.key;
+                  return (
+                    <div className="lg:min-w-80">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedManager(expanded ? null : manager.key)}
+                        className="flex w-full items-center justify-between gap-4 rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-left transition hover:border-pink-400/30"
+                        aria-expanded={expanded}
+                      >
+                        <span className="text-sm">
+                          <span className="font-medium text-white">現有人員 {roster?.activeCount ?? 0} 位</span>
+                          <span className="text-zinc-500"> ・ 累計建立 {roster?.totalCreated ?? 0} 位</span>
+                        </span>
+                        <span className="shrink-0 text-xs text-pink-300">查看名單 {expanded ? '▲' : '▼'}</span>
+                      </button>
+                      {expanded && (
+                        <div className="mt-2 space-y-2 rounded-xl border border-white/10 bg-black/30 p-3">
+                          {roster?.members.length ? roster.members.map((member, index) => {
+                            const status = ROSTER_STATUS[member.status];
+                            return (
+                              <div key={`${member.nickname}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-white/[0.04] px-3 py-2">
+                                <span className="min-w-0 truncate text-sm text-zinc-200">{member.nickname}</span>
+                                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs ${status.className}`}>{status.label}</span>
+                              </div>
+                            );
+                          }) : <p className="px-1 py-2 text-sm text-zinc-500">尚未建立小姐</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {!readOnly && <div className="flex flex-wrap gap-2 text-xs">
                   <button disabled={busy} onClick={() => { const next = window.prompt('新名稱', manager.nickname); if (next) void act('edit', manager.key, { nickname: next }); }} className="rounded-lg border border-white/15 px-3 py-2">改名</button>
                   <button disabled={busy} onClick={() => act('activate', manager.key)} className="rounded-lg border border-amber-400/30 px-3 py-2 text-amber-200">重設／啟用碼</button>
