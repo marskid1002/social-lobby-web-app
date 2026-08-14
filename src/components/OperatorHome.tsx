@@ -8,24 +8,12 @@ import { zhTW } from 'date-fns/locale';
 import { X, Check, UserCog, Camera, Trash2, Pencil } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
-import { SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
+import { getRequestTypeLabel, SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 import {
   activeConfirmedGirlIds,
   confirmedCountForRequest,
 } from '@/lib/request-attendance';
 
-
-const TYPE_LABELS: Record<string, string> = {
-  after_party: 'After Party',
-  drinking: '喝酒',
-  fill_spot: '補位',
-  last_minute: '臨時約會',
-  music: '音樂',
-  dancing: '跳舞',
-  private_party: '私人派對',
-  dining: '吃飯',
-  other: '其他',
-};
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#FF3C91',
@@ -367,7 +355,7 @@ export function OperatorHome() {
             const confirmedCount = confirmedCountForRequest(req.id, state.responses, state.invitations);
             const isFull = isRequestClosed(req); // #5 只有已關閉才鎖定
             const typeColor = TYPE_COLORS[req.requestType] ?? '#9295A5';
-            const typeLabel = TYPE_LABELS[req.requestType] ?? req.requestType;
+            const typeLabel = getRequestTypeLabel(req);
 
             return (
               <div key={req.id} className={`juga-request-card bg-white rounded-2xl border border-brand-lavender p-4 shadow-sm transition-opacity ${isFull ? 'opacity-60' : ''}`}>

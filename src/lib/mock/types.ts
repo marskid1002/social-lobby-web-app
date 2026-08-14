@@ -13,7 +13,7 @@ export type RequestType =
   | 'dining'
   | 'other';
 
-export type VenueType = 'nightclub' | 'clubhouse' | 'home' | 'bar' | 'motel';
+export type VenueType = 'nightclub' | 'clubhouse' | 'home' | 'bar' | 'motel' | 'ktv' | 'restaurant';
 export type PartyFormat = 'with_women' | 'without_women' | 'one_on_one';
 
 export type RequestStatus = 'open' | 'closed' | 'cancelled' | 'expired';
@@ -77,6 +77,7 @@ export interface Request {
   venueType?: VenueType;
   partyFormat?: PartyFormat;
   requestType: RequestType;
+  requestTypes?: RequestType[];
   peopleCount: number;
   note: string;
   status: RequestStatus;

@@ -8,7 +8,7 @@ import { zhTW } from 'date-fns/locale';
 import { useState } from 'react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { confirmedCountForRequest } from '@/lib/request-attendance';
-import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { getRequestTypeLabel, PARTY_FORMAT_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
 
 const TYPE_COLORS: Record<string, string> = {
   after_party: '#FF3C91',
@@ -35,7 +35,7 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
   const [toast, setToast] = useState('');
 
   const typeColor = TYPE_COLORS[request.requestType] ?? '#9295A5';
-  const typeLabel = REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType;
+  const typeLabel = getRequestTypeLabel(request);
 
   // Counts for the demand signal row
   const allResponses = state.responses.filter((r) => r.requestId === request.id);

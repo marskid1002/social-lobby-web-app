@@ -22,6 +22,8 @@ const VENUE_TYPES: { value: VenueType; label: string }[] = [
   { value: 'home', label: '住家' },
   { value: 'bar', label: '酒吧' },
   { value: 'motel', label: '汽旅' },
+  { value: 'ktv', label: 'KTV' },
+  { value: 'restaurant', label: '餐廳' },
 ];
 
 const PARTY_FORMATS: { value: PartyFormat; label: string }[] = [
@@ -48,7 +50,7 @@ export function PostRequestSheet({ open, onClose, request, increaseOnly = false,
   const initialArea = currentUser?.defaultArea ?? '信義區';
   const [city, setCity] = useState<AreaCity>(() => cityForArea(initialArea));
   const [area, setArea] = useState(initialArea);
-  const [type, setType] = useState<RequestType | null>(null);
+  const [types, setTypes] = useState<RequestType[]>([]);
   const [venueType, setVenueType] = useState<VenueType | null>(null);
   const [partyFormat, setPartyFormat] = useState<PartyFormat | null>(null);
   const [count, setCount] = useState(Math.min(1, maxCount));
@@ -60,7 +62,7 @@ export function PostRequestSheet({ open, onClose, request, increaseOnly = false,
     const nextArea = request?.area ?? currentUser?.defaultArea ?? '信義區';
     setCity(cityForArea(nextArea));
     setArea(nextArea);
-    setType(request?.requestType ?? null);
+    setTypes(request?.requestTypes?.length ? request.requestTypes : request?.requestType ? [request.requestType] : []);
     setVenueType(request?.venueType ?? null);
     setPartyFormat(request?.partyFormat ?? null);
     setCount(request ? Math.min(maxCount, request.peopleCount + (increaseOnly ? 1 : 0)) : 1);
@@ -76,7 +78,7 @@ export function PostRequestSheet({ open, onClose, request, increaseOnly = false,
   }
 
   function handleSubmit() {
-    if (!type || !venueType || !partyFormat) return;
+    if (types.length === 0 || !venueType || !partyFormat) return;
     if (increaseOnly && request && count <= request.peopleCount) return;
     if (currentUser?.tier === 'guest') return; // 訪客不可發局（伺服器也會擋）
     if (request) {
@@ -84,20 +86,21 @@ export function PostRequestSheet({ open, onClose, request, increaseOnly = false,
         area,
         venueType,
         partyFormat,
-        requestType: type,
+        requestType: types[0],
+        requestTypes: types,
         peopleCount: count,
         note,
       });
       if (!updated) return;
     } else {
-      postRequest({ area, venueType, partyFormat, requestType: type, peopleCount: count, note });
+      postRequest({ area, venueType, partyFormat, requestType: types[0], requestTypes: types, peopleCount: count, note });
     }
     setToast(true);
     setTimeout(() => {
       setToast(false);
       onClose();
       onSaved?.();
-      setType(null);
+      setTypes([]);
       setVenueType(null);
       setPartyFormat(null);
       setNote('');
@@ -198,14 +201,18 @@ export function PostRequestSheet({ open, onClose, request, increaseOnly = false,
             {/* Type */}
             {SHOW_REQUEST_CLASSIFICATION && (
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-semibold text-brand-ink">邀約類型</label>
+              <label className="text-sm font-semibold text-brand-ink">邀約類型（可複選）</label>
               <div className="flex flex-wrap gap-2">
                 {REQUEST_TYPES.map((t) => (
                   <button
                     key={t.value}
-                    onClick={() => setType(t.value)}
+                    type="button"
+                    aria-pressed={types.includes(t.value)}
+                    onClick={() => setTypes((current) => current.includes(t.value)
+                      ? current.filter((value) => value !== t.value)
+                      : [...current, t.value])}
                     className={`px-4 py-2 rounded-full text-sm font-medium border-2 transition-all active:scale-95 ${
-                      type === t.value
+                      types.includes(t.value)
                         ? 'border-[#6C2EFF] bg-[#6C2EFF] text-white shadow-sm'
                         : 'border-brand-lavender text-zinc-500 bg-white'
                     }`}
@@ -299,7 +306,7 @@ export function PostRequestSheet({ open, onClose, request, increaseOnly = false,
             <div className="app-sticky-sheet-action">
               <button
                 onClick={handleSubmit}
-                disabled={!type || !venueType || !partyFormat || Boolean(increaseOnly && request && count <= request.peopleCount)}
+                disabled={types.length === 0 || !venueType || !partyFormat || Boolean(increaseOnly && request && count <= request.peopleCount)}
                 className="w-full rounded-2xl bg-brand-sky text-brand-ink font-semibold text-base py-4 active:scale-[0.98] transition-all disabled:opacity-40 shadow-card"
               >
               {increaseOnly ? '確認增加人數' : isEditing ? '儲存變更' : '發送邀請'}

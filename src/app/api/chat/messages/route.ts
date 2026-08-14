@@ -5,6 +5,7 @@ import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
 import { directInvitationThreadId } from '@/lib/chat-authz';
 import { sendWebPushToUsers } from '@/lib/push-service';
 import { getOrCreateTraceId, recordFlowTrace } from '@/lib/flow-trace-store';
+import { getManagerUserIds } from '@/lib/auth-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,12 +37,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid requestId' }, { status: 400 });
     }
 
-    const [requests, responses, invitations, blocks, chatMessages] = await Promise.all([
+    const [requests, responses, invitations, blocks, chatMessages, managerUserIds] = await Promise.all([
       getCollection('requests'),
       getCollection('responses'),
       getCollection('invitations'),
       getCollection('blocks'),
       getCollection('chatMessages'),
+      getManagerUserIds(),
     ]);
     const message = {
       id: `cm-${crypto.randomUUID()}`,
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
     const authorized = authorizeWrites(
       { chatMessages: [message] },
       auth.session,
-      buildIndex({ requests, responses, invitations, blocks, chatMessages }),
+      buildIndex({ requests, responses, invitations, blocks, chatMessages }, managerUserIds),
     );
     const accepted = Array.isArray(authorized.chatMessages)
       ? authorized.chatMessages as Record<string, unknown>[]

@@ -290,7 +290,10 @@ export async function POST(req: NextRequest) {
     await Promise.all([...need].map(async (k) => { cols[k] = await getCollection(k as SharedKey); }));
     // request_posted 通知收件人須為 server 權威幹部帳號；僅在 patch 含 updates 時多讀一次帳號
     const managerUserIds =
-      Array.isArray(patch.updates) || Array.isArray(patch.requests)
+      Array.isArray(patch.updates)
+        || Array.isArray(patch.requests)
+        || Array.isArray(patch.invitations)
+        || Array.isArray(patch.chatMessages)
         ? await getManagerUserIds()
         : [];
     const authzPatch = authorizeWrites(patch, session, buildIndex(cols, managerUserIds));

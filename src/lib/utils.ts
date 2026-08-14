@@ -26,7 +26,22 @@ export const VENUE_TYPE_LABELS: Record<string, string> = {
   home: '住家',
   bar: '酒吧',
   motel: '汽旅',
+  ktv: 'KTV',
+  restaurant: '餐廳',
 };
+
+export function getRequestTypes(request: { requestType?: string; requestTypes?: string[] }): string[] {
+  const types = Array.isArray(request.requestTypes)
+    ? request.requestTypes.filter((type, index, values) => typeof type === 'string' && values.indexOf(type) === index)
+    : [];
+  return types.length > 0 ? types : request.requestType ? [request.requestType] : [];
+}
+
+export function getRequestTypeLabel(request: { requestType?: string; requestTypes?: string[] }): string {
+  return getRequestTypes(request)
+    .map((type) => REQUEST_TYPE_LABELS[type] ?? type)
+    .join('、');
+}
 
 export const PARTY_FORMAT_LABELS: Record<string, string> = {
   with_women: '局有女',

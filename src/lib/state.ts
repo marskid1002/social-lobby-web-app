@@ -809,7 +809,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
 
   const updateRequest = useCallback((
     requestId: string,
-    changes: Pick<Request, 'area' | 'venueType' | 'partyFormat' | 'requestType' | 'peopleCount' | 'note'>,
+    changes: Pick<Request, 'area' | 'venueType' | 'partyFormat' | 'requestType' | 'requestTypes' | 'peopleCount' | 'note'>,
   ) => {
     let updated = false;
     setState((prev) => {
@@ -870,11 +870,15 @@ export function useAppState(options: { sync?: boolean } = {}) {
   // sendInvite: private invites (requestId=null) cost 3 credits and auto-accept after 1.5s
   const sendInvite = useCallback((toUserId: string, requestId: string | null, message?: string) => {
     const isPrivate = requestId === null;
+    const snapshot = getState();
+    const sender = snapshot.users.find((user) => user.id === snapshot.currentUserId);
+    const recipient = snapshot.users.find((user) => user.id === toUserId);
+    if (isPrivate && (sender?.role !== 'user' || recipient?.role !== 'escort')) return;
     const inviteId = `i-${Date.now()}`;
     const newInvite: Invitation = {
       id: inviteId,
       requestId,
-      fromUserId: getState().currentUserId,
+      fromUserId: snapshot.currentUserId,
       toUserId,
       status: 'pending',
       message,
@@ -883,7 +887,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     const newUpdate: UpdateEvent = {
       id: `ue-${Date.now()}`,
       userId: toUserId,
-      actorId: getState().currentUserId,
+      actorId: snapshot.currentUserId,
       eventType: 'invite_received',
       refRequestId: requestId ?? undefined,
       createdAt: new Date().toISOString(),

@@ -37,6 +37,23 @@ export function directInvitationThreadId(
   return from && to && from !== to ? canonicalThreadId(from, to) : '';
 }
 
+/** Private threads involving a manager are legacy/invalid and must remain read-only. */
+export function restrictedManagerPrivateThreadIds(
+  invitations: Rec[],
+  managerUserIds: Set<string>,
+): Set<string> {
+  const threads = new Set<string>();
+  for (const invitation of invitations) {
+    if (str(invitation.requestId) !== undefined) continue;
+    const from = str(invitation.fromUserId);
+    const to = str(invitation.toUserId);
+    if (!from || !to || (!managerUserIds.has(from) && !managerUserIds.has(to))) continue;
+    const threadId = directInvitationThreadId(invitation);
+    if (threadId) threads.add(threadId);
+  }
+  return threads;
+}
+
 export interface ChatAccess {
   direct: Map<string, string>; // 1:1/代談 threadId -> 對方 userId（供封鎖判定）
   directRequestIds: Map<string, Set<string | null>>; // threadId -> 合法 invitation.requestId（私人邀請為 null）

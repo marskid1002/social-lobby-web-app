@@ -168,6 +168,11 @@ export default function ChatPage({ params }: ChatPageProps) {
       : otherIdFromThread(id, currentUser?.id ?? '')
     : '';
   const otherUser = state.users.find((u) => u.id === otherUserId);
+  const isRestrictedManagerPrivateChat = Boolean(
+    directInvite
+    && directInvite.requestId === null
+    && (currentUser?.role === 'manager' || otherUser?.role === 'manager')
+  );
   const isOtherOnline = state.onlineUserIds.includes(otherUserId);
   // 代談：這個聊天室「關於哪位小姐」（由 req 局＋此對話的派工幹部推出；沒有 req 就不顯示）
   const escortNames = req
@@ -212,7 +217,7 @@ export default function ChatPage({ params }: ChatPageProps) {
 
   const expiresAt = isGroup ? groupChatExpiresAt : activeInvite?.chatExpiresAt;
   const { remaining, expired } = useCountdown(expiresAt);
-  const isChatLocked = isGroup ? (allConfirmed || expired) : (!activeInvite || expired);
+  const isChatLocked = isGroup ? (allConfirmed || expired) : (!activeInvite || expired || isRestrictedManagerPrivateChat);
 
   const sessionStart = isGroup
     ? groupInvites[0]?.respondedAt
@@ -1046,7 +1051,9 @@ export default function ChatPage({ params }: ChatPageProps) {
         >
           {isChatLocked ? (
             <div className="flex-1 flex items-center justify-center py-2">
-              <p className="text-sm text-zinc-400">聊天視窗已關閉</p>
+              <p className="text-sm text-zinc-400">
+                {isRestrictedManagerPrivateChat ? '此私人聊天室已停用' : '聊天視窗已關閉'}
+              </p>
             </div>
           ) : (
             <>

@@ -12,7 +12,7 @@
  * route 端負責批次預讀 server 集合＋幹部名單並建成 ServerIndex 傳入，本模組不碰 Redis。
  */
 import type { SessionPayload } from './session';
-import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage } from './chat-authz';
+import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage, restrictedManagerPrivateThreadIds } from './chat-authz';
 import { chatExpiresAtFrom } from './chat-lifetime';
 import { activeConfirmedGirlIds, confirmedCountForRequest } from './request-attendance';
 import { REQUEST_ACTIVE_MS, REQUEST_RETENTION_MS } from './data-retention';
@@ -46,7 +46,7 @@ const s = (v: unknown): string | undefined => (typeof v === 'string' ? v : undef
 const asArr = (v: unknown): Item[] => (Array.isArray(v) ? (v.filter(isObj) as Item[]) : []);
 
 const REQUEST_TYPES = new Set(['after_party', 'drinking', 'fill_spot', 'last_minute', 'music', 'dancing', 'private_party', 'dining', 'other']);
-const VENUE_TYPES = new Set(['nightclub', 'clubhouse', 'home', 'bar', 'motel']);
+const VENUE_TYPES = new Set(['nightclub', 'clubhouse', 'home', 'bar', 'motel', 'ktv', 'restaurant']);
 const PARTY_FORMATS = new Set(['with_women', 'without_women', 'one_on_one']);
 const UPDATE_EVENTTYPES = new Set(['request_posted', 'response_received', 'invite_received', 'invite_accepted']);
 
@@ -140,6 +140,14 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
           if (typeof r.requestType === 'string' && REQUEST_TYPES.has(r.requestType)) {
             merged.requestType = r.requestType;
           }
+          if (Array.isArray(r.requestTypes)) {
+            const requestTypes = r.requestTypes.filter((type): type is string => typeof type === 'string' && REQUEST_TYPES.has(type));
+            const uniqueRequestTypes = [...new Set(requestTypes)].slice(0, REQUEST_TYPES.size);
+            if (uniqueRequestTypes.length > 0) {
+              merged.requestTypes = uniqueRequestTypes;
+              merged.requestType = uniqueRequestTypes[0];
+            }
+          }
           if (typeof r.venueType === 'string' && VENUE_TYPES.has(r.venueType)) {
             merged.venueType = r.venueType;
           }
@@ -156,10 +164,20 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         return [merged];
       }
       if (s(r.creatorId) !== me) return [];
+      const requestTypes = Array.isArray(r.requestTypes)
+        ? [...new Set(r.requestTypes.filter((type): type is string => typeof type === 'string' && REQUEST_TYPES.has(type)))]
+        : [];
+      const primaryRequestType = requestTypes[0] ?? s(r.requestType);
+      if (!primaryRequestType || !REQUEST_TYPES.has(primaryRequestType)) return [];
+      const venueType = s(r.venueType);
+      if (!venueType || !VENUE_TYPES.has(venueType)) return [];
       const suppliedExpiry = Date.parse(s(r.expiresAt) ?? '');
       if (Number.isFinite(suppliedExpiry) && suppliedExpiry <= now - (REQUEST_RETENTION_MS - REQUEST_ACTIVE_MS)) return [];
       return [{
         ...r,
+        requestType: primaryRequestType,
+        requestTypes: requestTypes.length > 0 ? requestTypes : [primaryRequestType],
+        venueType,
         creatorId: me,
         createdAt: acceptedAt,
         expiresAt: new Date(now + REQUEST_ACTIVE_MS).toISOString(),
@@ -240,6 +258,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         const from = s(existing.fromUserId), to = s(existing.toUserId), reqId = existing.requestId;
         const isTo = to === me, isFrom = from === me;
         if (!isTo && !isFrom) return [];
+        if (reqId == null && ((!!from && idx.managerUserIds.has(from)) || (!!to && idx.managerUserIds.has(to)))) return [existing];
         const merged: Item = { ...existing }; // 凍結 id/from/to/requestId/dispatcherId/createdAt/message
         const cur = s(existing.status) ?? 'pending';
         const inS = s(i.status);
@@ -264,6 +283,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       if (from === me) {
         // sendInvite（一般/私人）：status 強制 pending；不得帶 respondedAt/chatExpiresAt/meetupConfirmed/dispatcherId
         const isPrivate = reqId == null;
+        if (isPrivate && (isManager || (!!to && idx.managerUserIds.has(to)))) return [];
         if (!isPrivate) { if (!reqExists(s(reqId))) return []; } // 一般邀請 request 必須存在
         const built: Item = { id, fromUserId: me, toUserId: to, requestId: isPrivate ? null : s(reqId), status: 'pending' };
         if (typeof i.message === 'string') built.message = i.message;
@@ -389,10 +409,13 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
     const effBlocks = new Map(idx.blocks);
     for (const b of asArr(out.blocks)) { const id = s(b.id); if (id) effBlocks.set(id, b); }
     const blockedPeers = activeBlockPeers(me, [...effBlocks.values()]);
+    const restrictedPrivateThreads = restrictedManagerPrivateThreadIds([...effInvites.values()], idx.managerUserIds);
     out.chatMessages = asArr(out.chatMessages).flatMap((m) => {
       const id = s(m.id); if (!id) return [];
       const existing = idx.chatMessages.get(id);
       if (existing) return [existing];                              // append-only：既有沿用 server 版（凍結內容/身份/thread）
+      const threadId = s(m.threadId);
+      if (threadId && restrictedPrivateThreads.has(threadId) && m.requestId == null) return [];
       return canWriteChatMessage(m, me, access, blockedPeers) ? [m] : [];
     });
   }

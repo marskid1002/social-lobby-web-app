@@ -104,7 +104,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const currentUser = state.users.find((u) => u.id === state.currentUserId);
   const heroGradient = CARD_GRADIENTS[parseInt(id.replace('u-', ''), 10) % 3];
   const isVip = currentUser?.tier === 'vip';
-  const canSendPrivateInvite = isVip && id !== state.currentUserId;
+  const canSendPrivateInvite = isVip
+    && currentUser?.role === 'user'
+    && user.role === 'escort'
+    && id !== state.currentUserId;
 
   function showToast(msg: string) {
     setToast(msg);

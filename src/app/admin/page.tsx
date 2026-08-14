@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
+  getRequestTypeLabel,
   PARTY_FORMAT_LABELS,
-  REQUEST_TYPE_LABELS,
   SHOW_REQUEST_CLASSIFICATION,
   VENUE_TYPE_LABELS,
 } from '@/lib/utils';
@@ -63,6 +63,7 @@ type Flow = {
   creatorName: string;
   area: string;
   requestType: string;
+  requestTypes: string[];
   venueType: string;
   partyFormat: string;
   peopleCount: number;
@@ -240,18 +241,6 @@ const ROSTER_STATUS: Record<RosterMember['status'], { label: string; className: 
   offline: { label: '離線', className: 'bg-zinc-100 text-zinc-500' },
   busy: { label: '忙碌中', className: 'bg-pink-50 text-pink-700' },
   removed: { label: '已移除', className: 'bg-red-50 text-red-600' },
-};
-
-const REQUEST_TYPE_LABEL: Record<string, string> = {
-  after_party: 'After Party',
-  drinking: '喝酒',
-  fill_spot: '臨時補位',
-  last_minute: '臨時約會',
-  music: '音樂',
-  dancing: '跳舞',
-  private_party: '私人派對',
-  dining: '吃飯',
-  other: '其他',
 };
 
 const REQUEST_STATUS_LABEL: Record<string, string> = {
@@ -788,7 +777,7 @@ export default function AdminPage() {
                           }`} />
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-bold">
-                              {flow.creatorName}{SHOW_REQUEST_CLASSIFICATION ? ` · ${REQUEST_TYPE_LABEL[flow.requestType] ?? flow.requestType}` : ''}
+                              {flow.creatorName}{SHOW_REQUEST_CLASSIFICATION ? ` · ${getRequestTypeLabel(flow)}` : ''}
                             </p>
                             <p className={`truncate text-xs ${flow.health === 'error' ? 'text-red-600' : 'text-zinc-500'}`}>
                               {flow.issue}
@@ -821,7 +810,7 @@ export default function AdminPage() {
                                 {[
                                   ['地區', flow.area || '未填寫'],
                                   ['地點', (VENUE_TYPE_LABELS[flow.venueType] ?? flow.venueType) || '未填寫'],
-                                  ['邀約類型', (REQUEST_TYPE_LABELS[flow.requestType] ?? flow.requestType) || '未填寫'],
+                                  ['邀約類型', getRequestTypeLabel(flow) || '未填寫'],
                                   ['局型', (PARTY_FORMAT_LABELS[flow.partyFormat] ?? flow.partyFormat) || '未填寫'],
                                   ['需求人數', flow.peopleCount > 0 ? `${flow.peopleCount} 人` : '未填寫'],
                                   ['發布時間', fmtTime(flow.createdAt)],

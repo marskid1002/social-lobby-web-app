@@ -7,7 +7,7 @@ import { useAppState } from '@/lib/state';
 import { PostRequestSheet } from '@/components/PostRequestSheet';
 import { formatDistanceToNow, formatDistance } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { PARTY_FORMAT_LABELS, REQUEST_TYPE_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
+import { getRequestTypeLabel, PARTY_FORMAT_LABELS, SHOW_REQUEST_CLASSIFICATION, VENUE_TYPE_LABELS } from '@/lib/utils';
 import { confirmedCountForRequest } from '@/lib/request-attendance';
 
 const TYPE_COLORS: Record<string, string> = {
@@ -95,7 +95,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   }, []);
 
   const typeColor  = TYPE_COLORS[request.requestType] ?? '#9295A5';
-  const typeLabel  = REQUEST_TYPE_LABELS[request.requestType] ?? request.requestType;
+  const typeLabel  = getRequestTypeLabel(request);
   const expiresIn  = formatDistance(new Date(request.expiresAt), new Date(), { locale: zhTW });
   const isExpired  = new Date(request.expiresAt) <= new Date();
   const canEditRequest = isCreator && request.status === 'open' && !isExpired;
