@@ -35,7 +35,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const touchStartX = useRef<number | null>(null);
 
+  const user = state.users.find((u) => u.id === id);
   const gallery = state.photoGalleries.find((g) => g.id === id)?.urls ?? [];
+  const viewerImages = [user?.avatarUrl, ...gallery].filter((url): url is string => Boolean(url));
+  const galleryViewerOffset = user?.avatarUrl ? 1 : 0;
 
   useEffect(() => {
     if (lightboxIndex === null) return;
@@ -47,10 +50,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') setLightboxIndex(null);
       if (event.key === 'ArrowLeft') {
-        setLightboxIndex((current) => current === null ? null : (current - 1 + gallery.length) % gallery.length);
+        setLightboxIndex((current) => current === null ? null : (current - 1 + viewerImages.length) % viewerImages.length);
       }
       if (event.key === 'ArrowRight') {
-        setLightboxIndex((current) => current === null ? null : (current + 1) % gallery.length);
+        setLightboxIndex((current) => current === null ? null : (current + 1) % viewerImages.length);
       }
     }
 
@@ -60,14 +63,14 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
       document.body.style.overscrollBehavior = previousOverscrollBehavior;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [gallery.length, lightboxIndex]);
+  }, [lightboxIndex, viewerImages.length]);
 
   function showPreviousPhoto() {
-    setLightboxIndex((current) => current === null ? null : (current - 1 + gallery.length) % gallery.length);
+    setLightboxIndex((current) => current === null ? null : (current - 1 + viewerImages.length) % viewerImages.length);
   }
 
   function showNextPhoto() {
-    setLightboxIndex((current) => current === null ? null : (current + 1) % gallery.length);
+    setLightboxIndex((current) => current === null ? null : (current + 1) % viewerImages.length);
   }
 
   function handleLightboxTouchStart(event: React.TouchEvent<HTMLDivElement>) {
@@ -78,7 +81,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     const startX = touchStartX.current;
     const endX = event.changedTouches[0]?.clientX;
     touchStartX.current = null;
-    if (startX === null || endX === undefined || gallery.length < 2) return;
+    if (startX === null || endX === undefined || viewerImages.length < 2) return;
     const distance = endX - startX;
     if (Math.abs(distance) < 50) return;
     if (distance > 0) showPreviousPhoto();
@@ -92,7 +95,6 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const [inviteCount, setInviteCount] = useState(2);
   const [inviteNote, setInviteNote] = useState('');
 
-  const user = state.users.find((u) => u.id === id);
   if (!user) return <div className="p-8 text-center text-zinc-400">找不到此用戶</div>;
 
   const onlineStatus = state.onlineStatuses.find((s) => s.userId === id);
@@ -157,12 +159,12 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="min-h-screen bg-brand-snow">
-      {/* Hero — blurred photo or gradient fallback */}
+      {/* Hero — photo or gradient fallback */}
       <div className={`relative h-56 overflow-hidden ${!user.cardImageUrl ? heroGradient : ''}`}>
         {user.cardImageUrl && (
           <>
             <img src={user.cardImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" />
-            <div className="absolute inset-0 backdrop-blur-md bg-black/20" />
+            <div className="absolute inset-0 bg-black/10" />
           </>
         )}
 
@@ -201,11 +203,18 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
       {/* White card */}
       <div className="relative -mt-8 bg-white rounded-t-[40px] px-5 pb-6">
         <div className="flex justify-center -mt-14 mb-3">
-          <img
-            src={user.avatarUrl}
-            alt={user.nickname}
-            className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-card-pink"
-          />
+          <button
+            type="button"
+            onClick={() => setLightboxIndex(0)}
+            className="rounded-full transition-transform active:scale-[0.97]"
+            aria-label={`放大查看 ${user.nickname} 的照片`}
+          >
+            <img
+              src={user.avatarUrl}
+              alt={user.nickname}
+              className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-card-pink"
+            />
+          </button>
         </div>
 
         <div className="text-center mb-4">
@@ -280,7 +289,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
               {gallery.map((url, index) => (
                 <button
                   key={url}
-                  onClick={() => setLightboxIndex(index)}
+                  onClick={() => setLightboxIndex(index + galleryViewerOffset)}
                   className="aspect-square rounded-2xl overflow-hidden active:scale-[0.97] transition-transform"
                   aria-label="查看照片"
                 >
@@ -293,9 +302,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* 相簿大圖 lightbox */}
-      {lightboxIndex !== null && gallery[lightboxIndex] && (
+      {lightboxIndex !== null && viewerImages[lightboxIndex] && (
         <div
-          className="fixed inset-0 z-[80] flex touch-none items-center justify-center overflow-hidden bg-black/90 p-4 overscroll-none"
+          className="fixed inset-0 z-[80] flex touch-none items-center justify-center overflow-hidden bg-black overscroll-none"
           onClick={() => setLightboxIndex(null)}
           onTouchStart={handleLightboxTouchStart}
           onTouchEnd={handleLightboxTouchEnd}
@@ -304,9 +313,9 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
           aria-label="相簿照片預覽"
         >
           <img
-            src={gallery[lightboxIndex]}
-            alt={`${user.nickname} 的相簿照片 ${lightboxIndex + 1}`}
-            className="max-h-full max-w-full select-none rounded-2xl object-contain"
+            src={viewerImages[lightboxIndex]}
+            alt={`${user.nickname} 的照片 ${lightboxIndex + 1}`}
+            className="h-full w-full select-none object-contain"
             draggable={false}
             onClick={(event) => event.stopPropagation()}
           />
@@ -317,24 +326,24 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
           >
             <X className="w-5 h-5" />
           </button>
-          {gallery.length > 1 && (
+          {viewerImages.length > 1 && (
             <>
               <button
                 onClick={(event) => { event.stopPropagation(); showPreviousPhoto(); }}
-                className="absolute left-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm"
+                className="absolute left-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white"
                 aria-label="上一張照片"
               >
                 <ChevronLeft className="h-7 w-7" />
               </button>
               <button
                 onClick={(event) => { event.stopPropagation(); showNextPhoto(); }}
-                className="absolute right-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm"
+                className="absolute right-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white"
                 aria-label="下一張照片"
               >
                 <ChevronRight className="h-7 w-7" />
               </button>
               <div className="absolute bottom-5 rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white">
-                {lightboxIndex + 1} / {gallery.length}
+                {lightboxIndex + 1} / {viewerImages.length}
               </div>
             </>
           )}
