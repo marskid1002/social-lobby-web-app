@@ -35,6 +35,14 @@ test('escorts update：本人可改名稱、簡介與區域；凍結身份欄位
   assert.deepEqual(run({ escorts: [{ id: 'esc-A', managerId: 'B', nickname: 'x' }] }, mgr('B'), cols).escorts, []);
   assert.deepEqual(run({ escorts: [{ id: 'esc-A', managerId: 'A', nickname: 'x' }] }, mgr('B'), cols).escorts, []);
 });
+test('escorts delete：removed tombstone 不可被舊裝置復活或改寫', () => {
+  const deleted = { id: 'esc-A', managerId: 'A', nickname: '已刪除人員', bio: '', defaultArea: '信義區', createdAt: CA, removed: true };
+  const cols = { escorts: [deleted] };
+  const explicitlyRevived = one(run({ escorts: [{ id: 'esc-A', nickname: '舊名稱', removed: false }] }, mgr('A'), cols).escorts);
+  const omittedRemoved = one(run({ escorts: [{ id: 'esc-A', nickname: '舊名稱' }] }, mgr('A'), cols).escorts);
+  assert.deepEqual(explicitlyRevived, deleted);
+  assert.deepEqual(omittedRemoved, deleted);
+});
 
 // ══ presence / photos（M1 / B）══
 test('presence/photos：本人 escort 可寫；他人/未知/removed/非 manager 丟棄；同批新 escort 可帶 presence', () => {

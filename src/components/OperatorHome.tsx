@@ -194,6 +194,9 @@ export function OperatorHome() {
 
   // 幹部自建的小姐（B）：名單以 managerId === 本人 動態產生（一開始為空，全部由幹部自建）
   const rosterGirls = state.users.filter((u) => u.role === 'escort' && u.managerId === state.currentUserId);
+  const removedRosterGirls = state.escorts
+    .filter((escort) => escort.managerId === state.currentUserId && escort.removed === true)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const currentRosterIds = rosterGirls.map((u) => u.id);
   const busyGirlIds = activeConfirmedGirlIds(state.responses, state.invitations);
 
@@ -503,6 +506,29 @@ export function OperatorHome() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {removedRosterGirls.length > 0 && (
+        <div className="border-t-8 border-zinc-100">
+          <div className="flex items-center justify-between bg-zinc-50 px-4 py-3">
+            <p className="text-xs font-bold text-zinc-500">已刪除（{removedRosterGirls.length}）</p>
+            <span className="text-[11px] text-zinc-400">僅保留紀錄，無法恢復</span>
+          </div>
+          {removedRosterGirls.map((escort) => (
+            <div key={escort.id} className="flex items-center gap-3 border-b border-zinc-100 bg-zinc-50 px-4 py-3 opacity-75">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-sm font-bold text-zinc-500" aria-hidden="true">
+                {escort.nickname.slice(0, 1) || '－'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-zinc-600">{escort.nickname}</p>
+                <p className="mt-0.5 text-xs text-zinc-400">已永久刪除</p>
+              </div>
+              <span className="shrink-0 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-bold text-zinc-400">
+                已刪除
+              </span>
+            </div>
+          ))}
         </div>
       )}
 

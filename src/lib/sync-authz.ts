@@ -75,6 +75,9 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       const existing = idx.escorts.get(id);
       if (existing) {
         if (s(existing.managerId) !== me) return []; // 不得接管他人 escort（即使 incoming.managerId 改成自己）
+        // 刪除是不可逆的。舊裝置可能仍保留刪除前的本機快照，絕不能讓它
+        // 把 removed:true 改回 false，或藉由省略 removed 欄位復活人員。
+        if (existing.removed === true) return [existing];
         const merged: Item = { ...existing };
         if (typeof e.nickname === 'string' && e.nickname.trim().length > 0 && e.nickname.length <= 20) merged.nickname = e.nickname.trim();
         if (typeof e.bio === 'string' && e.bio.length <= 100) merged.bio = e.bio.trim();
