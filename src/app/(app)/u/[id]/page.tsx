@@ -11,8 +11,6 @@ import type { RequestType } from '@/lib/mock';
 import { activeConfirmedGirlIds } from '@/lib/request-attendance';
 
 
-const CARD_GRADIENTS = ['bg-gradient-card-a', 'bg-gradient-card-b', 'bg-gradient-card-c'];
-
 const REQUEST_TYPES: { value: RequestType; label: string; emoji: string }[] = [
   { value: 'after_party', label: 'After Party', emoji: '🎉' },
   { value: 'drinking',    label: '喝酒',        emoji: '🍻' },
@@ -37,8 +35,6 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
   const user = state.users.find((u) => u.id === id);
   const gallery = state.photoGalleries.find((g) => g.id === id)?.urls ?? [];
-  const viewerImages = [user?.avatarUrl, ...gallery].filter((url): url is string => Boolean(url));
-  const galleryViewerOffset = user?.avatarUrl ? 1 : 0;
 
   useEffect(() => {
     if (lightboxIndex === null) return;
@@ -50,10 +46,10 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') setLightboxIndex(null);
       if (event.key === 'ArrowLeft') {
-        setLightboxIndex((current) => current === null ? null : (current - 1 + viewerImages.length) % viewerImages.length);
+        setLightboxIndex((current) => current === null ? null : (current - 1 + gallery.length) % gallery.length);
       }
       if (event.key === 'ArrowRight') {
-        setLightboxIndex((current) => current === null ? null : (current + 1) % viewerImages.length);
+        setLightboxIndex((current) => current === null ? null : (current + 1) % gallery.length);
       }
     }
 
@@ -63,14 +59,14 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
       document.body.style.overscrollBehavior = previousOverscrollBehavior;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [lightboxIndex, viewerImages.length]);
+  }, [gallery.length, lightboxIndex]);
 
   function showPreviousPhoto() {
-    setLightboxIndex((current) => current === null ? null : (current - 1 + viewerImages.length) % viewerImages.length);
+    setLightboxIndex((current) => current === null ? null : (current - 1 + gallery.length) % gallery.length);
   }
 
   function showNextPhoto() {
-    setLightboxIndex((current) => current === null ? null : (current + 1) % viewerImages.length);
+    setLightboxIndex((current) => current === null ? null : (current + 1) % gallery.length);
   }
 
   function handleLightboxTouchStart(event: React.TouchEvent<HTMLDivElement>) {
@@ -81,7 +77,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
     const startX = touchStartX.current;
     const endX = event.changedTouches[0]?.clientX;
     touchStartX.current = null;
-    if (startX === null || endX === undefined || viewerImages.length < 2) return;
+    if (startX === null || endX === undefined || gallery.length < 2) return;
     const distance = endX - startX;
     if (Math.abs(distance) < 50) return;
     if (distance > 0) showPreviousPhoto();
@@ -104,7 +100,6 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   );
 
   const currentUser = state.users.find((u) => u.id === state.currentUserId);
-  const heroGradient = CARD_GRADIENTS[parseInt(id.replace('u-', ''), 10) % 3];
   const isVip = currentUser?.tier === 'vip';
   const canSendPrivateInvite = isVip
     && currentUser?.role === 'user'
@@ -159,31 +154,21 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="min-h-screen bg-brand-snow">
-      {/* Hero — photo or gradient fallback */}
-      <div className={`relative h-56 overflow-hidden ${!user.cardImageUrl ? heroGradient : ''}`}>
-        {user.cardImageUrl && (
-          <>
-            <img src={user.cardImageUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-black/10" />
-          </>
-        )}
-
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-4 z-10">
-          <button
-            onClick={() => router.back()}
-            className="w-9 h-9 rounded-full bg-white/70 backdrop-blur flex items-center justify-center active:scale-95"
-            aria-label="返回"
-          >
-            <ArrowLeft className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
-          </button>
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="w-9 h-9 rounded-full bg-white/70 backdrop-blur flex items-center justify-center active:scale-95"
-            aria-label="更多選項"
-          >
-            <MoreVertical className="w-5 h-5 text-brand-ink" strokeWidth={1.75} />
-          </button>
-        </div>
+      <div className="relative flex items-center justify-between bg-white px-4 py-3">
+        <button
+          onClick={() => router.back()}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-snow active:scale-95"
+          aria-label="返回"
+        >
+          <ArrowLeft className="h-5 w-5 text-brand-ink" strokeWidth={1.75} />
+        </button>
+        <button
+          onClick={() => setMenuOpen(!menuOpen)}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-snow active:scale-95"
+          aria-label="更多選項"
+        >
+          <MoreVertical className="h-5 w-5 text-brand-ink" strokeWidth={1.75} />
+        </button>
 
         {menuOpen && (
           <div className="absolute top-14 right-4 z-20 bg-white rounded-2xl shadow-xl border border-brand-lavender overflow-hidden min-w-32">
@@ -201,20 +186,13 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* White card */}
-      <div className="relative -mt-8 bg-white rounded-t-[40px] px-5 pb-6">
-        <div className="flex justify-center -mt-14 mb-3">
-          <button
-            type="button"
-            onClick={() => setLightboxIndex(0)}
-            className="rounded-full transition-transform active:scale-[0.97]"
-            aria-label={`放大查看 ${user.nickname} 的照片`}
-          >
-            <img
-              src={user.avatarUrl}
-              alt={user.nickname}
-              className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-card-pink"
-            />
-          </button>
+      <div className="relative bg-white px-5 pb-6 pt-2">
+        <div className="mb-3 flex justify-center">
+          <img
+            src={user.avatarUrl}
+            alt={user.nickname}
+            className="h-28 w-28 rounded-full object-cover ring-4 ring-white shadow-card-pink"
+          />
         </div>
 
         <div className="text-center mb-4">
@@ -289,7 +267,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
               {gallery.map((url, index) => (
                 <button
                   key={url}
-                  onClick={() => setLightboxIndex(index + galleryViewerOffset)}
+                  onClick={() => setLightboxIndex(index)}
                   className="aspect-square rounded-2xl overflow-hidden active:scale-[0.97] transition-transform"
                   aria-label="查看照片"
                 >
@@ -302,7 +280,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* 相簿大圖 lightbox */}
-      {lightboxIndex !== null && viewerImages[lightboxIndex] && (
+      {lightboxIndex !== null && gallery[lightboxIndex] && (
         <div
           className="fixed inset-0 z-[80] flex touch-none items-center justify-center overflow-hidden bg-black overscroll-none"
           onClick={() => setLightboxIndex(null)}
@@ -313,8 +291,8 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
           aria-label="相簿照片預覽"
         >
           <img
-            src={viewerImages[lightboxIndex]}
-            alt={`${user.nickname} 的照片 ${lightboxIndex + 1}`}
+            src={gallery[lightboxIndex]}
+            alt={`${user.nickname} 的相簿照片 ${lightboxIndex + 1}`}
             className="h-full w-full select-none object-contain"
             draggable={false}
             onClick={(event) => event.stopPropagation()}
@@ -326,7 +304,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
           >
             <X className="w-5 h-5" />
           </button>
-          {viewerImages.length > 1 && (
+          {gallery.length > 1 && (
             <>
               <button
                 onClick={(event) => { event.stopPropagation(); showPreviousPhoto(); }}
@@ -343,7 +321,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                 <ChevronRight className="h-7 w-7" />
               </button>
               <div className="absolute bottom-5 rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white">
-                {lightboxIndex + 1} / {viewerImages.length}
+                {lightboxIndex + 1} / {gallery.length}
               </div>
             </>
           )}
