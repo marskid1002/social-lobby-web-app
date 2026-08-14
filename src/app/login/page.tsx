@@ -211,7 +211,14 @@ export default function LoginPage() {
             {mode === 'login' && (
               <form onSubmit={handleLogin} className={styles.form}>
                 <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="帳號" className={inputCls} aria-label="帳號" />
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密碼" className={inputCls} aria-label="密碼" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={account.trim().toUpperCase() === 'A777' ? '首次登入請輸入想設定的密碼' : '密碼'}
+                  className={inputCls}
+                  aria-label="密碼"
+                />
                 {needActivation && (
                   <input
                     value={activationCode}

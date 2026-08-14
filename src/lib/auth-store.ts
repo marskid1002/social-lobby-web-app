@@ -275,6 +275,27 @@ export async function setInitialPassword(key: string, password: string): Promise
   return acc;
 }
 
+// A777 第一次登入時自行設定密碼；只能在尚未設定密碼時成功一次。
+export async function setInitialAccountViewerPassword(key: string, password: string): Promise<Account | null> {
+  const accounts = await readAccounts();
+  await ensureManagerAccounts(accounts);
+  const account = accounts[normalizeKey(key)];
+  if (
+    !account
+    || account.role !== 'account_viewer'
+    || account.hash
+    || account.disabled
+    || account.archived
+  ) return null;
+  account.salt = crypto.randomBytes(16).toString('hex');
+  account.hash = hashPassword(password, account.salt);
+  delete account.activationSalt;
+  delete account.activationHash;
+  delete account.activationCreatedAt;
+  await writeAccounts(accounts);
+  return account;
+}
+
 const ACTIVATION_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
 
 function createActivationSecret(): { code: string; salt: string; hash: string } {
@@ -371,7 +392,7 @@ export async function regenerateAccountAdminActivation(key: string): Promise<str
   const accounts = await readAccounts();
   await ensureManagerAccounts(accounts);
   const account = accounts[normalizeKey(key)];
-  if (!account || !['account_admin', 'account_viewer'].includes(account.role) || account.archived) return null;
+  if (!account || account.role !== 'account_admin' || account.archived) return null;
   const secret = createActivationSecret();
   account.hash = null;
   account.salt = '';
@@ -393,7 +414,7 @@ export async function activateAccountAdminWithCode(
   const account = accounts[normalizeKey(key)];
   if (
     !account
-    || !['account_admin', 'account_viewer'].includes(account.role)
+    || account.role !== 'account_admin'
     || account.hash
     || account.disabled
     || account.archived

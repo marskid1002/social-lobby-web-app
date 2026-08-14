@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getAccount, createCustomer, verifyPassword, setInitialPassword,
+  getAccount, createCustomer, verifyPassword, setInitialPassword, setInitialAccountViewerPassword,
   adminResetPassword, setCustomerPassword, normalizeKey, normalizePhone,
   activateManagerWithCode, activateAccountAdminWithCode, bumpAccountSessionVersion,
 } from '@/lib/auth-store';
@@ -301,8 +301,22 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // A777 尚未設定密碼時，可自行輸入想要的密碼完成首次登入。
+      if (acc.role === 'account_viewer' && acc.hash === null) {
+        { const e = passwordRuleError(pw); if (e) return NextResponse.json({ error: `首次登入設定密碼：${e}` }, { status: 400 }); }
+        const activated = await setInitialAccountViewerPassword(key, pw);
+        if (!activated) return NextResponse.json({ error: '密碼已被設定，請重新登入' }, { status: 409 });
+        return withSession(req, {
+          id: activated.userId,
+          role: activated.role,
+          tier: activated.tier,
+          nickname: activated.nickname,
+          sessionVersion: activated.sessionVersion,
+        });
+      }
+
       // A888 只接受 A000 產生的一次性啟用碼，不共用最高管理密鑰。
-      if ((acc.role === 'account_admin' || acc.role === 'account_viewer') && acc.hash === null) {
+      if (acc.role === 'account_admin' && acc.hash === null) {
         if (!acc.activationHash || !acc.activationSalt) {
           return NextResponse.json({
             error: '請先由最高管理員產生一次性啟用碼',

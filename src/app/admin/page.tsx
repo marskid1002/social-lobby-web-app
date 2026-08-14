@@ -1008,8 +1008,10 @@ export default function AdminPage() {
                             onClick={() => runAction('reset', { account: account.accountRef })}
                             className="rounded-lg border border-sky-300 px-3 py-1.5 text-xs font-semibold text-sky-700"
                           >
-                            {account.role === 'manager' || account.role === 'account_admin' || account.role === 'account_viewer'
-                              ? account.hasPassword
+                            {account.role === 'account_viewer'
+                              ? account.hasPassword ? '清除密碼讓本人重設' : '等待本人設定密碼'
+                              : account.role === 'manager' || account.role === 'account_admin'
+                                ? account.hasPassword
                                 ? '重設並產生新啟用碼'
                                 : account.hasActivationCode
                                   ? '重發啟用碼'

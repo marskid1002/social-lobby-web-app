@@ -554,7 +554,17 @@ export async function POST(req: NextRequest) {
         await audit(admin, action, auditTarget, '密碼已清除並產生一次性啟用碼');
         return NextResponse.json({ ok: true, account: accountKey, activationCode });
       }
-      if (target?.role === 'account_admin' || target?.role === 'account_viewer') {
+      if (target?.role === 'account_viewer') {
+        const ok = await adminResetPassword(accountKey);
+        if (!ok) return NextResponse.json({ error: '重設失敗' }, { status: 400 });
+        await Promise.all([
+          removeDevicesForUser(target.userId),
+          removeSubscriptionsForUser(target.userId),
+        ]);
+        await audit(admin, action, auditTarget, 'A777 密碼已清除，可於首次登入自行設定');
+        return NextResponse.json({ ok: true });
+      }
+      if (target?.role === 'account_admin') {
         const activationCode = await regenerateAccountAdminActivation(accountKey);
         if (!activationCode) {
           return NextResponse.json({ error: '重設失敗' }, { status: 400 });

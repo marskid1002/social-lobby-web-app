@@ -5,6 +5,7 @@ const authStore = await import('@/lib/auth-store');
 const sessionStore = await import('@/lib/session');
 const activeSession = await import('@/lib/active-session');
 const accountAdminRoute = await import('@/app/api/account-admin/route');
+const authRoute = await import('@/app/api/auth/route');
 
 const REDIS = Boolean(
   process.env.KV_REST_API_URL
@@ -69,13 +70,20 @@ test('A777 is a read-only observer limited to A001-A010', { skip }, async () => 
   assert.equal(postResponse.status, 403);
 });
 
-test('A777 requires an activation code before setting its own password', { skip }, async () => {
-  const activationCode = await authStore.regenerateAccountAdminActivation('A777');
-  assert.ok(activationCode);
-  const activated = await authStore.activateAccountAdminWithCode('A777', activationCode, 'Strong!Pass8');
+test('A777 sets its own password once without an activation code', { skip }, async () => {
+  const loginResponse = await authRoute.POST(new Request('http://localhost/api/auth', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'login', account: 'A777', password: 'Strong!Pass8' }),
+  }));
+  assert.equal(loginResponse.status, 200);
+  const loginBody = loginResponse.body;
+  assert.equal(loginBody.user.role, 'account_viewer');
+
+  const activated = await authStore.getAccount('A777');
   assert.equal(activated?.role, 'account_viewer');
   assert.ok(activated?.hash);
-  const reused = await authStore.activateAccountAdminWithCode('A777', activationCode, 'Other!Pass9');
+  const reused = await authStore.setInitialAccountViewerPassword('A777', 'Other!Pass9');
   assert.equal(reused, null);
 
   const token = await sessionStore.signSession({
