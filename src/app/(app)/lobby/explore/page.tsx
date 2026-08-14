@@ -11,14 +11,7 @@ import type { Request, User } from '@/lib/mock/types';
 import { getRequestAccentColor, getRequestTypeLabel, SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { activeConfirmedGirlIds, confirmedGirlIdsForRequest } from '@/lib/request-attendance';
-
-const SECTION_B_LIMIT: Record<string, number> = {
-  guest: 3,   // 訪客只看 3 位，其餘馬賽克
-  free: 0,
-  standard: 3,
-  premium: 10,
-  vip: Infinity,
-};
+import { onlineEscortLimitForTier } from '@/lib/browse-access';
 
 function shouldShowBoostNudge(req: Request): boolean {
   const impressions = req.metrics?.impressions ?? 0;
@@ -240,7 +233,7 @@ function ExploreContent() {
 
   const tier = currentUser?.tier ?? 'free';
   const isGuest = tier === 'guest';
-  const limit = SECTION_B_LIMIT[tier] ?? 0;
+  const limit = onlineEscortLimitForTier(tier);
   const visibleFemaleIds = limit === Infinity ? femaleUserIds : femaleUserIds.slice(0, limit);
   // free：整段模糊；guest：全部顯示但超過 limit 的單張馬賽克；其餘：只顯示可見數
   const sectionBRenderIds = (tier === 'free' || isGuest) ? femaleUserIds : visibleFemaleIds;
