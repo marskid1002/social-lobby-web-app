@@ -44,6 +44,14 @@ export interface RegistrationConsentRecord {
 // 最高權限管理員帳號（後台 /admin 用）；首次登入需 ADMIN_SECRET 啟用
 const ADMIN_ACCOUNT = { code: 'A000', userId: 'u-016', nickname: '管理員' };
 const ACCOUNT_ADMIN_ACCOUNT = { code: 'A888', userId: 'account-admin-888', nickname: '幹部帳號管理員' };
+const ACCOUNT_VIEWER_ACCOUNT = {
+  code: 'A777',
+  userId: 'account-viewer-777',
+  nickname: '幹部狀態查看員',
+  // 初始密碼為部署時另外安全交付的一組高強度隨機值；程式只保存 scrypt salt/hash。
+  salt: '76ca0523fc6c4e322f1cbb2ab537689f',
+  hash: '9598cb7f57837bb0c48a50fe17b4da78e534cd50e8019f5e9eb53734735470dc4ccb32e36c605355e5f98839884ae6f7b95c5ce7ce0d933b572d9557ebcc6a8e',
+};
 
 // 幹部帳號 A001~A010 對應到現有 10 個幹部 user
 const MANAGER_MAP: { code: string; userId: string; nickname: string; mustChangeNickname?: boolean }[] = [
@@ -152,6 +160,21 @@ async function ensureManagerAccounts(accounts: AccountsMap): Promise<boolean> {
       nickname: ACCOUNT_ADMIN_ACCOUNT.nickname,
       salt: '',
       hash: null,
+      createdAt: new Date().toISOString(),
+      sessionVersion: 1,
+    };
+    changed = true;
+  }
+  if (!accounts[ACCOUNT_VIEWER_ACCOUNT.code]) {
+    accounts[ACCOUNT_VIEWER_ACCOUNT.code] = {
+      key: ACCOUNT_VIEWER_ACCOUNT.code,
+      // 沿用後台隔離角色，實際讀寫範圍再由 /api/account-admin 依帳號代碼鎖定。
+      role: 'account_admin',
+      tier: 'admin',
+      userId: ACCOUNT_VIEWER_ACCOUNT.userId,
+      nickname: ACCOUNT_VIEWER_ACCOUNT.nickname,
+      salt: ACCOUNT_VIEWER_ACCOUNT.salt,
+      hash: ACCOUNT_VIEWER_ACCOUNT.hash,
       createdAt: new Date().toISOString(),
       sessionVersion: 1,
     };

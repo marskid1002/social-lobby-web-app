@@ -18,11 +18,22 @@ import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
+const READ_ONLY_MANAGER_KEYS = new Set(Array.from({ length: 10 }, (_, index) => `A${String(index + 1).padStart(3, '0')}`));
 
 async function requireA888(req: NextRequest) {
   const auth = await requireActiveSession(req);
   if (!auth.ok) return auth;
   if (auth.session.role !== 'account_admin' || auth.account?.role !== 'account_admin' || auth.account.key !== 'A888') {
+    return { ok: false as const, response: NextResponse.json({ error: 'forbidden' }, { status: 403 }) };
+  }
+  return auth;
+}
+
+async function requireAccountConsole(req: NextRequest) {
+  const auth = await requireActiveSession(req);
+  if (!auth.ok) return auth;
+  const allowedAccount = auth.account?.key === 'A888' || auth.account?.key === 'A777';
+  if (auth.session.role !== 'account_admin' || auth.account?.role !== 'account_admin' || !allowedAccount) {
     return { ok: false as const, response: NextResponse.json({ error: 'forbidden' }, { status: 403 }) };
   }
   return auth;
@@ -45,13 +56,16 @@ async function audit(actor: string, action: string, target?: string, detail?: st
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await requireA888(req);
+  const auth = await requireAccountConsole(req);
   if (!auth.ok) return auth.response;
+  const accountKey = auth.account?.key;
+  if (!accountKey) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const readOnly = accountKey === 'A777';
   const managers = (await listAccounts())
-    .filter((account) => account.role === 'manager')
+    .filter((account) => account.role === 'manager' && (!readOnly || READ_ONLY_MANAGER_KEYS.has(account.key)))
     .map(safeManager)
     .sort((a, b) => a.key.localeCompare(b.key));
-  return NextResponse.json({ managers }, { headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json({ managers, readOnly, account: accountKey }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 export async function POST(req: NextRequest) {
