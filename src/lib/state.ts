@@ -1057,7 +1057,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     const s = getState();
     const request = s.requests.find((r) => r.id === requestId);
     if (!request) return;
-    if (!s.onlineUserIds.includes(girlId)) return;
+    // 離線也可派工（規則已取消）：只保留「約會中」不可重複派工，與 sync-authz 的伺服器授權一致。
     if (activeConfirmedGirlIds(s.responses, s.invitations).has(girlId)) return;
 
     // 防止重複派工：若該女伴已 interested / joining 則略過

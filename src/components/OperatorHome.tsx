@@ -284,12 +284,15 @@ export function OperatorHome() {
   // 開啟派工彈窗的局物件
   const activeReq = dispatchSheet ? state.requests.find((r) => r.id === dispatchSheet) : null;
   const alreadyDispatched = dispatchSheet ? dispatchedGirlIds(dispatchSheet) : [];
+  // 離線也可派工：僅「約會中（忙碌）」仍禁止，與伺服器授權一致
+  // （sync-authz 的派工檢查只看 isManager／自己旗下／不在約會中，從未檢查在線狀態）。
+  // 名單仍顯示上線／離線，保留給幹部判斷，但不再阻擋操作。
   const eligibleSelectedCount = selectedGirls.filter(
-    (girlId) => !busyGirlIds.has(girlId) && state.onlineUserIds.includes(girlId),
+    (girlId) => !busyGirlIds.has(girlId),
   ).length;
 
   function toggleGirl(girlId: string) {
-    if (busyGirlIds.has(girlId) || !state.onlineUserIds.includes(girlId)) return;
+    if (busyGirlIds.has(girlId)) return;
     setSelectedGirls((prev) =>
       prev.includes(girlId) ? prev.filter((id) => id !== girlId) : [...prev, girlId]
     );
@@ -297,7 +300,7 @@ export function OperatorHome() {
 
   function handleDispatch() {
     const eligibleGirls = selectedGirls.filter(
-      (girlId) => !busyGirlIds.has(girlId) && state.onlineUserIds.includes(girlId),
+      (girlId) => !busyGirlIds.has(girlId),
     );
     if (!dispatchSheet || eligibleGirls.length === 0) return;
     const names = eligibleGirls
@@ -553,13 +556,13 @@ export function OperatorHome() {
                 return (
                   <button
                     key={user.id}
-                    onClick={() => !isAlready && !isBusy && isOnline && toggleGirl(user.id)}
-                    disabled={isAlready || isBusy || !isOnline}
+                    onClick={() => !isAlready && !isBusy && toggleGirl(user.id)}
+                    disabled={isAlready || isBusy}
                     className={`flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-colors ${
                       isSelected
                         ? 'border-purple-400 bg-purple-50'
                         : 'border-transparent bg-brand-snow'
-                    } ${isAlready || isBusy || !isOnline ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    } ${isAlready || isBusy ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
                     <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     <div className="flex-1 min-w-0">
