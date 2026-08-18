@@ -1018,7 +1018,14 @@ export default function ChatPage({ params }: ChatPageProps) {
                       : 'bg-white border border-brand-lavender text-brand-ink rounded-bl-md'
                   }`}
                 >
-                  {msg.text}
+                  {msg.imageUrl ? (
+                    <img
+                      src={msg.imageUrl}
+                      alt="照片"
+                      onClick={() => setLightbox(msg.imageUrl!)}
+                      className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
+                    />
+                  ) : msg.text}
                 </div>
                 <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
               </div>

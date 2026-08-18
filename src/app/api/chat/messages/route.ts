@@ -6,6 +6,7 @@ import { directInvitationThreadId } from '@/lib/chat-authz';
 import { sendWebPushToUsers } from '@/lib/push-service';
 import { getOrCreateTraceId, recordFlowTrace } from '@/lib/flow-trace-store';
 import { getManagerUserIds } from '@/lib/auth-store';
+import { parseBlobUrl } from '@/lib/image-upload';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,12 @@ export async function POST(req: NextRequest) {
     }
     if (body.imageUrl !== undefined && (!nonEmpty(body.imageUrl, 2048))) {
       return NextResponse.json({ error: 'invalid imageUrl' }, { status: 400 });
+    }
+    // imageUrl 必須是本站 Vercel Blob 的 public URL（沿用 H1/H2 的 parseBlobUrl 嚴格解析）。
+    // 否則可塞任意外部網址：對方一開聊天室瀏覽器就會去載，等於洩漏 IP／User-Agent，
+    // 也能繞過上傳端的 MIME／magic bytes 審查嵌入未經檢查的內容。
+    if (body.imageUrl !== undefined && !parseBlobUrl(body.imageUrl).ok) {
+      return NextResponse.json({ error: 'invalid imageUrl host' }, { status: 400 });
     }
     if (!body.text.trim() && body.imageUrl === undefined) {
       return NextResponse.json({ error: 'empty message' }, { status: 400 });
