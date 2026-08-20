@@ -12,6 +12,10 @@ interface ChatPageProps {
   params: Promise<{ id: string }>;
 }
 
+// 聊天室一次最多傳幾張照片。每張需要「上傳 + 送出訊息」兩次往返，
+// 不設上限的話誤選大量照片會卡很久；9 張是常見聊天 App 的慣例。
+const MAX_CHAT_PHOTOS = 9;
+
 function useCountdown(expiresAt: string | undefined) {
   const [remaining, setRemaining] = useState('');
   const [expired, setExpired] = useState(false);
@@ -280,6 +284,8 @@ export default function ChatPage({ params }: ChatPageProps) {
   const textInputRef = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox] = useState<string | null>(null); // 點圖放大
   const [photoBusy, setPhotoBusy] = useState(false);
+  // 多張上傳的進度（current/total）。單張時為 1/1。
+  const [photoProgress, setPhotoProgress] = useState({ current: 0, total: 0 });
   const [sendBusy, setSendBusy] = useState(false);
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [photoError, setPhotoError] = useState('');
@@ -368,22 +374,45 @@ export default function ChatPage({ params }: ChatPageProps) {
   }
 
   async function handlePhotoSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+    // 一次可選多張；每張各成一則訊息（chatMessage 的資料結構是單一 imageUrl）。
+    // 序列上傳而非並行：保證訊息順序與選取順序一致。
+    const selected = Array.from(e.target.files ?? []).slice(0, MAX_CHAT_PHOTOS);
+    const overflow = (e.target.files?.length ?? 0) - selected.length;
     e.target.value = ''; // 允許重選同一張
-    if (!file || isChatLocked || photoBusy) return;
+    if (selected.length === 0 || isChatLocked || photoBusy) return;
     setPhotoBusy(true);
     setPhotoError('');
+    setPhotoProgress({ current: 0, total: selected.length });
+    let sent = 0;
+    const failed: string[] = [];
     try {
-      const url = await uploadChatImage(file);
-      setHasSentMessage(true);
-      stickToBottomRef.current = true; // 自己送出照片必定跟到最新
-      const newMsg = await sendChatMessage(threadId, '', undefined, url, req ?? undefined);
-      setLocalMessages((prev) => prev.some((message) => message.id === newMsg.id) ? prev : [...prev, newMsg]);
-    } catch (err) {
-      setPhotoError(err instanceof Error ? err.message : '照片上傳失敗');
-      setTimeout(() => setPhotoError(''), 6000);
+      for (const [index, file] of selected.entries()) {
+        setPhotoProgress({ current: index + 1, total: selected.length });
+        try {
+          const url = await uploadChatImage(file);
+          setHasSentMessage(true);
+          stickToBottomRef.current = true; // 自己送出照片必定跟到最新
+          const newMsg = await sendChatMessage(threadId, '', undefined, url, req ?? undefined);
+          setLocalMessages((prev) => prev.some((message) => message.id === newMsg.id) ? prev : [...prev, newMsg]);
+          sent += 1;
+        } catch (err) {
+          failed.push(err instanceof Error ? err.message : '上傳失敗');
+        }
+      }
+      // 全部失敗顯示原因；部分失敗只報張數，避免同一句錯誤重複洗畫面
+      if (sent === 0) {
+        setPhotoError(failed[0] ?? '照片上傳失敗');
+      } else if (failed.length > 0) {
+        setPhotoError(`已傳送 ${sent} 張，${failed.length} 張失敗`);
+      } else if (overflow > 0) {
+        setPhotoError(`一次最多 ${MAX_CHAT_PHOTOS} 張，其餘 ${overflow} 張未傳送`);
+      }
+      if (sent === 0 || failed.length > 0 || overflow > 0) {
+        setTimeout(() => setPhotoError(''), 6000);
+      }
     } finally {
       setPhotoBusy(false);
+      setPhotoProgress({ current: 0, total: 0 });
     }
   }
 
@@ -1072,7 +1101,7 @@ export default function ChatPage({ params }: ChatPageProps) {
             </div>
           ) : (
             <>
-              <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoSelected} />
+              <input ref={photoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
               <button
                 onClick={() => photoInputRef.current?.click()}
                 disabled={photoBusy}
@@ -1087,7 +1116,13 @@ export default function ChatPage({ params }: ChatPageProps) {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={photoBusy ? '照片上傳中…' : sendBusy ? '傳送中…' : '輸入訊息…'}
+                placeholder={
+                  photoBusy
+                    ? photoProgress.total > 1
+                      ? `照片上傳中 ${photoProgress.current}/${photoProgress.total}…`
+                      : '照片上傳中…'
+                    : sendBusy ? '傳送中…' : '輸入訊息…'
+                }
                 aria-label="輸入訊息"
                 className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
