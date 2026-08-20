@@ -17,9 +17,10 @@ async function reconcileFilledRequests(shared: SharedState): Promise<SharedState
     shared.responses ?? [],
     shared.invitations ?? [],
   );
-  return closures.length > 0
-    ? mergeShared({ requests: closures })
-    : shared;
+  if (closures.length === 0) return shared;
+  // mergeShared 只寫入不回傳，故寫完自行重讀一次合併後的完整狀態。
+  await mergeShared({ requests: closures });
+  return getShared();
 }
 
 // 依登入者角色/身份，只回傳其有權看到的資料（私訊、邀請、通知不外洩）
@@ -298,8 +299,9 @@ export async function POST(req: NextRequest) {
         : [];
     const authzPatch = authorizeWrites(patch, session, buildIndex(cols, managerUserIds));
 
-    let merged = await mergeShared(authzPatch);
-    merged = await reconcileFilledRequests(merged);
+    // mergeShared 只寫入；/api/sync 需要回傳合併後的完整狀態，故寫完自行重讀一次。
+    await mergeShared(authzPatch);
+    const merged = await reconcileFilledRequests(await getShared());
     const pushJobs = planAuthorizedSyncPushes({
       patch: authzPatch,
       existing: cols,

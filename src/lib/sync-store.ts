@@ -57,10 +57,16 @@ async function readSharedRaw(): Promise<SharedState> {
   const redis = getRedis();
   const out = emptyShared();
   if (redis) {
-    for (const key of SHARED_KEYS) {
-      const h = (await redis.hgetall(hashKey(key))) as Record<string, unknown> | null;
+    // 14 個集合「並行」讀取。原本是序列 for-await，等於 14 次往返：
+    // 實測線上基準往返 0.35s、每次 hgetall 約 0.18s → /api/sync 要 2.9s。
+    // 並行後約等於一次往返。語意不變（仍是一份快照），且並行取到的時間點更接近一致。
+    const hashes = await Promise.all(
+      SHARED_KEYS.map((key) => redis.hgetall(hashKey(key)) as Promise<Record<string, unknown> | null>),
+    );
+    SHARED_KEYS.forEach((key, i) => {
+      const h = hashes[i];
       if (h) out[key] = Object.values(h).map(parseItem).filter(Boolean) as Item[];
-    }
+    });
   } else {
     for (const key of SHARED_KEYS) out[key] = Object.values(mem[key]);
   }
@@ -103,21 +109,29 @@ export async function getCollection(key: SharedKey): Promise<Item[]> {
   return Object.values(mem[key]);
 }
 
-/** 依 id 逐項 upsert（HSET 原子）；回傳合併後完整共享狀態。 */
-export async function mergeShared(patch: Partial<SharedState>): Promise<SharedState> {
+/**
+ * 依 id 逐項 upsert（HSET 原子）。
+ *
+ * 只寫入、不回傳完整狀態：原本結尾會 `return getShared()`，導致每次寫入都把 14 個集合
+ * 重讀一遍（約 2.5s）。實際上 11 個呼叫端裡只有 /api/sync 需要合併後的完整狀態，
+ * 其餘（送出訊息、標記已讀、接受配對、確認約會結果…）都把回傳值丟棄卻付了那個成本。
+ * 需要完整狀態的呼叫端請在之後自行 `await getShared()`。
+ */
+export async function mergeShared(patch: Partial<SharedState>): Promise<void> {
   const redis = getRedis();
+  const writes: Promise<unknown>[] = [];
   for (const key of SHARED_KEYS) {
     const items = patch[key];
     if (!items || !items.length) continue;
     if (redis) {
       const obj: Record<string, Item> = {};
       for (const it of items) if (it && it.id) obj[it.id] = it;
-      if (Object.keys(obj).length) await redis.hset(hashKey(key), obj); // 逐 field 原子寫入
+      if (Object.keys(obj).length) writes.push(redis.hset(hashKey(key), obj)); // 逐 field 原子寫入
     } else {
       for (const it of items) if (it && it.id) mem[key][it.id] = it;
     }
   }
-  return getShared();
+  if (writes.length) await Promise.all(writes); // 不同集合的寫入互不相依，可並行
 }
 
 export interface PhotoGalleryRecord extends Item {
