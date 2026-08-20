@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { requireActiveSession } from '@/lib/active-session';
 import { getCollection, mergeShared } from '@/lib/sync-store';
 import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
@@ -81,80 +81,85 @@ export async function POST(req: NextRequest) {
     const traceId = messageRequestId
       ? await getOrCreateTraceId(messageRequestId)
       : `tr-${crypto.randomUUID()}`;
-    await recordFlowTrace({
-      traceId,
-      eventType: 'message.stored',
-      actorUserId: auth.session.userId,
-      requestId: messageRequestId ?? undefined,
-      threadId: body.threadId,
-      entityId: message.id,
-      detail: typeof body.imageUrl === 'string' ? 'image' : 'text',
-      dedupeKey: `message.stored:${message.id}`,
-    }).catch((error) => {
-      console.error('[flow trace message]', error instanceof Error ? error.name : 'UnknownError');
-    });
-
-    // Only the server decides recipients, and only after the message is stored.
-    const recipients = new Set<string>();
-    for (const invitation of invitations) {
-      if (invitation.status !== 'accepted') continue;
-      const invitationRequestId = typeof invitation.requestId === 'string'
-        ? invitation.requestId
-        : null;
-      if (invitationRequestId !== messageRequestId) continue;
-      const from = typeof invitation.fromUserId === 'string' ? invitation.fromUserId : '';
-      const to = typeof invitation.toUserId === 'string' ? invitation.toUserId : '';
-      if (!from || !to) continue;
-
-      if (invitation.groupThreadId === body.threadId) {
-        recipients.add(from);
-        recipients.add(to);
-      } else if (directInvitationThreadId(invitation) === body.threadId) {
-        if (from === auth.session.userId) recipients.add(to);
-        if (to === auth.session.userId) recipients.add(from);
-      }
-    }
-    recipients.delete(auth.session.userId);
-
-    let pushResult: { sent: number; total?: number; skipped?: string } = {
-      sent: 0,
-      skipped: 'no recipients',
-    };
-    if (recipients.size > 0) {
-      const preview = typeof body.imageUrl === 'string'
-        ? '傳送了一張照片'
-        : body.text.length > 40
-          ? `${body.text.slice(0, 40)}…`
-          : body.text;
-      const chatUrl = `/chat/${encodeURIComponent(body.threadId)}${
-        messageRequestId
-          ? `?req=${encodeURIComponent(messageRequestId)}&src=push`
-          : '?src=push'
-      }`;
-      pushResult = await sendWebPushToUsers(
-        [...recipients],
-        `${auth.account?.nickname ?? '對方'} 傳來訊息`,
-        preview,
-        chatUrl,
-        { badgeKey: `chat:${body.threadId}:${messageRequestId ?? ''}` },
-      ).catch((error) => {
-        console.error('[chat message push]', error instanceof Error ? error.name : 'UnknownError');
-        return { sent: 0, total: 0, skipped: 'push error' };
+    // 診斷記錄與推播都不影響「訊息已寫入」這件事，改在回應送出後才做（Next after）。
+    // 原本 sendWebPushToUsers 是同步 await：要等每位收件人的每台裝置都推完才回應，
+    // 送出訊息因此慢 3–5 秒。收件人仍完全由伺服器決定，且仍在訊息存檔之後才計算。
+    after(async () => {
+      await recordFlowTrace({
+        traceId,
+        eventType: 'message.stored',
+        actorUserId: auth.session.userId,
+        requestId: messageRequestId ?? undefined,
+        threadId: message.threadId,
+        entityId: message.id,
+        detail: typeof body.imageUrl === 'string' ? 'image' : 'text',
+        dedupeKey: `message.stored:${message.id}`,
+      }).catch((error) => {
+        console.error('[flow trace message]', error instanceof Error ? error.name : 'UnknownError');
       });
-    }
-    await recordFlowTrace({
-      traceId,
-      eventType: 'message.push',
-      outcome: pushResult.sent > 0 ? 'success' : 'skipped',
-      actorUserId: auth.session.userId,
-      requestId: messageRequestId ?? undefined,
-      threadId: body.threadId,
-      entityId: message.id,
-      code: pushResult.skipped,
-      detail: `sent=${pushResult.sent};total=${pushResult.total ?? 0}`,
-      dedupeKey: `message.push:${message.id}`,
-    }).catch((error) => {
-      console.error('[flow trace message push]', error instanceof Error ? error.name : 'UnknownError');
+
+      // Only the server decides recipients, and only after the message is stored.
+      const recipients = new Set<string>();
+      for (const invitation of invitations) {
+        if (invitation.status !== 'accepted') continue;
+        const invitationRequestId = typeof invitation.requestId === 'string'
+          ? invitation.requestId
+          : null;
+        if (invitationRequestId !== messageRequestId) continue;
+        const from = typeof invitation.fromUserId === 'string' ? invitation.fromUserId : '';
+        const to = typeof invitation.toUserId === 'string' ? invitation.toUserId : '';
+        if (!from || !to) continue;
+
+        if (invitation.groupThreadId === message.threadId) {
+          recipients.add(from);
+          recipients.add(to);
+        } else if (directInvitationThreadId(invitation) === message.threadId) {
+          if (from === auth.session.userId) recipients.add(to);
+          if (to === auth.session.userId) recipients.add(from);
+        }
+      }
+      recipients.delete(auth.session.userId);
+
+      let pushResult: { sent: number; total?: number; skipped?: string } = {
+        sent: 0,
+        skipped: 'no recipients',
+      };
+      if (recipients.size > 0) {
+        const preview = typeof body.imageUrl === 'string'
+          ? '傳送了一張照片'
+          : message.text.length > 40
+            ? `${message.text.slice(0, 40)}…`
+            : message.text;
+        const chatUrl = `/chat/${encodeURIComponent(message.threadId)}${
+          messageRequestId
+            ? `?req=${encodeURIComponent(messageRequestId)}&src=push`
+            : '?src=push'
+        }`;
+        pushResult = await sendWebPushToUsers(
+          [...recipients],
+          `${auth.account?.nickname ?? '對方'} 傳來訊息`,
+          preview,
+          chatUrl,
+          { badgeKey: `chat:${message.threadId}:${messageRequestId ?? ''}` },
+        ).catch((error) => {
+          console.error('[chat message push]', error instanceof Error ? error.name : 'UnknownError');
+          return { sent: 0, total: 0, skipped: 'push error' };
+        });
+      }
+      await recordFlowTrace({
+        traceId,
+        eventType: 'message.push',
+        outcome: pushResult.sent > 0 ? 'success' : 'skipped',
+        actorUserId: auth.session.userId,
+        requestId: messageRequestId ?? undefined,
+        threadId: message.threadId,
+        entityId: message.id,
+        code: pushResult.skipped,
+        detail: `sent=${pushResult.sent};total=${pushResult.total ?? 0}`,
+        dedupeKey: `message.push:${message.id}`,
+      }).catch((error) => {
+        console.error('[flow trace message push]', error instanceof Error ? error.name : 'UnknownError');
+      });
     });
 
     return NextResponse.json(
