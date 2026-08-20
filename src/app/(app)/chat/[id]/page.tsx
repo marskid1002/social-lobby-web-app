@@ -276,6 +276,8 @@ export default function ChatPage({ params }: ChatPageProps) {
   const [xiaomeiConfirmSuccess, setXiaomeiConfirmSuccess] = useState(false);
   const [groupConfirmSuccess, setGroupConfirmSuccess] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // 送出後把焦點留在輸入框，手機鍵盤才不會收起（可以連續打字）。
+  const textInputRef = useRef<HTMLInputElement>(null);
   const [lightbox, setLightbox] = useState<string | null>(null); // 點圖放大
   const [photoBusy, setPhotoBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
@@ -355,6 +357,9 @@ export default function ChatPage({ params }: ChatPageProps) {
       setPhotoError(error instanceof Error ? error.message : '訊息傳送失敗');
     } finally {
       setSendBusy(false);
+      // 保險：非同步結束後補一次 focus。iOS 可能忽略（focus 需在手勢同步流程內），
+      // 主要仍靠送出鈕的 onPointerDown preventDefault 讓輸入框從頭到尾不失去焦點。
+      textInputRef.current?.focus();
     }
   }
 
@@ -612,6 +617,9 @@ export default function ChatPage({ params }: ChatPageProps) {
                 className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
+                // 不讓按鈕搶走焦點：焦點留在輸入框，送出後手機鍵盤才不會收起。
+                // （送出後 inputText 清空會使本按鈕 disabled，而 disabled 元素一旦持有焦點就會失焦）
+                onPointerDown={(e) => e.preventDefault()}
                 onClick={handleSend}
                 disabled={!inputText.trim() || sendBusy}
                 aria-label="發送"
@@ -1074,6 +1082,7 @@ export default function ChatPage({ params }: ChatPageProps) {
                 <ImageIcon className="w-4 h-4" />
               </button>
               <input
+                ref={textInputRef}
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
@@ -1083,6 +1092,9 @@ export default function ChatPage({ params }: ChatPageProps) {
                 className="h-11 min-w-0 flex-1 bg-brand-snow border border-brand-lavender rounded-full px-4 py-2 text-base md:text-sm text-brand-ink placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-sky transition-all"
               />
               <button
+                // 不讓按鈕搶走焦點：焦點留在輸入框，送出後手機鍵盤才不會收起。
+                // （送出後 inputText 清空會使本按鈕 disabled，而 disabled 元素一旦持有焦點就會失焦）
+                onPointerDown={(e) => e.preventDefault()}
                 onClick={handleSend}
                 disabled={!inputText.trim() || sendBusy}
                 aria-label="發送"
