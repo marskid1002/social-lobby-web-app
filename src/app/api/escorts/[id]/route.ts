@@ -26,12 +26,12 @@ export async function DELETE(
     getCollection('invitations'),
   ]);
   const escort = escorts.find((item) => item.id === id);
-  if (!escort) return NextResponse.json({ error: '小姐資料不存在' }, { status: 404 });
+  if (!escort) return NextResponse.json({ error: '人員資料不存在' }, { status: 404 });
   if (escort.managerId !== auth.session.userId) {
-    return NextResponse.json({ error: '無權刪除其他幹部的小姐' }, { status: 403 });
+    return NextResponse.json({ error: '無權刪除其他帳號的人員' }, { status: 403 });
   }
   if (activeConfirmedGirlIds(responses, invitations).has(id)) {
-    return NextResponse.json({ error: '這位小姐目前有進行中的安排，暫時不能刪除' }, { status: 409 });
+    return NextResponse.json({ error: '這位人員目前有進行中的安排，暫時不能刪除' }, { status: 409 });
   }
 
   await permanentlyDeleteEscort(id);

@@ -13,7 +13,7 @@ export function RequestHeartSlots({ total, confirmed, className = '' }: Props) {
   return (
     <div
       className={`flex items-center gap-1.5 ${className}`}
-      aria-label={`已確認上台 ${safeConfirmed} 位，共需要 ${safeTotal} 位`}
+      aria-label={`已確認出席 ${safeConfirmed} 位，共需要 ${safeTotal} 位`}
     >
       <div className="flex items-center gap-1">
         {Array.from({ length: safeTotal }, (_, index) => {

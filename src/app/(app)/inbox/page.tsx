@@ -408,7 +408,7 @@ export default function InboxPage() {
                   )}
                   <p className="text-xs text-brand-ink/50 mt-0.5">
                     {card.meetupEndedAt
-                      ? '✅ 約會已結束・女伴可以再安排下一場'
+                      ? '✅ 約會已結束'
                       : card.managerDecision
                       ? card.managerDecision === 'confirmed'
                         ? '💗 已確認女伴出席'

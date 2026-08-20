@@ -122,7 +122,7 @@ export function OperatorHome() {
     if (!res.ok) {
       const data = await res.json().catch(() => ({})) as { error?: string };
       if (data.error === 'escort ownership not found') {
-        throw new Error('小姐所屬資料尚未同步完成，請重新整理後再試');
+        throw new Error('人員所屬資料尚未同步完成，請重新整理後再試');
       }
       throw new Error(`相簿儲存失敗（${res.status}）`);
     }
@@ -568,7 +568,7 @@ export function OperatorHome() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-brand-ink">{user.nickname}</p>
                       {isBusy ? (
-                        <p className="text-xs text-pink-500 font-semibold">已確認上台</p>
+                        <p className="text-xs text-pink-500 font-semibold">已確認出席</p>
                       ) : isAlready ? (
                         <p className="text-xs text-purple-500 font-semibold">已安排</p>
                       ) : (

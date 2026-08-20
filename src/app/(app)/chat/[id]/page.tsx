@@ -864,7 +864,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </p>
           <p className="text-xs text-zinc-400 mb-4">
             {isManagerDecision
-              ? `${decidedAt ? `操作時間：${decidedAt}。` : ''}${wasEnded ? '小姐已恢復可派工，聊天室保留為歷史紀錄。' : '聊天室已結案，歷史訊息仍可查看。'}`
+              ? `${decidedAt ? `操作時間：${decidedAt}。` : ''}${wasEnded ? '聊天室保留為歷史紀錄。' : '聊天室已結案，歷史訊息仍可查看。'}`
               : '聊天已結束。想再見面嗎？重新發送私人邀請'}
           </p>
           <button
