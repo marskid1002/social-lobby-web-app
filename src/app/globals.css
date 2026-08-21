@@ -160,6 +160,11 @@
     overscroll-behavior: contain;
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }
+  .chat-scroll-area {
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
   .app-sticky-sheet-action {
     position: sticky;
     bottom: calc(-1 * max(1rem, env(safe-area-inset-bottom)));

@@ -75,7 +75,13 @@ function useKeyboardViewport() {
     const measure = () => {
       raf = 0;
       const height = Math.round(vv.height);
-      const offsetTop = Math.round(vv.offsetTop);
+      const activeElement = document.activeElement;
+      const textInputFocused = activeElement instanceof HTMLInputElement
+        || activeElement instanceof HTMLTextAreaElement;
+      const keyboardLikelyOpen = textInputFocused && window.innerHeight - vv.height > 80;
+      // 一般手勢／瀏覽器工具列收合也會改變 visualViewport.offsetTop。
+      // 只有鍵盤確實開啟時才套用位移，避免手指上滑卻把整個聊天框往下推。
+      const offsetTop = keyboardLikelyOpen ? Math.max(0, Math.round(vv.offsetTop)) : 0;
       if (height === last.height && offsetTop === last.offsetTop) return; // 只在實際改變時更新
       last = { height, offsetTop };
       setVp({ height, offsetTop });
@@ -87,9 +93,13 @@ function useKeyboardViewport() {
     schedule(); // 初次量測
     vv.addEventListener('resize', schedule);
     vv.addEventListener('scroll', schedule);
+    document.addEventListener('focusin', schedule);
+    document.addEventListener('focusout', schedule);
     return () => {
       vv.removeEventListener('resize', schedule);
       vv.removeEventListener('scroll', schedule);
+      document.removeEventListener('focusin', schedule);
+      document.removeEventListener('focusout', schedule);
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);
@@ -593,7 +603,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         )}
 
         {/* Messages */}
-        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div ref={messagesRef} onScroll={handleMessagesScroll} className="chat-scroll-area min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">群組聊天已開啟，說聲 hi 吧！</p>
@@ -753,7 +763,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         )}
 
-        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div ref={messagesRef} onScroll={handleMessagesScroll} className="chat-scroll-area min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.length === 0 && (
             <div className="flex items-center justify-center h-full">
               <p className="text-sm text-zinc-400">還沒有訊息</p>
@@ -868,7 +878,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           </div>
         </div>
 
-        <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        <div ref={messagesRef} onScroll={handleMessagesScroll} className="chat-scroll-area min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {localMessages.map((msg) => {
             const isMine = msg.senderId === currentUser?.id;
             return (
@@ -1046,7 +1056,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         </div>
       )}
 
-      <div ref={messagesRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={messagesRef} onScroll={handleMessagesScroll} className="chat-scroll-area min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {localMessages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-zinc-400">還沒有訊息，說聲 hi 吧！</p>
