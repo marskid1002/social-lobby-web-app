@@ -386,17 +386,33 @@ export default function ChatPage({ params }: ChatPageProps) {
     let sent = 0;
     const failed: string[] = [];
     try {
-      for (const [index, file] of selected.entries()) {
-        setPhotoProgress({ current: index + 1, total: selected.length });
+      // 階段 1：並行壓縮＋上傳。各張彼此無關，可同時進行（原本序列，9 張要等 9 輪往返）。
+      // allSettled 保留原始順序，且單張失敗不影響其他張。
+      let uploaded = 0;
+      const results = await Promise.allSettled(
+        selected.map((file) => uploadChatImage(file).then((url) => {
+          uploaded += 1;
+          setPhotoProgress({ current: uploaded, total: selected.length });
+          return url;
+        })),
+      );
+
+      // 階段 2：依「選取順序」序列送出。不可並行——訊息順序由伺服器的 createdAt 決定，
+      // 並行會讓對方看到的順序與你選的順序不一致。
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          const reason = result.reason;
+          failed.push(reason instanceof Error ? reason.message : '上傳失敗');
+          continue;
+        }
         try {
-          const url = await uploadChatImage(file);
           setHasSentMessage(true);
           stickToBottomRef.current = true; // 自己送出照片必定跟到最新
-          const newMsg = await sendChatMessage(threadId, '', undefined, url, req ?? undefined);
+          const newMsg = await sendChatMessage(threadId, '', undefined, result.value, req ?? undefined);
           setLocalMessages((prev) => prev.some((message) => message.id === newMsg.id) ? prev : [...prev, newMsg]);
           sent += 1;
         } catch (err) {
-          failed.push(err instanceof Error ? err.message : '上傳失敗');
+          failed.push(err instanceof Error ? err.message : '傳送失敗');
         }
       }
       // 全部失敗顯示原因；部分失敗只報張數，避免同一句錯誤重複洗畫面
