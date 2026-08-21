@@ -441,7 +441,31 @@ export function otherIdFromThread(threadId: string, me: string): string {
   return '';
 }
 
-function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>) {
+type AccountDisplayName = { userId: string; nickname: string };
+
+type ServerSharedPayload = Partial<Record<SharedKey, { id: string }[]>> & {
+  resetAt?: Record<string, number>;
+  accountNames?: AccountDisplayName[];
+};
+
+function applyAccountDisplayNames(next: AppState, accountNames: AccountDisplayName[]): AppState {
+  if (!accountNames.length) return next;
+  const names = new Map(
+    accountNames
+      .filter((account) => account.userId && account.nickname.trim())
+      .map((account) => [account.userId, account.nickname.trim()]),
+  );
+  if (!names.size) return next;
+  return {
+    ...next,
+    users: next.users.map((user) => {
+      const nickname = names.get(user.id);
+      return nickname && nickname !== user.nickname ? { ...user, nickname } : user;
+    }),
+  };
+}
+
+function applyServerShared(shared: ServerSharedPayload) {
   if (!globalState) globalState = loadState();
   globalState = pruneExpiredLocalState(globalState);
   // 已被保留期限清掉的項目也必須離開「尚未確認」佇列，否則稍後仍會蓋回本機。
@@ -454,7 +478,7 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
     for (const id of pending.keys()) if (!retainedIds.has(id)) pending.delete(id);
   }
   // 更新清除時間戳（管理員清空後，server 會回帶各集合的清除時間）
-  const incomingReset = (shared as { resetAt?: Record<string, number> }).resetAt;
+  const incomingReset = shared.resetAt;
   if (incomingReset) resetMarks = { ...resetMarks, ...incomingReset };
   let changed = false;
   const next = { ...globalState } as AppState;
@@ -492,6 +516,8 @@ function applyServerShared(shared: Partial<Record<SharedKey, { id: string }[]>>)
     if (shared.registeredUsers) result = applyRegisteredUsers(result);
     if (shared.escorts) result = applyEscorts(result);
     if (shared.photoOverrides) result = applyPhotoOverrides(result);
+    // 名稱最後套用：避免 registeredUsers 的舊快照把幹部剛修改的正式帳號名稱蓋回去。
+    if (shared.accountNames) result = applyAccountDisplayNames(result, shared.accountNames);
     globalState = result;
     saveState(globalState);
     listeners.forEach((l) => l());

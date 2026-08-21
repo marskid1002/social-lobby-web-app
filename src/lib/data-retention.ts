@@ -42,14 +42,6 @@ export function planDataRetention(all: SharedState, now: number = Date.now()): R
     (removed[key] ??= new Set()).add(item.id);
   };
 
-  const requests = all.requests.filter((request) => {
-    const createdAt = dateMs(request.createdAt);
-    const keep = createdAt === undefined || now < createdAt + REQUEST_RETENTION_MS;
-    if (!keep) mark('requests', request);
-    return keep;
-  });
-  const retainedRequestIds = new Set(requests.map((request) => request.id));
-
   const invitations = all.invitations.filter((invitation) => {
     const removeAt = invitationRemovalAt(invitation);
     const keep = removeAt === undefined || now < removeAt;
@@ -62,6 +54,16 @@ export function planDataRetention(all: SharedState, now: number = Date.now()): R
       .map((invitation) => text(invitation.requestId))
       .filter((requestId): requestId is string => Boolean(requestId)),
   );
+  // 已成立聊天室仍需要原局來完成「約會成功／失敗」與額滿判定；聊天室有效期間不可先刪原局。
+  const requests = all.requests.filter((request) => {
+    const createdAt = dateMs(request.createdAt);
+    const keep = activeChatRequestIds.has(request.id)
+      || createdAt === undefined
+      || now < createdAt + REQUEST_RETENTION_MS;
+    if (!keep) mark('requests', request);
+    return keep;
+  });
+  const retainedRequestIds = new Set(requests.map((request) => request.id));
   const activeChatThreads = new Set(
     invitations.filter((invitation) => invitation.status === 'accepted')
       .map(invitationThreadId).filter(Boolean),

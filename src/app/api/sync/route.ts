@@ -4,7 +4,7 @@ import { type SessionPayload } from '@/lib/session';
 import { requireActiveSession } from '@/lib/active-session';
 import { authorizeWrites, buildIndex } from '@/lib/sync-authz';
 import { buildChatAccessIndex, canReadChatThread } from '@/lib/chat-authz';
-import { getManagerUserIds } from '@/lib/auth-store';
+import { getAccountDisplayNames, getManagerUserIds } from '@/lib/auth-store';
 import { recordAcceptedSyncWrites } from '@/lib/flow-trace';
 import { deliverAuthorizedPushes, planAuthorizedSyncPushes } from '@/lib/push-authz';
 import { filledRequestClosures } from '@/lib/request-attendance';
@@ -119,6 +119,36 @@ export function scopeForSession(all: SharedState, s: SessionPayload): SharedStat
     requests: visibleRequests, responses: scopedResponses, invitations, updates, chatMessages, chatReads,
     ...pub,
   } as SharedState;
+}
+
+function visibleAccountIds(scoped: SharedState, session: SessionPayload): Set<string> {
+  const ids = new Set<string>([session.userId]);
+  const add = (value: unknown) => {
+    if (typeof value === 'string' && value) ids.add(value);
+  };
+  const records = (value: unknown) => Array.isArray(value) ? value as Record<string, unknown>[] : [];
+  for (const item of records(scoped.registeredUsers)) add(item.id);
+  for (const item of records(scoped.requests)) add(item.creatorId);
+  for (const item of records(scoped.responses)) { add(item.userId); add(item.dispatcherId); }
+  for (const item of records(scoped.invitations)) { add(item.fromUserId); add(item.toUserId); add(item.dispatcherId); }
+  for (const item of records(scoped.updates)) { add(item.userId); add(item.actorId); }
+  for (const item of records(scoped.chatMessages)) add(item.senderId);
+  for (const item of records(scoped.presence)) add(item.id);
+  for (const item of records(scoped.blocks)) { add(item.blockerId); add(item.blockedId); }
+  for (const item of records(scoped.momentPosts)) add(item.authorId);
+  for (const item of records(scoped.plazaComments)) add(item.userId);
+  return ids;
+}
+
+async function responsePayload(shared: SharedState, session: SessionPayload) {
+  const scoped = scopeForSession(shared, session);
+  const visibleIds = visibleAccountIds(scoped, session);
+  const [resetAt, allAccountNames] = await Promise.all([
+    getResetMarks(),
+    getAccountDisplayNames(),
+  ]);
+  const accountNames = allAccountNames.filter((account) => visibleIds.has(account.userId));
+  return { ...scoped, resetAt, accountNames };
 }
 
 // 清洗 registeredUsers 寫入：權限/等級一律以 session 為準，並移除 client 傳入的點數/額度，
@@ -236,8 +266,10 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return auth.response;
     const session = auth.session;
     const shared = await reconcileFilledRequests(await getShared());
-    const resetAt = await getResetMarks();
-    return NextResponse.json({ ...scopeForSession(shared, session), resetAt }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json(
+      await responsePayload(shared, session),
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch (e) {
     console.error('[sync GET]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });
@@ -317,8 +349,7 @@ export async function POST(req: NextRequest) {
       // 診斷紀錄不可反過來讓主要流程失敗。
       console.error('[flow trace sync]', error instanceof Error ? error.name : 'UnknownError');
     });
-    const resetAt = await getResetMarks();
-    return NextResponse.json({ ...scopeForSession(merged, session), resetAt });
+    return NextResponse.json(await responsePayload(merged, session));
   } catch (e) {
     console.error('[sync POST]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });

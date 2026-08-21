@@ -124,9 +124,6 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
     return { ok: false, status: 409, error: 'dispatch response not found' };
   }
   const request = input.requests.find((item) => item.id === requestId);
-  if (!request) {
-    return { ok: false, status: 409, error: 'request not found' };
-  }
 
   let updatedRequest: Item | undefined;
   if (input.decision === 'confirmed') {
@@ -139,8 +136,10 @@ export function planChatDecision(input: DecideChatInput): DecideChatResult {
       return { ok: false, status: 409, error: 'girl already confirmed elsewhere' };
     }
 
-    const peopleCount = Number(request.peopleCount);
-    if (Number.isInteger(peopleCount) && peopleCount > 0) {
+    // 舊資料可能已依過去的 8 小時保留規則刪除原局，但聊天室與派工關係仍合法存在。
+    // 這種情況仍允許幹部完成確認；只有原局存在時才做名額與自動關閉判定。
+    const peopleCount = Number(request?.peopleCount);
+    if (request && Number.isInteger(peopleCount) && peopleCount > 0) {
       const confirmedCount = confirmedCountForRequest(
         requestId,
         input.responses,

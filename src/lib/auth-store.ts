@@ -586,6 +586,16 @@ export async function getManagerUserIds(): Promise<string[]> {
     .map((a) => a.userId);
 }
 
+// 前台顯示名稱的 server 權威來源。只回傳公開顯示需要的欄位，絕不下發帳號、密碼雜湊或啟用資訊。
+// 客戶與幹部即使是同一個本人，仍以不同 userId 保持為兩個獨立身分。
+export async function getAccountDisplayNames(): Promise<Array<{ userId: string; nickname: string }>> {
+  const accounts = await readAccounts();
+  if (await ensureManagerAccounts(accounts)) await writeAccounts(accounts);
+  return Object.values(accounts)
+    .filter((account) => account.role === 'user' || account.role === 'manager')
+    .map((account) => ({ userId: account.userId, nickname: account.nickname }));
+}
+
 // 停用/啟用帳號（admin 帳號不可停用）
 export async function setAccountDisabled(key: string, disabled: boolean): Promise<boolean> {
   const accounts = await readAccounts();
