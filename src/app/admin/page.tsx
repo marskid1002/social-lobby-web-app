@@ -199,6 +199,38 @@ type SystemStatus = {
   version: string;
 };
 
+type RequestHistory = {
+  id: string;
+  creatorId: string;
+  creatorName: string;
+  area: string;
+  requestType: string;
+  requestTypes: string[];
+  venueType: string;
+  partyFormat: string;
+  peopleCount: number;
+  note: string;
+  status: string;
+  result: 'completed' | 'confirmed' | 'declined' | 'cancelled' | 'expired';
+  createdAt: string;
+  expiresAt: string;
+  archivedAt: string;
+  responseCount: number;
+  chatCount: number;
+  messageCount: number;
+  participants: Array<{
+    responseId: string;
+    userId: string;
+    userName: string;
+    dispatcherId?: string;
+    dispatcherName?: string;
+    responseStatus: string;
+    invitationStatus?: string;
+    managerDecision?: string;
+    meetupEndedAt?: string;
+  }>;
+};
+
 type DashboardData = {
   accounts: Account[];
   reports: Report[];
@@ -226,13 +258,15 @@ type DashboardData = {
   managerRosters: ManagerRoster[];
   escortGalleries: EscortGallery[];
   systemMessages: SystemMessage[];
+  requestHistory: RequestHistory[];
 };
 
-type Tab = 'overview' | 'flows' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
+type Tab = 'overview' | 'flows' | 'history' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
 
 const NAV: Array<{ id: Tab; label: string; short: string }> = [
   { id: 'overview', label: '營運總覽', short: '總覽' },
   { id: 'flows', label: '流程診斷', short: '流程' },
+  { id: 'history', label: '歷史局', short: '歷史' },
   { id: 'accounts', label: '帳號管理', short: '帳號' },
   { id: 'galleries', label: '小姐相簿總覽', short: '相簿' },
   { id: 'messages', label: '系統訊息', short: '訊息' },
@@ -271,6 +305,14 @@ const REQUEST_STATUS_LABEL: Record<string, string> = {
   closed: '已完成',
   cancelled: '已取消',
   expired: '已過期',
+};
+
+const HISTORY_RESULT: Record<RequestHistory['result'], { label: string; className: string }> = {
+  completed: { label: '已完成', className: 'bg-sky-100 text-sky-700' },
+  confirmed: { label: '約會成立', className: 'bg-emerald-100 text-emerald-700' },
+  declined: { label: '未成立', className: 'bg-red-100 text-red-700' },
+  cancelled: { label: '已取消', className: 'bg-zinc-100 text-zinc-600' },
+  expired: { label: '已過期', className: 'bg-amber-100 text-amber-700' },
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -357,6 +399,7 @@ export default function AdminPage() {
   const [toast, setToast] = useState('');
   const [search, setSearch] = useState('');
   const [flowOpen, setFlowOpen] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<Record<string, ConversationMessage[]>>({});
   const [chatEscortStatuses, setChatEscortStatuses] = useState<Record<string, EscortStatus[]>>({});
@@ -448,6 +491,27 @@ export default function AdminPage() {
           .some((value) => value?.toLowerCase().includes(query))
       )
     );
+  }, [data, search]);
+
+  const filteredHistory = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!data) return [];
+    const records = data.requestHistory ?? [];
+    if (!query) return records;
+    return records.filter((record) => [
+      record.id,
+      record.creatorId,
+      record.creatorName,
+      record.area,
+      record.note,
+      HISTORY_RESULT[record.result]?.label,
+      ...record.participants.flatMap((participant) => [
+        participant.userId,
+        participant.userName,
+        participant.dispatcherId ?? '',
+        participant.dispatcherName ?? '',
+      ]),
+    ].some((value) => value.toLowerCase().includes(query)));
   }, [data, search]);
 
   const filteredEscortGalleries = useMemo(() => {
@@ -766,6 +830,11 @@ export default function AdminPage() {
                   />
                   <MetricCard label="有效聊天室" value={overview.activeChats} />
                   <MetricCard label="聊天室訊息" value={overview.messages} />
+                  <MetricCard
+                    label="歷史局"
+                    value={data.requestHistory?.length ?? 0}
+                    onClick={(data.requestHistory?.length ?? 0) > 0 ? () => { setSearch(''); setTab('history'); } : undefined}
+                  />
                   <MetricCard label="待處理檢舉" value={overview.pendingReports} alert={overview.pendingReports > 0} />
                   <MetricCard label="停用帳號" value={overview.disabledAccounts} />
                   <MetricCard label="異常流程" value={overview.brokenFlows} alert={overview.brokenFlows > 0} />
@@ -969,6 +1038,114 @@ export default function AdminPage() {
                   })}
                   {filteredFlows.length === 0 && (
                     <p className="rounded-2xl bg-white p-6 text-center text-sm text-zinc-400">找不到符合的流程。</p>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {tab === 'history' && (
+              <section>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold">歷史局</h1>
+                    <p className="mt-1 text-sm text-zinc-500">僅 A000 可查看；原始局清理前會保留營運快照，但不保存聊天內容。</p>
+                  </div>
+                  <span className="w-fit rounded-full bg-zinc-900 px-3 py-1 text-xs font-bold text-white">
+                    共 {data.requestHistory?.length ?? 0} 局
+                  </span>
+                </div>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="搜尋局編號、客戶、小姐、幹部、地區或備註"
+                  className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-sky-400"
+                />
+                <div className="mt-4 space-y-3">
+                  {filteredHistory.map((record) => {
+                    const isOpen = historyOpen === record.id;
+                    const result = HISTORY_RESULT[record.result];
+                    return (
+                      <article key={record.id} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+                        <button
+                          type="button"
+                          onClick={() => setHistoryOpen(isOpen ? null : record.id)}
+                          className="flex w-full items-center gap-3 p-4 text-left hover:bg-zinc-50"
+                        >
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${result.className}`}>
+                            {result.label}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold">{record.creatorName} · {record.area || '未填地區'}</p>
+                            <p className="mt-0.5 truncate text-xs text-zinc-500">
+                              {record.participants.length > 0
+                                ? `參與：${record.participants.map((participant) => participant.userName).join('、')}`
+                                : '沒有參與人員'}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-xs font-semibold text-zinc-600">{record.responseCount} 回應 · {record.chatCount} 聊天</p>
+                            <p className="mt-0.5 text-[10px] text-zinc-400">{fmtTime(record.createdAt)}</p>
+                          </div>
+                        </button>
+                        {isOpen && (
+                          <div className="border-t border-zinc-100 bg-zinc-50 p-4">
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                              {[
+                                ['局編號', record.id],
+                                ['發局客戶', `${record.creatorName} · ${record.creatorId}`],
+                                ['地區', record.area || '未填寫'],
+                                ['需求人數', `${record.peopleCount || 0} 人`],
+                                ['發布時間', fmtTime(record.createdAt)],
+                                ['原定期限', fmtTime(record.expiresAt)],
+                                ['封存時間', fmtTime(record.archivedAt)],
+                                ['訊息數量', `${record.messageCount} 則（不保存內容）`],
+                              ].map(([label, value]) => (
+                                <div key={label} className="rounded-xl border border-zinc-200 bg-white p-3">
+                                  <p className="text-[10px] font-bold text-zinc-400">{label}</p>
+                                  <p className="mt-1 break-all text-xs font-bold text-zinc-800">{value}</p>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-3 rounded-xl border border-zinc-200 bg-white p-4">
+                              <p className="text-xs font-bold text-zinc-500">客戶備註</p>
+                              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-800">{record.note || '沒有填寫備註'}</p>
+                            </div>
+                            <div className="mt-3 rounded-xl border border-zinc-200 bg-white p-4">
+                              <p className="text-xs font-bold text-zinc-700">參與與派工結果</p>
+                              {record.participants.length === 0 ? (
+                                <p className="mt-2 text-xs text-zinc-400">這個局沒有收到加入或派工回應。</p>
+                              ) : (
+                                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                                  {record.participants.map((participant) => (
+                                    <div key={participant.responseId} className="rounded-xl bg-zinc-50 p-3 text-xs">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="font-bold text-zinc-900">{participant.userName}</p>
+                                        <span className="rounded-full bg-white px-2 py-0.5 font-semibold text-zinc-600">
+                                          {participant.managerDecision === 'confirmed'
+                                            ? '確認成立'
+                                            : participant.managerDecision === 'declined'
+                                              ? '未成立'
+                                              : participant.responseStatus}
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 text-zinc-500">
+                                        {participant.dispatcherName ? `派工幹部：${participant.dispatcherName}` : '自行加入'}
+                                      </p>
+                                      <p className="mt-1 break-all font-mono text-[10px] text-zinc-400">{participant.userId}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                  {filteredHistory.length === 0 && (
+                    <p className="rounded-2xl bg-white p-8 text-center text-sm text-zinc-400">
+                      尚無歷史局；局結束、過期或進入資料清理時會自動封存。
+                    </p>
                   )}
                 </div>
               </section>

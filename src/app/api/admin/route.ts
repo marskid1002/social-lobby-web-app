@@ -41,6 +41,7 @@ import {
   listSystemMessages,
   updateSystemMessagePush,
 } from '@/lib/system-message-store';
+import { listRequestHistory } from '@/lib/request-history-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -219,6 +220,7 @@ export async function GET(req: NextRequest) {
     issues,
     devices,
     systemMessages,
+    requestHistory,
     system,
   ] = await Promise.all([
     listAccounts().then((list) => list.map(safeAccount)),
@@ -236,6 +238,7 @@ export async function GET(req: NextRequest) {
     listIssueReports(),
     listDeviceSummaries(),
     listSystemMessages(),
+    listRequestHistory(),
     getSystemStatus(),
   ]);
 
@@ -298,6 +301,7 @@ export async function GET(req: NextRequest) {
       managerRosters,
       escortGalleries,
       systemMessages,
+      requestHistory,
       system,
       auditLogs,
       traceEvents,

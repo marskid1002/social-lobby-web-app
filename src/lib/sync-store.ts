@@ -7,6 +7,7 @@
 
 import { getRedis, kvKey, warnIfRedisMissingInProd } from './kv';
 import { planDataRetention } from './data-retention';
+import { archiveRequestHistory } from './request-history-store';
 
 warnIfRedisMissingInProd(); // 生產環境缺 Redis → 冷啟動時大聲警告（資料不會持久化）
 
@@ -94,7 +95,18 @@ export async function permanentlyDeleteEscort(escortId: string): Promise<void> {
 }
 
 export async function getShared(): Promise<SharedState> {
-  const plan = planDataRetention(await readSharedRaw());
+  const raw = await readSharedRaw();
+  const now = Date.now();
+  const plan = planDataRetention(raw, now);
+  const historicalRequestIds = new Set(plan.remove.requests ?? []);
+  for (const request of raw.requests) {
+    const expiresAt = typeof request.expiresAt === 'string' ? Date.parse(request.expiresAt) : Number.NaN;
+    if (request.status !== 'open' || (Number.isFinite(expiresAt) && expiresAt <= now)) {
+      historicalRequestIds.add(request.id);
+    }
+  }
+  // 封存成功後才刪原始資料；若 Redis 寫入失敗，讓同步失敗也不要靜默遺失歷史紀錄。
+  await archiveRequestHistory(raw, historicalRequestIds, new Date(now));
   await deleteSharedItems(plan.remove);
   return plan.state;
 }
