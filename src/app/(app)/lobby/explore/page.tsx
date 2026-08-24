@@ -120,7 +120,7 @@ function MyRequestCard({
   );
 }
 
-function FemaleListRow({ userId, blurred }: { userId: string; blurred?: boolean }) {
+function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) {
   const { state } = useAppState();
   const router = useRouter();
   const user = state.users.find((u) => u.id === userId);
@@ -129,23 +129,24 @@ function FemaleListRow({ userId, blurred }: { userId: string; blurred?: boolean 
 
   if (!user || !onlineStatus) return null;
 
-  // 訪客超過可見數的卡片：頭貼與名字馬賽克、不可點擊
+  // 訪客超過可見數的人物磚：維持版面尺寸，但照片與資料馬賽克、不可點擊。
   if (blurred) {
     return (
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-zinc-100 w-full select-none pointer-events-none">
-        <div className="relative shrink-0">
+      <div className="relative aspect-square overflow-hidden rounded-2xl bg-zinc-100 shadow-sm select-none pointer-events-none">
+        <div className="absolute inset-0 scale-110 blur-[8px]">
           <img
             src={user.avatarUrl}
             alt=""
             aria-hidden
-            className="w-10 h-10 rounded-full object-cover blur-[6px]"
+            className="h-full w-full object-cover"
           />
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="h-3.5 w-24 rounded bg-zinc-200 blur-[2px]" />
-          <div className="h-2.5 w-16 rounded bg-zinc-100 mt-2 blur-[2px]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/5 to-black/10" />
+        <div className="absolute inset-x-3 bottom-3">
+          <div className="h-4 w-20 rounded bg-white/55 blur-[2px]" />
+          <div className="mt-2 h-3 w-14 rounded bg-white/35 blur-[2px]" />
         </div>
-        <span className="text-[10px] font-semibold text-zinc-400">🔒</span>
+        <span className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-xs text-white backdrop-blur-sm">🔒</span>
       </div>
     );
   }
@@ -153,26 +154,35 @@ function FemaleListRow({ userId, blurred }: { userId: string; blurred?: boolean 
   return (
     <button
       onClick={() => router.push(`/u/${userId}`)}
-      className="flex items-center gap-3 px-4 py-3 bg-white border-b border-zinc-100 w-full text-left active:bg-brand-snow transition-colors"
+      className="group relative aspect-square w-full overflow-hidden rounded-2xl bg-zinc-100 text-left shadow-sm ring-1 ring-black/5 transition-transform active:scale-[0.98]"
+      aria-label={`查看 ${user.nickname} 的個人頁`}
     >
-      <div className="relative shrink-0">
-        <img
-          src={user.avatarUrl}
-          alt={user.nickname}
-          className="w-10 h-10 rounded-full object-cover"
-        />
-        <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${isBusy ? 'bg-pink-500' : 'bg-green-400'}`} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</span>
-          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isBusy ? 'bg-pink-100 text-pink-700' : 'bg-green-100 text-green-700'}`}>
-            {isBusy ? '忙碌中' : '上線'}
+      <img
+        src={user.cardImageUrl || user.avatarUrl}
+        alt={user.nickname}
+        className="h-full w-full object-cover transition-transform duration-300 group-active:scale-[1.02]"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/5 to-black/15" />
+
+      <span className={`absolute left-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-md ${
+        isBusy ? 'bg-pink-500/85' : 'bg-emerald-500/85'
+      }`}>
+        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+        {isBusy ? '忙碌中' : '今晚在線'}
+      </span>
+
+      <div className="absolute inset-x-0 bottom-0 p-3 text-white">
+        <div className="flex items-end justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold leading-tight drop-shadow-sm">{user.nickname}</p>
+            <p className="mt-1 truncate text-[11px] text-white/80">
+              {onlineStatus.area} · {formatDistanceToNow(new Date(onlineStatus.lastSeen), { locale: zhTW, addSuffix: true })}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-white/20 px-2 py-1 text-[10px] font-semibold backdrop-blur-md">
+            查看
           </span>
         </div>
-        <p className="text-xs text-zinc-400 mt-0.5">
-          {onlineStatus.area} · {formatDistanceToNow(new Date(onlineStatus.lastSeen), { locale: zhTW, addSuffix: true })}
-        </p>
       </div>
     </button>
   );
@@ -298,9 +308,9 @@ function ExploreContent() {
 
       {/* === SECTION B: Online Women === */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
-        <div className={tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}>
+        <div className={`grid grid-cols-2 gap-3 p-3 sm:grid-cols-3 ${tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}`}>
           {sectionBRenderIds.map((uid, idx) => (
-            <FemaleListRow key={uid} userId={uid} blurred={isGuest && idx >= limit} />
+            <FemaleTile key={uid} userId={uid} blurred={isGuest && idx >= limit} />
           ))}
         </div>
 
