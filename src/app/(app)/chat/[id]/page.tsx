@@ -163,10 +163,10 @@ export default function ChatPage({ params }: ChatPageProps) {
   const router = useRouter();
   const { state, currentUser, sendChatMessage, markChatRead, decideChat, confirmMeetup, confirmGroupAttendance } = useAppState();
 
-  // 安全返回：PWA 從推播進來沒有上一頁記錄時，router.back() 會卡住 → 改導到收件匣
+  // 聊天室返回鍵固定回收件匣。PWA／推播開啟時 history.length 可能大於 1，
+  // 但上一筆仍是同一聊天室，使用 router.back() 會讓使用者看起來完全跳不出去。
   const goBack = () => {
-    if (typeof window !== 'undefined' && window.history.length > 1) router.back();
-    else router.push('/inbox');
+    router.replace('/inbox');
   };
 
   const threadId = id;

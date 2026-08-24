@@ -22,6 +22,7 @@ import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { listReports, setReportResolved } from '@/lib/report-store';
 import {
   buildAdminDashboard,
+  buildAdminEscortStatuses,
   buildAdminManagerRosters,
   type AdminAccountSummary,
 } from '@/lib/admin-dashboard';
@@ -154,7 +155,14 @@ async function getConversationDetail(req: NextRequest) {
   if (!threadId || threadId.length > 256) {
     return NextResponse.json({ error: 'invalid threadId' }, { status: 400 });
   }
-  const messages = (await getCollection('chatMessages'))
+  const [chatMessages, responses, invitations, escorts, accounts] = await Promise.all([
+    getCollection('chatMessages'),
+    getCollection('responses'),
+    getCollection('invitations'),
+    getCollection('escorts'),
+    listAccounts().then((list) => list.map(safeAccount)),
+  ]);
+  const messages = chatMessages
     .filter((message) => {
       if (message.threadId !== threadId) return false;
       const messageRequestId = stringValue(message.requestId);
@@ -172,8 +180,18 @@ async function getConversationDetail(req: NextRequest) {
       requestId: stringValue(message.requestId) || undefined,
       createdAt: stringValue(message.createdAt),
     }));
+  const escortStatuses = requestedRequestId
+    ? buildAdminEscortStatuses({
+        accounts,
+        escorts,
+        responses,
+        invitations,
+        requestId: requestedRequestId,
+        threadId,
+      })
+    : [];
   return NextResponse.json(
-    { threadId, requestId: requestedRequestId || null, messages },
+    { threadId, requestId: requestedRequestId || null, messages, escortStatuses },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

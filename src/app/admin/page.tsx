@@ -78,6 +78,18 @@ type Flow = {
   health: 'healthy' | 'waiting' | 'error';
   issue: string;
   steps: FlowStep[];
+  escortStatuses: EscortStatus[];
+};
+
+type EscortStatus = {
+  responseId: string;
+  escortId: string;
+  escortName: string;
+  managerId: string;
+  managerName: string;
+  stage: 'waiting' | 'on_stage' | 'active' | 'declined' | 'ended' | 'withdrawn';
+  createdAt: string;
+  updatedAt: string;
 };
 
 type Conversation = {
@@ -245,6 +257,15 @@ const ROSTER_STATUS: Record<RosterMember['status'], { label: string; className: 
   removed: { label: '已移除', className: 'bg-red-50 text-red-600' },
 };
 
+const ESCORT_STAGE: Record<EscortStatus['stage'], { label: string; className: string }> = {
+  waiting: { label: '等待客戶確認', className: 'bg-amber-100 text-amber-700' },
+  on_stage: { label: '已上台・待幹部回報', className: 'bg-sky-100 text-sky-700' },
+  active: { label: '約會進行中', className: 'bg-emerald-100 text-emerald-700' },
+  declined: { label: '約會未成立', className: 'bg-red-100 text-red-700' },
+  ended: { label: '約會已結束', className: 'bg-zinc-200 text-zinc-700' },
+  withdrawn: { label: '已取消', className: 'bg-zinc-100 text-zinc-500' },
+};
+
 const REQUEST_STATUS_LABEL: Record<string, string> = {
   open: '進行中',
   closed: '已完成',
@@ -338,6 +359,7 @@ export default function AdminPage() {
   const [flowOpen, setFlowOpen] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<Record<string, ConversationMessage[]>>({});
+  const [chatEscortStatuses, setChatEscortStatuses] = useState<Record<string, EscortStatus[]>>({});
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const [confirmText, setConfirmText] = useState('');
   const [oneTimeSecret, setOneTimeSecret] = useState<{ key: string; value: string; label: string } | null>(null);
@@ -549,6 +571,7 @@ export default function AdminPage() {
       const response = await fetch(`/api/admin?${query}`, { cache: 'no-store' });
       const result = await response.json().catch(() => ({})) as {
         messages?: ConversationMessage[];
+        escortStatuses?: EscortStatus[];
         error?: string;
       };
       if (!response.ok) {
@@ -558,6 +581,10 @@ export default function AdminPage() {
       setChatMessages((current) => ({
         ...current,
         [conversation.key]: result.messages ?? [],
+      }));
+      setChatEscortStatuses((current) => ({
+        ...current,
+        [conversation.key]: result.escortStatuses ?? [],
       }));
     } catch {
       showToast('對話載入失敗');
@@ -863,6 +890,27 @@ export default function AdminPage() {
                                   </div>
                                 ))}
                               </div>
+                              {flow.escortStatuses.length > 0 && (
+                                <div className="mt-4 rounded-xl border border-[#303647] bg-[#171b28] p-4">
+                                  <p className="text-xs font-black text-white">小姐上台狀況</p>
+                                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    {flow.escortStatuses.map((escort) => {
+                                      const status = ESCORT_STAGE[escort.stage];
+                                      return (
+                                        <div key={escort.responseId} className="flex items-center justify-between gap-3 rounded-xl bg-[#252a3a] p-3">
+                                          <div className="min-w-0">
+                                            <p className="truncate text-sm font-black text-white">{escort.escortName}</p>
+                                            <p className="mt-1 truncate text-[11px] text-[#aeb3c2]">所屬幹部：{escort.managerName}</p>
+                                          </div>
+                                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${status.className}`}>
+                                            {status.label}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             <details className="mt-3 rounded-xl border border-zinc-200 bg-white p-4">
@@ -1438,6 +1486,7 @@ export default function AdminPage() {
                   {filteredChats.map((conversation) => {
                     const isOpen = chatOpen === conversation.key;
                     const messages = chatMessages[conversation.key];
+                    const escortStatuses = chatEscortStatuses[conversation.key] ?? [];
                     return (
                       <div key={conversation.key} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
                         <button
@@ -1462,6 +1511,27 @@ export default function AdminPage() {
                             {busy === `chat:${conversation.key}` && (
                               <p className="text-center text-xs text-zinc-400">載入對話中…</p>
                             )}
+                            {escortStatuses.length > 0 && (
+                              <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                                <p className="text-xs font-bold text-sky-900">小姐上台狀況</p>
+                                <div className="mt-2 space-y-2">
+                                  {escortStatuses.map((escort) => {
+                                    const status = ESCORT_STAGE[escort.stage];
+                                    return (
+                                      <div key={escort.responseId} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                                        <div className="min-w-0">
+                                          <p className="truncate text-xs font-bold text-zinc-900">{escort.escortName}</p>
+                                          <p className="truncate text-[10px] text-zinc-500">所屬幹部：{escort.managerName} · 更新 {fmtTime(escort.updatedAt)}</p>
+                                        </div>
+                                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${status.className}`}>
+                                          {status.label}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                             {messages?.map((message) => (
                               <div key={message.id} className="mb-3 rounded-xl bg-white p-3 last:mb-0">
                                 <div className="flex items-center justify-between gap-2">
@@ -1482,6 +1552,9 @@ export default function AdminPage() {
                                 )}
                               </div>
                             ))}
+                            {messages && messages.length === 0 && busy !== `chat:${conversation.key}` && (
+                              <p className="py-3 text-center text-xs text-zinc-400">這個聊天室尚無一般訊息。</p>
+                            )}
                           </div>
                         )}
                       </div>

@@ -1,4 +1,5 @@
 import { activeConfirmedGirlIds } from './request-attendance';
+import { directInvitationThreadId } from './chat-authz';
 
 type Item = { id: string; [key: string]: unknown };
 
@@ -45,6 +46,20 @@ export interface AdminFlow {
   health: 'healthy' | 'waiting' | 'error';
   issue: string;
   steps: AdminFlowStep[];
+  escortStatuses: AdminEscortStatus[];
+}
+
+export type AdminEscortStage = 'waiting' | 'on_stage' | 'active' | 'declined' | 'ended' | 'withdrawn';
+
+export interface AdminEscortStatus {
+  responseId: string;
+  escortId: string;
+  escortName: string;
+  managerId: string;
+  managerName: string;
+  stage: AdminEscortStage;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AdminConversationSummary {
@@ -104,6 +119,68 @@ const byOldest = (a: Item, b: Item): number =>
 
 const accountName = (accounts: AdminAccountSummary[], userId: string): string =>
   accounts.find((account) => account.userId === userId)?.nickname || userId;
+
+export function buildAdminEscortStatuses(input: {
+  accounts: AdminAccountSummary[];
+  escorts: Item[];
+  responses: Item[];
+  invitations: Item[];
+  requestId: string;
+  threadId?: string;
+}): AdminEscortStatus[] {
+  const invitations = input.invitations.filter((invitation) => {
+    if (text(invitation.requestId) !== input.requestId) return false;
+    if (!input.threadId) return true;
+    return text(invitation.groupThreadId) === input.threadId
+      || directInvitationThreadId(invitation) === input.threadId;
+  });
+  const responseIds = new Set(invitations.map((invitation) => text(invitation.responseId)).filter(Boolean));
+  const dispatcherIds = new Set(invitations.map((invitation) => text(invitation.dispatcherId)).filter(Boolean));
+  const isGroup = input.threadId === `g-${input.requestId}`;
+
+  return input.responses
+    .filter((response) => text(response.requestId) === input.requestId)
+    .filter((response) => !input.threadId
+      || isGroup
+      || responseIds.has(response.id)
+      || (responseIds.size === 0 && dispatcherIds.has(text(response.dispatcherId))))
+    .map((response): AdminEscortStatus => {
+      const invitation = invitations.find((item) => text(item.responseId) === response.id)
+        ?? invitations.find((item) => text(item.dispatcherId) === text(response.dispatcherId));
+      const escortId = text(response.userId);
+      const escort = input.escorts.find((item) => item.id === escortId);
+      const managerId = text(response.dispatcherId) || text(invitation?.dispatcherId);
+      const managerDecision = text(invitation?.managerDecision);
+      const responseStatus = text(response.responseStatus);
+      const stage: AdminEscortStage = text(invitation?.meetupEndedAt)
+        ? 'ended'
+        : managerDecision === 'declined'
+          ? 'declined'
+          : managerDecision === 'confirmed' || invitation?.meetupConfirmed === true
+            ? 'active'
+            : responseStatus === 'joining'
+              ? 'on_stage'
+              : responseStatus === 'withdrawn'
+                ? 'withdrawn'
+                : responseStatus === 'declined'
+                  ? 'declined'
+                  : 'waiting';
+      return {
+        responseId: response.id,
+        escortId,
+        escortName: text(escort?.nickname) || escortId || '未知小姐',
+        managerId,
+        managerName: managerId ? accountName(input.accounts, managerId) : '自行報名',
+        stage,
+        createdAt: text(response.createdAt),
+        updatedAt: text(invitation?.meetupEndedAt)
+          || text(invitation?.managerDecisionAt)
+          || text(invitation?.respondedAt)
+          || text(response.createdAt),
+      };
+    })
+    .sort((a, b) => dateMs(a.createdAt) - dateMs(b.createdAt));
+}
 
 export function buildAdminManagerRosters(input: {
   accounts: AdminAccountSummary[];
@@ -273,6 +350,13 @@ export function buildAdminDashboard(input: {
       health,
       issue,
       steps,
+      escortStatuses: buildAdminEscortStatuses({
+        accounts: input.accounts,
+        escorts: input.escorts ?? [],
+        responses: input.responses,
+        invitations: input.invitations,
+        requestId,
+      }),
     };
   }).sort((a, b) => dateMs(b.createdAt) - dateMs(a.createdAt));
 
@@ -286,13 +370,32 @@ export function buildAdminDashboard(input: {
     list.push(message);
     conversationGroups.set(key, list);
   }
+  for (const invitation of input.invitations) {
+    if (invitation.status !== 'accepted') continue;
+    const requestId = text(invitation.requestId);
+    const threadId = text(invitation.groupThreadId) || directInvitationThreadId(invitation);
+    if (!threadId) continue;
+    const key = `${threadId}\u0000${requestId}`;
+    if (!conversationGroups.has(key)) conversationGroups.set(key, []);
+  }
   const conversations = [...conversationGroups.entries()].map(([key, messages]) => {
     messages.sort(byOldest);
     const last = messages[messages.length - 1];
-    const participants = [...new Set(messages.map((message) => text(message.senderId)).filter(Boolean))];
     const separator = key.indexOf('\u0000');
     const threadId = key.slice(0, separator);
     const requestId = key.slice(separator + 1) || null;
+    const relatedInvitations = input.invitations.filter((invitation) =>
+      text(invitation.requestId) === (requestId ?? '')
+      && (text(invitation.groupThreadId) === threadId || directInvitationThreadId(invitation) === threadId)
+    );
+    const participants = [...new Set([
+      ...messages.map((message) => text(message.senderId)),
+      ...relatedInvitations.flatMap((invitation) => [
+        text(invitation.fromUserId),
+        text(invitation.toUserId),
+      ]),
+    ].filter(Boolean))];
+    const lastInvitation = relatedInvitations.sort(byOldest).at(-1);
     return {
       key,
       threadId,
@@ -300,9 +403,9 @@ export function buildAdminDashboard(input: {
       participants,
       participantNames: participants.map((userId) => accountName(input.accounts, userId)),
       messageCount: messages.length,
-      lastAt: text(last?.createdAt),
+      lastAt: text(last?.createdAt) || text(lastInvitation?.respondedAt) || text(lastInvitation?.createdAt),
       // 首頁只提供摘要 metadata；實際文字與圖片 URL 必須等 A000 點開後再取。
-      lastPreview: last?.imageUrl ? '[照片]' : '文字訊息',
+      lastPreview: last?.imageUrl ? '[照片]' : last ? '文字訊息' : '尚無聊天訊息',
     };
   }).sort((a, b) => dateMs(b.lastAt) - dateMs(a.lastAt));
 

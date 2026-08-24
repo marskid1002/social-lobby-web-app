@@ -27,6 +27,7 @@ const FUTURE = '2026-07-31T12:00:00.000Z';
 // 必須使用相對於執行當下的時間，否則 request 會被 8 小時、chatMessages 會被 48 小時保留規則清除。
 const RECENT = new Date(Date.now() - 5 * 60_000).toISOString();       // 5 分鐘前
 const RECENT_LATER = new Date(Date.now() - 4 * 60_000).toISOString(); // 4 分鐘前（晚於 RECENT，維持訊息先後順序）
+const LIVE_FUTURE = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
 
 test('幹部人員統計：依 managerId 隔離，且不顯示舊的軟刪除資料', () => {
   const rosters = buildAdminManagerRosters({
@@ -192,6 +193,10 @@ test('流程診斷：聊天室與訊息完成 → healthy；相同 thread 不同
   );
   assert.equal(dashboard.overview.pendingReports, 1);
   assert.equal(dashboard.overview.escorts, 1);
+  assert.equal(
+    dashboard.flows.find((flow) => flow.requestId === 'request-1')?.escortStatuses[0]?.stage,
+    'on_stage',
+  );
   assert.equal(dashboard.conversations.every(
     (conversation) => !conversation.lastPreview.includes('第一局')
       && !conversation.lastPreview.includes('第二局'),
@@ -329,6 +334,40 @@ test('危險操作：只有前端確認不夠，API 確認文字錯誤必須 400
 test('聊天室內容按需載入，並以 requestId 精確隔離', { skip }, async () => {
   await store.clearShared();
   await store.mergeShared({
+    requests: [{
+      id: 'request-one',
+      creatorId: 'customer-one',
+      status: 'open',
+      createdAt: RECENT,
+      expiresAt: LIVE_FUTURE,
+    }],
+    escorts: [{
+      id: 'escort-one',
+      managerId: 'manager-one',
+      nickname: '小晴',
+      createdAt: RECENT,
+    }],
+    responses: [{
+      id: 'response-one',
+      requestId: 'request-one',
+      userId: 'escort-one',
+      dispatcherId: 'manager-one',
+      responseStatus: 'joining',
+      createdAt: RECENT,
+    }],
+    invitations: [{
+      id: 'invitation-one',
+      requestId: 'request-one',
+      responseId: 'response-one',
+      fromUserId: 'manager-one',
+      toUserId: 'customer-one',
+      dispatcherId: 'manager-one',
+      chatThreadId: 'same-thread',
+      status: 'accepted',
+      createdAt: RECENT,
+      respondedAt: RECENT,
+      chatExpiresAt: LIVE_FUTURE,
+    }],
     chatMessages: [
       {
         id: 'chat-one',
@@ -361,6 +400,10 @@ test('聊天室內容按需載入，並以 requestId 精確隔離', { skip }, as
   );
   assert.equal(detail.status, 200);
   assert.deepEqual(detail.body.messages.map((message) => message.id), ['chat-one']);
+  assert.deepEqual(
+    detail.body.escortStatuses.map((escort) => ({ name: escort.escortName, stage: escort.stage })),
+    [{ name: '小晴', stage: 'on_stage' }],
+  );
 });
 
 test('A000 可為指定既有幹部產生只顯示一次的個人啟用碼', { skip }, async () => {
