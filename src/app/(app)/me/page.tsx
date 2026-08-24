@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Pencil, X, Plus, Camera } from 'lucide-react';
 import { useAppState } from '@/lib/state';
 import { uploadChatImage } from '@/lib/image';
-import { TAIPEI_AREAS } from '@/lib/mock';
+import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 
@@ -25,11 +25,21 @@ export default function MyProfilePage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [nickname, setNickname] = useState(currentUser?.nickname ?? '');
-  const [area, setArea] = useState(currentUser?.defaultArea ?? '信義區');
+  const initialArea = currentUser?.defaultArea ?? '信義區';
+  const [city, setCity] = useState<AreaCity>(() => cityForArea(initialArea));
+  const [area, setArea] = useState(initialArea);
   const [bio, setBio] = useState(currentUser?.bio ?? '');
   const [interests, setInterests] = useState<string[]>(currentUser?.interests ?? []);
   const [newInterest, setNewInterest] = useState('');
   const [toast, setToast] = useState('');
+
+  const districtOptions = AREA_OPTIONS[city] as readonly string[];
+  const isLegacyArea = area !== '' && !districtOptions.includes(area);
+
+  function handleCityChange(nextCity: AreaCity) {
+    setCity(nextCity);
+    setArea(AREA_OPTIONS[nextCity][0]);
+  }
 
   // 訪客沒有個人檔案 → 導回大廳
   useEffect(() => {
@@ -222,9 +232,25 @@ export default function MyProfilePage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-semibold text-brand-ink">區域</label>
-                <select value={area} onChange={(e) => setArea(e.target.value)} className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-sm focus:outline-none appearance-none">
-                  {TAIPEI_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={city}
+                    onChange={(event) => handleCityChange(event.target.value as AreaCity)}
+                    aria-label="縣市"
+                    className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+                  >
+                    {AREA_CITIES.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                  <select
+                    value={area}
+                    onChange={(event) => setArea(event.target.value)}
+                    aria-label="行政區"
+                    className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+                  >
+                    {isLegacyArea && <option value={area}>{area}</option>}
+                    {districtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </div>
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-semibold text-brand-ink">自我介紹</label>

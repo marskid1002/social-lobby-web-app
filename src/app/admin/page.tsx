@@ -263,7 +263,12 @@ const ACTION_LABEL: Record<string, string> = {
   'clear-shared': '清除局與聊天資料',
   'reset-all-managers': '清空所有幹部密碼',
   'delete-all-customers': '刪除所有客戶',
+  'send-system-message': '發送單人系統訊息',
+  'send-system-message-all': '群發系統訊息',
 };
+
+const ALL_MESSAGE_RECIPIENTS = '__all_active_recipients__';
+const ALL_MESSAGE_CONFIRMATION = 'ALL_ACTIVE_RECIPIENTS';
 
 const TRACE_LABEL: Record<string, string> = {
   'request.created': '客戶發局已儲存',
@@ -386,6 +391,15 @@ export default function AdminPage() {
 
   const accountName = useCallback((userId: string) =>
     data?.accounts.find((account) => account.userId === userId)?.nickname || userId,
+  [data?.accounts]);
+
+  const messageRecipients = useMemo(() =>
+    (data?.accounts ?? [])
+      .filter((account) =>
+        (account.role === 'user' || account.role === 'manager')
+        && !account.disabled
+        && !account.archived)
+      .sort((a, b) => a.key.localeCompare(b.key)),
   [data?.accounts]);
 
   const filteredAccounts = useMemo(() => {
@@ -552,8 +566,11 @@ export default function AdminPage() {
   }
 
   async function sendSystemMessage() {
-    const recipient = data?.accounts.find((account) => account.userId === messageRecipientId);
-    if (!recipient || !messageTitle.trim() || !messageContent.trim()) return;
+    const sendToAll = messageRecipientId === ALL_MESSAGE_RECIPIENTS;
+    const recipient = sendToAll
+      ? null
+      : messageRecipients.find((account) => account.userId === messageRecipientId);
+    if ((!sendToAll && !recipient) || !messageTitle.trim() || !messageContent.trim()) return;
     setBusy('send-system-message');
     try {
       const response = await fetch('/api/admin', {
@@ -561,21 +578,25 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'send-system-message',
-          recipientId: recipient.userId,
+          recipientScope: sendToAll ? 'all' : 'single',
+          recipientId: recipient?.userId,
           title: messageTitle.trim(),
           content: messageContent.trim(),
-          confirmation: recipient.userId,
+          confirmation: sendToAll ? ALL_MESSAGE_CONFIRMATION : recipient?.userId,
         }),
       });
-      const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: string };
+      const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; count?: number };
       if (!response.ok || !result.ok) {
         showToast(result.error || '訊息發送失敗');
         return;
       }
       setMessagePreviewOpen(false);
+      setMessageRecipientId('');
       setMessageTitle('');
       setMessageContent('');
-      showToast('官方通知已建立並嘗試推播');
+      showToast(sendToAll
+        ? `已建立 ${result.count ?? messageRecipients.length} 則官方通知，推播正在分批處理`
+        : '官方通知已建立並嘗試推播');
       await load();
     } catch {
       showToast('訊息發送失敗，請稍後再試');
@@ -1174,7 +1195,7 @@ export default function AdminPage() {
             {tab === 'messages' && (
               <section>
                 <h1 className="text-2xl font-bold">系統訊息</h1>
-                <p className="mt-1 text-sm text-zinc-500">以 JUGA 官方通知傳送給單一客戶或管理帳號。</p>
+                <p className="mt-1 text-sm text-zinc-500">以 JUGA 官方通知傳送給單一帳號，或一次發送給所有啟用中的客戶與幹部。</p>
 
                 <div className="mt-4 rounded-2xl border border-sky-200 bg-white p-4">
                   <div className="grid gap-4 lg:grid-cols-2">
@@ -1187,18 +1208,18 @@ export default function AdminPage() {
                         className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none focus:border-sky-400"
                       >
                         <option value="">請選擇收件人</option>
-                        {data.accounts
-                          .filter((account) =>
-                            (account.role === 'user' || account.role === 'manager')
-                            && !account.disabled
-                            && !account.archived)
-                          .sort((a, b) => a.key.localeCompare(b.key))
-                          .map((account) => (
+                        <option value={ALL_MESSAGE_RECIPIENTS}>所有人（{messageRecipients.length} 位啟用中客戶與幹部）</option>
+                        {messageRecipients.map((account) => (
                             <option key={account.userId} value={account.userId}>
                               {account.key} · {account.nickname} · {ROLE_LABEL[account.role]}
                             </option>
                           ))}
                       </select>
+                      {messageRecipientId === ALL_MESSAGE_RECIPIENTS && (
+                        <p className="mt-1.5 text-xs font-semibold text-amber-600">
+                          群發會同時建立 {messageRecipients.length} 則站內訊息，發送後無法收回。
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs font-bold text-zinc-600" htmlFor="system-message-title">標題</label>
@@ -1229,7 +1250,13 @@ export default function AdminPage() {
                   </div>
                   <button
                     type="button"
-                    disabled={!messageRecipientId || !messageTitle.trim() || !messageContent.trim() || Boolean(busy)}
+                    disabled={
+                      !messageRecipientId
+                      || (messageRecipientId === ALL_MESSAGE_RECIPIENTS && messageRecipients.length === 0)
+                      || !messageTitle.trim()
+                      || !messageContent.trim()
+                      || Boolean(busy)
+                    }
                     onClick={() => setMessagePreviewOpen(true)}
                     className="mt-4 rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
                   >
@@ -1561,22 +1588,40 @@ export default function AdminPage() {
       </div>
 
       {messagePreviewOpen && (() => {
-        const recipient = data.accounts.find((account) => account.userId === messageRecipientId);
-        if (!recipient) return null;
+        const sendToAll = messageRecipientId === ALL_MESSAGE_RECIPIENTS;
+        const recipient = sendToAll
+          ? null
+          : messageRecipients.find((account) => account.userId === messageRecipientId);
+        if (!sendToAll && !recipient) return null;
+        const customerCount = messageRecipients.filter((account) => account.role === 'user').length;
+        const managerCount = messageRecipients.filter((account) => account.role === 'manager').length;
         return (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4" onClick={() => setMessagePreviewOpen(false)}>
             <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
               <h2 className="text-lg font-bold">確認發送官方通知</h2>
               <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm">
-                <p><span className="text-zinc-500">收件人：</span><b>{recipient.key} · {recipient.nickname}</b></p>
-                <p className="mt-1"><span className="text-zinc-500">身分：</span>{ROLE_LABEL[recipient.role]}</p>
+                {sendToAll ? (
+                  <>
+                    <p><span className="text-zinc-500">收件人：</span><b>所有啟用中的客戶與幹部</b></p>
+                    <p className="mt-1"><span className="text-zinc-500">合計：</span>{messageRecipients.length} 人（客戶 {customerCount} 人、幹部 {managerCount} 人）</p>
+                  </>
+                ) : (
+                  <>
+                    <p><span className="text-zinc-500">收件人：</span><b>{recipient!.key} · {recipient!.nickname}</b></p>
+                    <p className="mt-1"><span className="text-zinc-500">身分：</span>{ROLE_LABEL[recipient!.role]}</p>
+                  </>
+                )}
               </div>
               <div className="mt-4 rounded-xl bg-zinc-50 p-4">
                 <p className="text-xs font-bold text-sky-700">JUGA 官方通知</p>
                 <p className="mt-2 font-bold text-zinc-900">{messageTitle.trim()}</p>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-700">{messageContent.trim()}</p>
               </div>
-              <p className="mt-3 text-xs text-amber-600">請確認帳號與內容。發送後不能修改或收回。</p>
+              <p className="mt-3 text-xs text-amber-600">
+                {sendToAll
+                  ? `即將發送給 ${messageRecipients.length} 人。發送後不能修改或收回。`
+                  : '請確認帳號與內容。發送後不能修改或收回。'}
+              </p>
               <div className="mt-5 flex gap-2">
                 <button
                   type="button"
@@ -1589,9 +1634,11 @@ export default function AdminPage() {
                   type="button"
                   disabled={busy === 'send-system-message'}
                   onClick={sendSystemMessage}
-                  className="flex-1 rounded-xl bg-sky-600 py-3 text-sm font-bold text-white disabled:opacity-50"
+                  className={`flex-1 rounded-xl py-3 text-sm font-bold text-white disabled:opacity-50 ${sendToAll ? 'bg-amber-600' : 'bg-sky-600'}`}
                 >
-                  {busy === 'send-system-message' ? '發送中…' : '確認發送'}
+                  {busy === 'send-system-message'
+                    ? '發送中…'
+                    : sendToAll ? `確認發送給 ${messageRecipients.length} 人` : '確認發送'}
                 </button>
               </div>
             </div>

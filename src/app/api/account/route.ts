@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       avatarUrl: String(existing?.avatarUrl ?? ''),
       cardImageUrl: String(existing?.cardImageUrl ?? ''),
       bio: String(existing?.bio ?? ''),
-      defaultArea: String(existing?.defaultArea ?? '台北市'),
+      defaultArea: String(existing?.defaultArea ?? '信義區'),
       interests: Array.isArray(existing?.interests) ? existing.interests : [],
       tier: 'vip',
       role: 'manager',

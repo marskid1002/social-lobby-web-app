@@ -6,9 +6,9 @@ import { ArrowLeft, ChevronLeft, ChevronRight, MoreVertical, UserPlus, UserCheck
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { TAIPEI_AREAS } from '@/lib/mock';
 import type { RequestType } from '@/lib/mock';
 import { activeConfirmedGirlIds } from '@/lib/request-attendance';
+import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 
 
 const REQUEST_TYPES: { value: RequestType; label: string; emoji: string }[] = [
@@ -90,6 +90,13 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const [inviteTime, setInviteTime] = useState('現在');
   const [inviteCount, setInviteCount] = useState(2);
   const [inviteNote, setInviteNote] = useState('');
+  const inviteCity = cityForArea(inviteArea);
+  const inviteDistrictOptions = AREA_OPTIONS[inviteCity] as readonly string[];
+  const isLegacyInviteArea = inviteArea !== '' && !inviteDistrictOptions.includes(inviteArea);
+
+  function handleInviteCityChange(nextCity: AreaCity) {
+    setInviteArea(AREA_OPTIONS[nextCity][0]);
+  }
 
   if (!user) return <div className="p-8 text-center text-zinc-400">找不到此用戶</div>;
 
@@ -369,20 +376,24 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
               <MapPin className="inline w-3 h-3 mr-1" />地點
             </p>
-            <div className="flex gap-2 flex-wrap mb-5">
-              {TAIPEI_AREAS.slice(0, 6).map((area) => (
-                <button
-                  key={area}
-                  onClick={() => setInviteArea(area)}
-                  className={`px-3 py-2 rounded-2xl text-xs font-semibold transition-colors ${
-                    inviteArea === area
-                      ? 'bg-brand-ink text-white'
-                      : 'bg-brand-snow text-zinc-500 border border-brand-lavender'
-                  }`}
-                >
-                  {area}
-                </button>
-              ))}
+            <div className="mb-5 grid grid-cols-2 gap-2">
+              <select
+                value={inviteCity}
+                onChange={(event) => handleInviteCityChange(event.target.value as AreaCity)}
+                aria-label="縣市"
+                className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+              >
+                {AREA_CITIES.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <select
+                value={inviteArea}
+                onChange={(event) => setInviteArea(event.target.value)}
+                aria-label="行政區"
+                className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+              >
+                {isLegacyInviteArea && <option value={inviteArea}>{inviteArea}</option>}
+                {inviteDistrictOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
             </div>
 
             {/* Time */}

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import {
   listAccounts,
   adminResetPassword,
@@ -36,6 +36,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { sendWebPushToUsers } from '@/lib/push-service';
 import {
   createSystemMessage,
+  createSystemMessages,
   listSystemMessages,
   updateSystemMessagePush,
 } from '@/lib/system-message-store';
@@ -304,6 +305,9 @@ async function audit(
   });
 }
 
+const ALL_SYSTEM_MESSAGE_CONFIRMATION = 'ALL_ACTIVE_RECIPIENTS';
+const BULK_PUSH_CONCURRENCY = 10;
+
 export async function POST(req: NextRequest) {
   const auth = await requireA000(req);
   if (!auth.ok) return auth.response;
@@ -318,10 +322,70 @@ export async function POST(req: NextRequest) {
 
     if (action === 'send-system-message') {
       const recipientId = stringValue(body.recipientId);
+      const recipientScope = stringValue(body.recipientScope) === 'all' ? 'all' : 'single';
       const title = stringValue(body.title).trim();
       const content = stringValue(body.content).trim();
-      if (!recipientId || title.length < 1 || title.length > 60 || content.length < 1 || content.length > 1000) {
+      if (title.length < 1 || title.length > 60 || content.length < 1 || content.length > 1000) {
         return NextResponse.json({ error: '標題需為 1–60 字，內容需為 1–1000 字' }, { status: 400 });
+      }
+
+      if (recipientScope === 'all') {
+        if (confirmation !== ALL_SYSTEM_MESSAGE_CONFIRMATION) {
+          return NextResponse.json({ error: '群發確認資料不一致，請重新確認' }, { status: 400 });
+        }
+        const limited = await rateLimit('admin-system-message-all', admin.userId, 1, 60);
+        if (!limited.ok) {
+          return NextResponse.json({ error: `請等待 ${limited.retryAfter} 秒後再次群發` }, { status: 429 });
+        }
+        const recipients = (await listAccounts()).filter(
+          (candidate) => ['user', 'manager'].includes(candidate.role)
+            && !candidate.disabled
+            && !candidate.archived,
+        );
+        if (recipients.length === 0) {
+          return NextResponse.json({ error: '目前沒有可接收訊息的帳號' }, { status: 400 });
+        }
+        const messages = await createSystemMessages(recipients.map((recipient) => ({
+          recipientId: recipient.userId,
+          recipientAccount: safeAccount(recipient).key,
+          recipientName: recipient.nickname,
+          recipientRole: recipient.role as 'user' | 'manager',
+          title,
+          content,
+          senderId: admin.userId,
+          pushSkipped: 'queued',
+        })));
+
+        // 站內訊息先一次完成寫入；推播在回應送出後分批執行，單一裝置失敗不會中斷整批。
+        after(async () => {
+          for (let offset = 0; offset < messages.length; offset += BULK_PUSH_CONCURRENCY) {
+            const batch = messages.slice(offset, offset + BULK_PUSH_CONCURRENCY);
+            await Promise.allSettled(batch.map(async (message) => {
+              const push = await sendWebPushToUsers(
+                [message.recipientId],
+                `JUGA 官方通知：${title}`,
+                '你收到一則官方通知，點擊登入查看內容',
+                `/inbox?systemMessage=${encodeURIComponent(message.id)}`,
+              ).catch((error) => {
+                console.error('[admin bulk system message push]', error instanceof Error ? error.name : 'UnknownError');
+                return { sent: 0, total: 0, skipped: 'push error' };
+              });
+              await updateSystemMessagePush(message.id, push);
+            }));
+          }
+        });
+
+        await audit(
+          admin,
+          'send-system-message-all',
+          'all-active-recipients',
+          `recipientCount=${messages.length};titleLength=${title.length};contentLength=${content.length}`,
+        );
+        return NextResponse.json({ ok: true, count: messages.length, pushQueued: true });
+      }
+
+      if (!recipientId) {
+        return NextResponse.json({ error: '請選擇收件人' }, { status: 400 });
       }
       const recipient = await getAccountByUserId(recipientId);
       if (!recipient || !['user', 'manager'].includes(recipient.role) || recipient.disabled || recipient.archived) {

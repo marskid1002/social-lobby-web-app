@@ -50,6 +50,10 @@ export type AreaCity = keyof typeof AREA_OPTIONS;
 
 export const AREA_CITIES = Object.keys(AREA_OPTIONS) as AreaCity[];
 
+export const ALL_AREA_DISTRICTS = AREA_CITIES.flatMap(
+  (city) => [...AREA_OPTIONS[city]],
+) as string[];
+
 const LEGACY_AREA_CITY: Record<string, AreaCity> = {
   西門町: '台北市',
 };

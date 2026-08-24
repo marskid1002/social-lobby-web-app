@@ -61,6 +61,58 @@ const INVITE_EMOJIS: Record<string, string> = {
   '備註': '💬',
 };
 
+function ChatMessageBody({
+  message,
+  isMine,
+  mineTextClass,
+  otherTextClass,
+  otherImageBorderClass,
+  dimmed = false,
+  onOpenImage,
+  onImageLoad,
+}: {
+  message: ChatMessage;
+  isMine: boolean;
+  mineTextClass: string;
+  otherTextClass: string;
+  otherImageBorderClass: string;
+  dimmed?: boolean;
+  onOpenImage: (url: string) => void;
+  onImageLoad: () => void;
+}) {
+  if (message.imageUrl) {
+    return (
+      <button
+        type="button"
+        aria-label="放大查看照片"
+        onClick={() => onOpenImage(message.imageUrl!)}
+        className={`block overflow-hidden rounded-2xl shadow-sm transition-opacity active:opacity-90 ${
+          isMine
+            ? 'rounded-br-md border border-white/10'
+            : `rounded-bl-md border ${otherImageBorderClass}`
+        } ${dimmed ? 'opacity-60' : ''}`}
+      >
+        <img
+          src={message.imageUrl}
+          alt="照片"
+          onLoad={onImageLoad}
+          className="block h-auto max-h-[300px] w-auto max-w-[min(68vw,240px)] object-contain"
+        />
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
+        isMine ? mineTextClass : otherTextClass
+      } ${dimmed ? 'opacity-60' : ''}`}
+    >
+      {message.text}
+    </div>
+  );
+}
+
 // 手機鍵盤／瀏覽器動態 UI 會改變「實際可見區域」。用 visualViewport 量測目前真正可見的高度與位移，
 // 讓聊天外框剛好貼齊可見區（composer 落在鍵盤上方）。跨 iOS／Android 用同一套：只讀取 visualViewport
 // 回報的高度，不用 UA 判斷、不猜測、不自行扣鍵盤高度——因此在 Android 已縮小 viewport 時不會二次扣除。
@@ -327,6 +379,12 @@ export default function ChatPage({ params }: ChatPageProps) {
     const el = messagesRef.current;
     if (!el) return;
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  function handleMessageImageLoad() {
+    const el = messagesRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    scrollMessagesToBottom(el);
   }
 
   // 目前渲染的是哪個聊天分支（群組／小姐視角／已關閉／一般）。分支切換時（如 activeInvite→confirmedInvite）
@@ -625,22 +683,15 @@ export default function ChatPage({ params }: ChatPageProps) {
                   {!isMine && sender && (
                     <span className="text-[10px] text-zinc-400 px-1">{sender.nickname}</span>
                   )}
-                  <div
-                    className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
-                      isMine
-                        ? 'bg-brand-sky text-brand-ink rounded-br-md'
-                        : 'bg-white border border-brand-lavender text-brand-ink rounded-bl-md'
-                    }`}
-                  >
-                    {msg.imageUrl ? (
-                      <img
-                        src={msg.imageUrl}
-                        alt="照片"
-                        onClick={() => setLightbox(msg.imageUrl!)}
-                        className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
-                      />
-                    ) : msg.text}
-                  </div>
+                  <ChatMessageBody
+                    message={msg}
+                    isMine={isMine}
+                    mineTextClass="rounded-br-md bg-brand-sky text-brand-ink"
+                    otherTextClass="rounded-bl-md border border-brand-lavender bg-white text-brand-ink"
+                    otherImageBorderClass="border-brand-lavender"
+                    onOpenImage={setLightbox}
+                    onImageLoad={handleMessageImageLoad}
+                  />
                   <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
                 </div>
               </div>
@@ -782,22 +833,15 @@ export default function ChatPage({ params }: ChatPageProps) {
                   />
                 )}
                 <div className={`flex flex-col gap-0.5 max-w-[72%] ${isMine ? 'items-end' : 'items-start'}`}>
-                  <div
-                    className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
-                      isMine
-                        ? 'bg-pink-300 text-brand-ink rounded-br-md'
-                        : 'bg-white border border-pink-100 text-brand-ink rounded-bl-md'
-                    }`}
-                  >
-                    {msg.imageUrl ? (
-                      <img
-                        src={msg.imageUrl}
-                        alt="照片"
-                        onClick={() => setLightbox(msg.imageUrl!)}
-                        className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
-                      />
-                    ) : msg.text}
-                  </div>
+                  <ChatMessageBody
+                    message={msg}
+                    isMine={isMine}
+                    mineTextClass="rounded-br-md bg-pink-300 text-brand-ink"
+                    otherTextClass="rounded-bl-md border border-pink-100 bg-white text-brand-ink"
+                    otherImageBorderClass="border-pink-100"
+                    onOpenImage={setLightbox}
+                    onImageLoad={handleMessageImageLoad}
+                  />
                   <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
                 </div>
               </div>
@@ -891,22 +935,16 @@ export default function ChatPage({ params }: ChatPageProps) {
                   />
                 )}
                 <div className={`flex flex-col gap-0.5 max-w-[72%] ${isMine ? 'items-end' : 'items-start'}`}>
-                  <div
-                    className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed opacity-60 ${
-                      isMine
-                        ? 'bg-brand-sky text-brand-ink rounded-br-md'
-                        : 'bg-white border border-brand-lavender text-brand-ink rounded-bl-md'
-                    }`}
-                  >
-                    {msg.imageUrl ? (
-                      <img
-                        src={msg.imageUrl}
-                        alt="照片"
-                        onClick={() => setLightbox(msg.imageUrl!)}
-                        className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
-                      />
-                    ) : msg.text}
-                  </div>
+                  <ChatMessageBody
+                    message={msg}
+                    isMine={isMine}
+                    mineTextClass="rounded-br-md bg-brand-sky text-brand-ink"
+                    otherTextClass="rounded-bl-md border border-brand-lavender bg-white text-brand-ink"
+                    otherImageBorderClass="border-brand-lavender"
+                    dimmed
+                    onOpenImage={setLightbox}
+                    onImageLoad={handleMessageImageLoad}
+                  />
                   <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
                 </div>
               </div>
@@ -1074,22 +1112,15 @@ export default function ChatPage({ params }: ChatPageProps) {
                 />
               )}
               <div className={`flex flex-col gap-0.5 max-w-[72%] ${isMine ? 'items-end' : 'items-start'}`}>
-                <div
-                  className={`px-3.5 py-2 rounded-2xl text-sm leading-relaxed ${
-                    isMine
-                      ? 'bg-brand-sky text-brand-ink rounded-br-md'
-                      : 'bg-white border border-brand-lavender text-brand-ink rounded-bl-md'
-                  }`}
-                >
-                  {msg.imageUrl ? (
-                    <img
-                      src={msg.imageUrl}
-                      alt="照片"
-                      onClick={() => setLightbox(msg.imageUrl!)}
-                      className="block rounded-xl max-w-[200px] max-h-[240px] object-cover cursor-pointer active:opacity-90"
-                    />
-                  ) : msg.text}
-                </div>
+                <ChatMessageBody
+                  message={msg}
+                  isMine={isMine}
+                  mineTextClass="rounded-br-md bg-brand-sky text-brand-ink"
+                  otherTextClass="rounded-bl-md border border-brand-lavender bg-white text-brand-ink"
+                  otherImageBorderClass="border-brand-lavender"
+                  onOpenImage={setLightbox}
+                  onImageLoad={handleMessageImageLoad}
+                />
                 <span className="text-[10px] text-zinc-400 px-1">{formatTime(msg.createdAt)}</span>
               </div>
             </div>

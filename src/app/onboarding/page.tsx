@@ -3,15 +3,25 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState } from '@/lib/state';
-import { TAIPEI_AREAS } from '@/lib/mock';
+import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 
 export default function OnboardingPage() {
   const router = useRouter();
   const { currentUser, updateUser } = useAppState();
 
   const [nickname, setNickname] = useState(currentUser?.nickname ?? '');
-  const [area, setArea] = useState(currentUser?.defaultArea ?? '信義區');
+  const initialArea = currentUser?.defaultArea ?? '信義區';
+  const [city, setCity] = useState<AreaCity>(() => cityForArea(initialArea));
+  const [area, setArea] = useState(initialArea);
   const [bio, setBio] = useState(currentUser?.bio ?? '');
+
+  const districtOptions = AREA_OPTIONS[city] as readonly string[];
+  const isLegacyArea = area !== '' && !districtOptions.includes(area);
+
+  function handleCityChange(nextCity: AreaCity) {
+    setCity(nextCity);
+    setArea(AREA_OPTIONS[nextCity][0]);
+  }
 
   function handleContinue() {
     if (!nickname.trim()) return;
@@ -70,17 +80,26 @@ export default function OnboardingPage() {
 
         {/* Area */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-semibold text-brand-ink" htmlFor="area">所在區域</label>
-          <select
-            id="area"
-            value={area}
-            onChange={(e) => setArea(e.target.value)}
-            className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-sm text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
-          >
-            {TAIPEI_AREAS.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
-          </select>
+          <label className="text-sm font-semibold text-brand-ink">所在區域</label>
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={city}
+              onChange={(event) => handleCityChange(event.target.value as AreaCity)}
+              aria-label="縣市"
+              className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+            >
+              {AREA_CITIES.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <select
+              value={area}
+              onChange={(event) => setArea(event.target.value)}
+              aria-label="行政區"
+              className="w-full rounded-2xl border border-brand-lavender bg-white px-4 py-3 text-base text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-sky appearance-none"
+            >
+              {isLegacyArea && <option value={area}>{area}</option>}
+              {districtOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </div>
         </div>
 
         {/* Bio */}

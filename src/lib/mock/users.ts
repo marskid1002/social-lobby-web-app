@@ -482,21 +482,6 @@ export const onlineStatuses: OnlineStatus[] = [
   { userId: 'u-015', status: 'available',     area: '松山區', lastSeen: minsAgo(1),  expiresAt: hoursFromNow(4) },
 ];
 
-export const TAIPEI_AREAS = [
-  '信義區',
-  '大安區',
-  '中山區',
-  '松山區',
-  '內湖區',
-  '士林區',
-  '萬華區',
-  '西門町',
-  '板橋區',
-  '永和區',
-] as const;
-
-export type Area = typeof TAIPEI_AREAS[number];
-
 // Helper: get user by id, with safe fallback.
 export function getUser(id: string): User | undefined {
   return users.find((u) => u.id === id);

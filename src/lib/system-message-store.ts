@@ -4,6 +4,7 @@ import { getRedis, kvKey } from './kv';
 
 const SYSTEM_MESSAGES_KEY = kvKey('sl:system-messages:h:v1');
 const RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const WRITE_BATCH_SIZE = 250;
 
 export interface SystemMessageRecord {
   id: string;
@@ -22,6 +23,8 @@ export interface SystemMessageRecord {
 }
 
 const memoryMessages = new Map<string, SystemMessageRecord>();
+
+type SystemMessageInput = Omit<SystemMessageRecord, 'id' | 'createdAt' | 'pushSent' | 'pushTotal'>;
 
 function parse(value: unknown): SystemMessageRecord | null {
   if (value && typeof value === 'object') return value as SystemMessageRecord;
@@ -45,33 +48,52 @@ async function allMessages(): Promise<SystemMessageRecord[]> {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export async function createSystemMessage(input: Omit<SystemMessageRecord, 'id' | 'createdAt' | 'pushSent' | 'pushTotal'>) {
-  const record: SystemMessageRecord = {
+export async function createSystemMessages(inputs: SystemMessageInput[]) {
+  if (inputs.length === 0) return [];
+  const createdAt = new Date().toISOString();
+  const records: SystemMessageRecord[] = inputs.map((input) => ({
     ...input,
     id: `sm-${randomUUID()}`,
-    createdAt: new Date().toISOString(),
+    createdAt,
     pushSent: 0,
     pushTotal: 0,
-  };
+  }));
   const redis = getRedis();
-  if (redis) await redis.hset(SYSTEM_MESSAGES_KEY, { [record.id]: record });
-  else memoryMessages.set(record.id, record);
-  return record;
+  if (redis) {
+    for (let offset = 0; offset < records.length; offset += WRITE_BATCH_SIZE) {
+      const batch = records.slice(offset, offset + WRITE_BATCH_SIZE);
+      await redis.hset(
+        SYSTEM_MESSAGES_KEY,
+        Object.fromEntries(batch.map((record) => [record.id, record])),
+      );
+    }
+  } else {
+    records.forEach((record) => memoryMessages.set(record.id, record));
+  }
+  return records;
+}
+
+export async function createSystemMessage(input: SystemMessageInput) {
+  const [record] = await createSystemMessages([input]);
+  return record!;
 }
 
 export async function updateSystemMessagePush(
   id: string,
   result: { sent: number; total?: number; skipped?: string },
 ) {
-  const record = (await allMessages()).find((message) => message.id === id);
+  const redis = getRedis();
+  const record = redis
+    ? parse(await redis.hget(SYSTEM_MESSAGES_KEY, id))
+    : memoryMessages.get(id) ?? null;
   if (!record) return null;
+  const { pushSkipped: _previousPushSkipped, ...current } = record;
   const next = {
-    ...record,
+    ...current,
     pushSent: result.sent,
     pushTotal: result.total ?? 0,
     ...(result.skipped ? { pushSkipped: result.skipped } : {}),
   };
-  const redis = getRedis();
   if (redis) await redis.hset(SYSTEM_MESSAGES_KEY, { [id]: next });
   else memoryMessages.set(id, next);
   return next;

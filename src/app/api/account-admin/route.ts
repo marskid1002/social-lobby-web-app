@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       avatarUrl: '',
       cardImageUrl: '',
       bio: '',
-      defaultArea: '台北市',
+      defaultArea: '信義區',
       interests: [],
       tier: 'vip',
       role: 'manager',

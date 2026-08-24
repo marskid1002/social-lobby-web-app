@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { SlidersHorizontal, X } from 'lucide-react';
-import { TAIPEI_AREAS } from '@/lib/mock';
 import type { User, OnlineStatus } from '@/lib/mock';
 import { UserCard } from '@/components/UserCard';
 import Link from 'next/link';
+import { ALL_AREA_DISTRICTS, AREA_CITIES, AREA_OPTIONS } from '@/lib/area-options';
 
 const ALL_INTERESTS = [
   '夜生活', '酒吧', '電影', '美食', '音樂', '調酒', '攝影', '健身', '電音',
@@ -87,7 +87,7 @@ export function LobbyGrid({
         >
           全部
         </button>
-        {TAIPEI_AREAS.map((area) => (
+        {ALL_AREA_DISTRICTS.map((area) => (
           <button
             key={area}
             onClick={() => setSelectedArea(selectedArea === area ? null : area)}
@@ -155,7 +155,7 @@ export function LobbyGrid({
 
             {/* Area section */}
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">地區</p>
-            <div className="flex flex-wrap gap-2 mb-6">
+            <div className="mb-6 flex flex-wrap gap-2">
               <button
                 onClick={() => setSelectedArea(null)}
                 className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors ${
@@ -164,16 +164,25 @@ export function LobbyGrid({
               >
                 全部
               </button>
-              {TAIPEI_AREAS.map((area) => (
-                <button
-                  key={area}
-                  onClick={() => setSelectedArea(selectedArea === area ? null : area)}
-                  className={`px-4 py-2 rounded-full text-xs font-semibold transition-colors ${
-                    selectedArea === area ? 'bg-brand-ink text-white' : 'bg-brand-snow text-zinc-600 border border-brand-lavender'
-                  }`}
-                >
-                  {area}
-                </button>
+            </div>
+            <div className="mb-6 space-y-4">
+              {AREA_CITIES.map((city) => (
+                <div key={city}>
+                  <p className="mb-2 text-xs font-bold text-brand-ink">{city}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {AREA_OPTIONS[city].map((area) => (
+                      <button
+                        key={area}
+                        onClick={() => setSelectedArea(selectedArea === area ? null : area)}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
+                          selectedArea === area ? 'bg-brand-ink text-white' : 'bg-brand-snow text-zinc-600 border border-brand-lavender'
+                        }`}
+                      >
+                        {area}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
 
