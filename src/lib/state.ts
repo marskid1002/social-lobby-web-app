@@ -254,11 +254,13 @@ function applyPhotoOverrides(next: AppState): AppState {
   const map = new Map(overrides.map((o) => [o.id, o.avatarUrl]));
   const users = next.users.map((u) => {
     const seed = seedUsers.find((su) => su.id === u.id);
+    const hasOverrideRecord = map.has(u.id);
     const raw = map.get(u.id);
     // 空字串視為「無覆寫」：還原照片時（尤其幹部自建、無 seed 原圖的小姐）不要讓 avatarUrl 變成 '' → <img src=""> 全白
     const override = raw && raw.length > 0 ? raw : undefined;
-    const avatarUrl = override ?? seed?.avatarUrl ?? u.avatarUrl;
-    const cardImageUrl = override ?? seed?.cardImageUrl ?? u.cardImageUrl;
+    // 自建小姐沒有 seed；收到空字串 tombstone 時必須回到中性預設圖，不能沿用目前的舊照片。
+    const avatarUrl = override ?? seed?.avatarUrl ?? (hasOverrideRecord ? ESCORT_PLACEHOLDER : u.avatarUrl);
+    const cardImageUrl = override ?? seed?.cardImageUrl ?? (hasOverrideRecord ? ESCORT_PLACEHOLDER : u.cardImageUrl);
     if (avatarUrl === u.avatarUrl && cardImageUrl === u.cardImageUrl) return u;
     return { ...u, avatarUrl, cardImageUrl };
   });
@@ -746,27 +748,23 @@ export function useAppState(options: { sync?: boolean } = {}) {
   }, []);
 
   // 幹部自建小姐（B）：新增（名字必填，照片事後用「照片」按鈕上傳）、移除（軟刪除同步）
-  const addEscort = useCallback((nickname: string) => {
+  const addEscort = useCallback(async (nickname: string) => {
     const name = nickname.trim();
-    if (!name) return;
-    const me = getState().currentUserId;
-    const now = new Date().toISOString();
-    // 前綴用 esc-（不可用 g-：會與群組聊天室 threadId 慣例 g-<requestId> 撞名，害 1:1 聊天訊息被誤判過濾）
-    const id = `esc-${Date.now()}${Math.random().toString(36).slice(2, 7)}`;
-    setState((prev) => {
-      const newUser: User = {
-        id, lineUserId: id, nickname: name,
-        avatarUrl: ESCORT_PLACEHOLDER, cardImageUrl: ESCORT_PLACEHOLDER,
-        bio: '', defaultArea: '信義區', interests: [],
-        tier: 'standard', role: 'escort', credits: 0, monthlyRequestsLeft: 0,
-        lineOAFollowed: false, createdAt: now, managerId: me,
-      };
-      return {
-        ...prev,
-        escorts: [...prev.escorts, { id, managerId: me, nickname: name, bio: '', defaultArea: '信義區', createdAt: now }],
-        users: [...prev.users, newUser],
-      };
+    if (!name) throw new Error('請輸入人員名稱');
+    const res = await fetch('/api/escorts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: name }),
     });
+    const body = await res.json().catch(() => ({})) as {
+      error?: string;
+      escorts?: AppState['escorts'];
+    };
+    if (!res.ok || !body.escorts) {
+      throw new Error(body.error || '新增失敗，請稍後再試');
+    }
+    // API 已成功落盤，才把完整權威名單套回本機；不再先顯示尚未存在於伺服器的假資料。
+    applyServerShared({ escorts: body.escorts });
   }, []);
 
   const removeEscort = useCallback(async (id: string) => {
@@ -1079,54 +1077,21 @@ export function useAppState(options: { sync?: boolean } = {}) {
 
   // 幹部派工：以指定女伴身分對某個局建立 'interested' 回應，並通知發起人。
   // 與 joinRequest 相同效果，但對象是 girlId 而非當前使用者（供幹部代為安排出席）。
-  const dispatchGirl = useCallback((requestId: string, girlId: string) => {
-    const s = getState();
-    const request = s.requests.find((r) => r.id === requestId);
-    if (!request) return;
-    // 離線也可派工（規則已取消）：只保留「約會中」不可重複派工，與 sync-authz 的伺服器授權一致。
-    if (activeConfirmedGirlIds(s.responses, s.invitations).has(girlId)) return;
-
-    // 防止重複派工：若該女伴已 interested / joining 則略過
-    const existing = s.responses.find(
-      (r) => r.requestId === requestId && r.userId === girlId
-    );
-    if (existing?.responseStatus === 'interested' || existing?.responseStatus === 'joining') return;
-
-    const now = new Date().toISOString();
-    const notif: UpdateEvent = {
-      id: `ue-dispatch-${Date.now()}`,
-      userId: request.creatorId,
-      actorId: girlId,
-      eventType: 'response_received',
-      refRequestId: requestId,
-      createdAt: now,
-      read: false,
-    };
-
-    const dispatcherId = s.currentUserId; // 派工的幹部（客戶接受後由此幹部代談）
-
-    setState((prev) => {
-      // 若是先前 withdrawn 的回應則重新啟用，否則新增一筆
-      const responses = existing
-        ? prev.responses.map((r) =>
-            r.id === existing.id
-              ? { ...r, responseStatus: 'interested' as const, createdAt: now, dispatcherId }
-              : r
-          )
-        : [
-            ...prev.responses,
-            {
-              id: `rr-dispatch-${Date.now()}`,
-              requestId,
-              userId: girlId,
-              responseStatus: 'interested' as const,
-              createdAt: now,
-              dispatcherId,
-            },
-          ];
-      return { ...prev, responses, updates: [notif, ...prev.updates] };
+  const dispatchGirls = useCallback(async (requestId: string, escortIds: string[]) => {
+    const res = await fetch('/api/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, escortIds }),
     });
-
+    const body = await res.json().catch(() => ({})) as {
+      error?: string;
+      responses?: Response[];
+      updates?: UpdateEvent[];
+    };
+    if (!res.ok || !body.responses || !body.updates) {
+      throw new Error(body.error || '安排失敗，請稍後再試');
+    }
+    applyServerShared({ responses: body.responses, updates: body.updates });
   }, []);
 
   // Creator accepts an 'interested' joiner: flips to 'joining', creates invitation + chat.
@@ -1564,7 +1529,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
     declineResponder,
     buyExtraSlot,
     joinRequest,
-    dispatchGirl,
+    dispatchGirls,
     acceptResponder,
     cancelJoinRequest,
     recordRequestViewer,

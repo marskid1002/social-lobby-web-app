@@ -54,7 +54,7 @@ async function downscaleToJpegDataUrl(file: File, maxDim = 1280, quality = 0.82)
 }
 
 export function OperatorHome() {
-  const { state, dispatchGirl, switchToRosterGirl, setUserPresence, setPhotoOverride, resetPhotoOverride, updateUser, addEscort, updateEscortProfile, removeEscort } = useAppState();
+  const { state, dispatchGirls, switchToRosterGirl, setUserPresence, updateUser, addEscort, updateEscortProfile, removeEscort } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
   const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
@@ -94,15 +94,26 @@ export function OperatorHome() {
       });
     }
     const approxKb = Math.round((dataUrl.length * 3) / 4 / 1024); // base64 → 位元組估算
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: girlId,
-        dataUrl,
-        kind: uploadModeRef.current === 'gallery' ? 'gallery' : 'managed-photo',
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    let res: globalThis.Response;
+    try {
+      res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          userId: girlId,
+          dataUrl,
+          kind: uploadModeRef.current === 'gallery' ? 'gallery' : 'managed-photo',
+        }),
+      });
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error('上傳超過 30 秒，請檢查網路後重試');
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
     if (!res.ok) {
       let detail = String(res.status);
       try { const j = await res.json(); if (j?.error) detail += ` ${j.error}`; } catch {}
@@ -129,6 +140,21 @@ export function OperatorHome() {
     await refreshShared();
   }
 
+  async function saveAvatar(girlId: string, avatarUrl: string) {
+    const res = await fetch('/api/gallery', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ escortId: girlId, append: [], remove: [], avatarUrl }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(data.error === 'escort ownership not found'
+        ? '人員資料尚未在伺服器建立完成，請重新整理後再試'
+        : `大頭照儲存失敗（${res.status}）`);
+    }
+    await refreshShared();
+  }
+
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(e.target.files ?? []);
     const girlId = photoSheetGirlId;
@@ -141,26 +167,27 @@ export function OperatorHome() {
       if (mode === 'avatar') {
         setUploadProgress({ current: 1, total: 1 });
         const url = await uploadImage(girlId, files[0]);
-        setPhotoOverride(girlId, url);
+        await saveAvatar(girlId, url);
         setToast('✅ 已更新大頭照');
       } else {
-        const uploadedUrls: string[] = [];
+        let savedCount = 0;
         const errors: string[] = [];
         for (const [index, file] of files.entries()) {
           setUploadProgress({ current: index + 1, total: files.length });
           try {
             const url = await uploadImage(girlId, file);
-            uploadedUrls.push(url);
+            // 每張上傳完成後立刻落盤；後續某張逾時也不會讓前面成功的照片消失。
+            await saveGalleryChanges(girlId, { append: [url] });
+            savedCount += 1;
           } catch (err) {
             errors.push(`${file.name}：${err instanceof Error ? err.message : '上傳失敗'}`);
           }
         }
-        if (uploadedUrls.length === 0) throw new Error(errors[0] ?? '照片上傳失敗');
-        await saveGalleryChanges(girlId, { append: uploadedUrls });
+        if (savedCount === 0) throw new Error(errors[0] ?? '照片上傳失敗');
         setToast(
           errors.length === 0
-            ? `✅ 已加入 ${uploadedUrls.length} 張照片`
-            : `⚠️ 已加入 ${uploadedUrls.length} 張，${errors.length} 張失敗`,
+            ? `✅ 已加入 ${savedCount} 張照片`
+            : `⚠️ 已加入 ${savedCount} 張，${errors.length} 張失敗`,
         );
       }
       setTimeout(() => setToast(''), 2500);
@@ -174,10 +201,25 @@ export function OperatorHome() {
     }
   }
 
-  function handleResetPhoto(girlId: string) {
-    resetPhotoOverride(girlId);
-    setToast('已還原原始大頭照');
-    setTimeout(() => setToast(''), 2500);
+  async function handleResetPhoto(girlId: string) {
+    if (uploading) return;
+    setUploading(true);
+    try {
+      const res = await fetch('/api/gallery', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ escortId: girlId, append: [], remove: [], resetAvatar: true }),
+      });
+      if (!res.ok) throw new Error(`還原失敗（${res.status}）`);
+      await refreshShared();
+      setToast('已還原原始大頭照');
+      setTimeout(() => setToast(''), 2500);
+    } catch (error) {
+      setToast(`⚠️ ${error instanceof Error ? error.message : '還原失敗'}`);
+      setTimeout(() => setToast(''), 5000);
+    } finally {
+      setUploading(false);
+    }
   }
   const router = useRouter();
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
@@ -186,6 +228,8 @@ export function OperatorHome() {
   const [nameDraft, setNameDraft] = useState(''); // 首登設定顯示名稱
   const [addOpen, setAddOpen] = useState(false); // 新增人員彈窗
   const [newEscortName, setNewEscortName] = useState('');
+  const [creatingEscort, setCreatingEscort] = useState(false);
+  const [dispatching, setDispatching] = useState(false);
   const [editEscortId, setEditEscortId] = useState<string | null>(null);
   const [editEscortName, setEditEscortName] = useState('');
   const [editEscortBio, setEditEscortBio] = useState('');
@@ -197,14 +241,22 @@ export function OperatorHome() {
   const currentRosterIds = rosterGirls.map((u) => u.id);
   const busyGirlIds = activeConfirmedGirlIds(state.responses, state.invitations);
 
-  function handleAddEscort() {
+  async function handleAddEscort() {
     const name = newEscortName.trim();
-    if (!name) return;
-    addEscort(name);
-    setNewEscortName('');
-    setAddOpen(false);
-    setToast('✅ 已新增人員');
-    setTimeout(() => setToast(''), 2500);
+    if (!name || creatingEscort) return;
+    setCreatingEscort(true);
+    try {
+      await addEscort(name);
+      setNewEscortName('');
+      setAddOpen(false);
+      setToast('✅ 人員已建立並同步完成');
+      setTimeout(() => setToast(''), 2500);
+    } catch (error) {
+      setToast(`⚠️ ${error instanceof Error ? error.message : '新增失敗'}`);
+      setTimeout(() => setToast(''), 6000);
+    } finally {
+      setCreatingEscort(false);
+    }
   }
 
   async function handleRemoveGalleryPhoto(girlId: string, url: string) {
@@ -298,20 +350,28 @@ export function OperatorHome() {
     );
   }
 
-  function handleDispatch() {
+  async function handleDispatch() {
     const eligibleGirls = selectedGirls.filter(
       (girlId) => !busyGirlIds.has(girlId),
     );
-    if (!dispatchSheet || eligibleGirls.length === 0) return;
+    if (!dispatchSheet || eligibleGirls.length === 0 || dispatching) return;
     const names = eligibleGirls
       .map((id) => state.users.find((u) => u.id === id)?.nickname)
       .filter(Boolean)
       .join('、');
-    eligibleGirls.forEach((girlId) => dispatchGirl(dispatchSheet, girlId));
-    setDispatchSheet(null);
-    setSelectedGirls([]);
-    setToast(`✅ 已安排 ${names} 出席，通知已發送`);
-    setTimeout(() => setToast(''), 3000);
+    setDispatching(true);
+    try {
+      await dispatchGirls(dispatchSheet, eligibleGirls);
+      setDispatchSheet(null);
+      setSelectedGirls([]);
+      setToast(`✅ 已安排 ${names} 出席，伺服器已確認`);
+      setTimeout(() => setToast(''), 3000);
+    } catch (error) {
+      setToast(`⚠️ ${error instanceof Error ? error.message : '安排失敗'}`);
+      setTimeout(() => setToast(''), 6000);
+    } finally {
+      setDispatching(false);
+    }
   }
 
   // 首登強制設定顯示名稱：幹部在 registeredUsers 尚無自己的紀錄（＝從沒設過），
@@ -533,7 +593,7 @@ export function OperatorHome() {
 
       {/* Dispatch bottom sheet */}
       {dispatchSheet && (
-        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setDispatchSheet(null)}>
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => { if (!dispatching) setDispatchSheet(null); }}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
             className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
@@ -587,10 +647,10 @@ export function OperatorHome() {
 
             <button
               onClick={handleDispatch}
-              disabled={eligibleSelectedCount === 0}
+              disabled={eligibleSelectedCount === 0 || dispatching}
               className="sticky bottom-0 z-10 w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
             >
-              確認出席{selectedGirls.length > 0 ? `（${selectedGirls.length} 位）` : ''}
+              {dispatching ? '伺服器確認中…' : `確認出席${selectedGirls.length > 0 ? `（${selectedGirls.length} 位）` : ''}`}
             </button>
           </div>
         </div>
@@ -675,7 +735,7 @@ export function OperatorHome() {
       )}
 
       {addOpen && (
-        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => setAddOpen(false)}>
+        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => { if (!creatingEscort) setAddOpen(false); }}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
             className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
@@ -687,7 +747,7 @@ export function OperatorHome() {
             <input
               value={newEscortName}
               onChange={(e) => setNewEscortName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAddEscort(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleAddEscort(); }}
               placeholder="輸入人員名稱（例如 小美）"
               maxLength={20}
               className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky mb-4"
@@ -695,13 +755,13 @@ export function OperatorHome() {
               autoFocus
             />
             <button
-              onClick={handleAddEscort}
-              disabled={!newEscortName.trim()}
+              onClick={() => void handleAddEscort()}
+              disabled={!newEscortName.trim() || creatingEscort}
               className="w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 active:bg-purple-600 transition-colors"
             >
-              建立
+              {creatingEscort ? '建立並同步中…' : '建立'}
             </button>
-            <button onClick={() => setAddOpen(false)} className="w-full mt-2 py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm">取消</button>
+            <button disabled={creatingEscort} onClick={() => setAddOpen(false)} className="w-full mt-2 py-3 rounded-2xl border border-brand-lavender text-zinc-500 font-semibold text-sm disabled:opacity-40">取消</button>
           </div>
         </div>
       )}
@@ -740,7 +800,8 @@ export function OperatorHome() {
                       </button>
                       {hasOverride && (
                         <button
-                          onClick={() => handleResetPhoto(girl.id)}
+                          onClick={() => void handleResetPhoto(girl.id)}
+                          disabled={uploading}
                           className="w-full py-2 rounded-xl border border-brand-lavender text-xs font-semibold text-zinc-500 active:bg-brand-snow"
                         >
                           還原原始大頭照
