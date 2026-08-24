@@ -195,6 +195,7 @@ type DashboardData = {
       accounts: number;
       customers: number;
       managers: number;
+      escorts: number;
       disabledAccounts: number;
       openRequests: number;
       activeChats: number;
@@ -723,6 +724,7 @@ export default function AdminPage() {
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                   <MetricCard label="全部帳號" value={overview.accounts} />
                   <MetricCard label="客戶／幹部" value={`${overview.customers} / ${overview.managers}`} />
+                  <MetricCard label="小姐人數" value={overview.escorts} />
                   <MetricCard
                     label="進行中的局"
                     value={overview.openRequests}

@@ -140,6 +140,10 @@ test('流程診斷：聊天室與訊息完成 → healthy；相同 thread 不同
   };
   const dashboard = buildAdminDashboard({
     accounts,
+    escorts: [
+      { id: 'escort-active', managerId: 'manager-1', removed: false },
+      { id: 'escort-removed', managerId: 'manager-1', removed: true },
+    ],
     reports: [{ resolved: false }],
     requests: [{ ...baseRequest, id: 'request-1' }, { ...baseRequest, id: 'request-2' }],
     responses: [{
@@ -187,6 +191,7 @@ test('流程診斷：聊天室與訊息完成 → healthy；相同 thread 不同
     new Set(['request-1', 'request-2']),
   );
   assert.equal(dashboard.overview.pendingReports, 1);
+  assert.equal(dashboard.overview.escorts, 1);
   assert.equal(dashboard.conversations.every(
     (conversation) => !conversation.lastPreview.includes('第一局')
       && !conversation.lastPreview.includes('第二局'),

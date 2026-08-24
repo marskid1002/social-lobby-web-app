@@ -223,6 +223,7 @@ export async function GET(req: NextRequest) {
 
   const dashboard = buildAdminDashboard({
     accounts,
+    escorts,
     reports,
     requests,
     responses,

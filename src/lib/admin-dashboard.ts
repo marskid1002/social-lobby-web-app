@@ -63,6 +63,7 @@ export interface AdminDashboard {
     accounts: number;
     customers: number;
     managers: number;
+    escorts: number;
     disabledAccounts: number;
     openRequests: number;
     activeChats: number;
@@ -150,6 +151,7 @@ export function buildAdminManagerRosters(input: {
 
 export function buildAdminDashboard(input: {
   accounts: AdminAccountSummary[];
+  escorts?: Item[];
   reports: Array<{ resolved?: boolean }>;
   requests: Item[];
   responses: Item[];
@@ -316,6 +318,7 @@ export function buildAdminDashboard(input: {
       accounts: input.accounts.length,
       customers: input.accounts.filter((account) => account.role === 'user').length,
       managers: input.accounts.filter((account) => account.role === 'manager').length,
+      escorts: (input.escorts ?? []).filter((escort) => escort.removed !== true).length,
       disabledAccounts: input.accounts.filter((account) => account.disabled).length,
       openRequests: input.requests.filter((request) =>
         request.status === 'open' && dateMs(request.expiresAt) >= now
