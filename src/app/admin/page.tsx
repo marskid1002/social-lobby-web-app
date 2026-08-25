@@ -261,10 +261,11 @@ type DashboardData = {
   requestHistory: RequestHistory[];
 };
 
-type Tab = 'overview' | 'flows' | 'history' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
+type Tab = 'overview' | 'search' | 'flows' | 'history' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
 
 const NAV: Array<{ id: Tab; label: string; short: string }> = [
   { id: 'overview', label: '營運總覽', short: '總覽' },
+  { id: 'search', label: '快速查詢', short: '查詢' },
   { id: 'flows', label: '流程診斷', short: '流程' },
   { id: 'history', label: '歷史局', short: '歷史' },
   { id: 'accounts', label: '帳號管理', short: '帳號' },
@@ -478,12 +479,32 @@ export default function AdminPage() {
     );
   }, [data, search]);
 
+  const matchedAccountUserIds = useMemo(() => {
+    if (!search.trim()) return new Set<string>();
+    return new Set(filteredAccounts.map((account) => account.userId));
+  }, [filteredAccounts, search]);
+
   const filteredFlows = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!data) return [];
     if (!query) return data.dashboard.flows;
     return data.dashboard.flows.filter((flow) =>
-      [flow.requestId, flow.creatorName, flow.creatorId, flow.area, flow.issue]
+      matchedAccountUserIds.has(flow.creatorId)
+      || flow.escortStatuses.some((escort) =>
+        matchedAccountUserIds.has(escort.escortId) || matchedAccountUserIds.has(escort.managerId))
+      || [
+        flow.requestId,
+        flow.creatorName,
+        flow.creatorId,
+        flow.area,
+        flow.issue,
+        ...flow.escortStatuses.flatMap((escort) => [
+          escort.escortId,
+          escort.escortName,
+          escort.managerId,
+          escort.managerName,
+        ]),
+      ]
         .some((value) => value.toLowerCase().includes(query))
       || data.traceEvents.some((event) =>
         event.requestId === flow.requestId
@@ -491,28 +512,33 @@ export default function AdminPage() {
           .some((value) => value?.toLowerCase().includes(query))
       )
     );
-  }, [data, search]);
+  }, [data, matchedAccountUserIds, search]);
 
   const filteredHistory = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!data) return [];
     const records = data.requestHistory ?? [];
     if (!query) return records;
-    return records.filter((record) => [
-      record.id,
-      record.creatorId,
-      record.creatorName,
-      record.area,
-      record.note,
-      HISTORY_RESULT[record.result]?.label,
-      ...record.participants.flatMap((participant) => [
-        participant.userId,
-        participant.userName,
-        participant.dispatcherId ?? '',
-        participant.dispatcherName ?? '',
-      ]),
-    ].some((value) => value.toLowerCase().includes(query)));
-  }, [data, search]);
+    return records.filter((record) =>
+      matchedAccountUserIds.has(record.creatorId)
+      || record.participants.some((participant) =>
+        matchedAccountUserIds.has(participant.userId)
+        || matchedAccountUserIds.has(participant.dispatcherId ?? ''))
+      || [
+        record.id,
+        record.creatorId,
+        record.creatorName,
+        record.area,
+        record.note,
+        HISTORY_RESULT[record.result]?.label,
+        ...record.participants.flatMap((participant) => [
+          participant.userId,
+          participant.userName,
+          participant.dispatcherId ?? '',
+          participant.dispatcherName ?? '',
+        ]),
+      ].some((value) => value.toLowerCase().includes(query)));
+  }, [data, matchedAccountUserIds, search]);
 
   const filteredEscortGalleries = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -520,7 +546,8 @@ export default function AdminPage() {
     const galleries = data.escortGalleries ?? [];
     if (!query) return galleries;
     return galleries.filter((escort) =>
-      [
+      matchedAccountUserIds.has(escort.managerId)
+      || [
         escort.nickname,
         escort.defaultArea,
         escort.managerAccount,
@@ -528,7 +555,7 @@ export default function AdminPage() {
         escort.managerId,
       ].some((value) => value.toLowerCase().includes(query))
     );
-  }, [data, search]);
+  }, [data, matchedAccountUserIds, search]);
 
   useEffect(() => {
     if (!galleryOpen || !data) return;
@@ -565,13 +592,67 @@ export default function AdminPage() {
     if (!data) return [];
     if (!query) return data.dashboard.conversations;
     return data.dashboard.conversations.filter((conversation) =>
-      [
+      conversation.participants.some((participant) => matchedAccountUserIds.has(participant))
+      || [
         conversation.threadId,
         conversation.requestId ?? '',
         conversation.participantNames.join(' '),
       ].some((value) => value.toLowerCase().includes(query))
     );
-  }, [data, search]);
+  }, [data, matchedAccountUserIds, search]);
+
+  const filteredIssues = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!data) return [];
+    if (!query) return data.issues;
+    return data.issues.filter((issue) => {
+      const reporterName = data.accounts.find((account) => account.userId === issue.reporterId)?.nickname ?? '';
+      return matchedAccountUserIds.has(issue.reporterId) || [
+        issue.id,
+        issue.reporterId,
+        reporterName,
+        issue.description,
+        issue.page,
+        issue.requestId ?? '',
+        issue.threadId ?? '',
+        issue.traceId ?? '',
+        issue.lastErrorCode ?? '',
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [data, matchedAccountUserIds, search]);
+
+  const filteredReports = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!data) return [];
+    if (!query) return data.reports;
+    return data.reports.filter((report) => {
+      const reporterName = data.accounts.find((account) => account.userId === report.reporterId)?.nickname ?? '';
+      const targetName = report.targetName
+        || data.accounts.find((account) => account.userId === report.targetId)?.nickname
+        || '';
+      return matchedAccountUserIds.has(report.reporterId)
+        || matchedAccountUserIds.has(report.targetId)
+        || [
+          report.id,
+          report.reporterId,
+          reporterName,
+          report.targetId,
+          targetName,
+          report.reason,
+        ].some((value) => value.toLowerCase().includes(query));
+    });
+  }, [data, matchedAccountUserIds, search]);
+
+  const quickQuery = search.trim();
+  const quickResultCount = quickQuery
+    ? filteredAccounts.length
+      + filteredFlows.length
+      + filteredHistory.length
+      + filteredChats.length
+      + filteredEscortGalleries.length
+      + filteredIssues.length
+      + filteredReports.length
+    : 0;
 
   async function runAction(
     action: string,
@@ -621,8 +702,8 @@ export default function AdminPage() {
     }
   }
 
-  async function loadConversation(conversation: Conversation) {
-    if (chatOpen === conversation.key) {
+  async function loadConversation(conversation: Conversation, forceOpen = false) {
+    if (!forceOpen && chatOpen === conversation.key) {
       setChatOpen(null);
       return;
     }
@@ -806,11 +887,20 @@ export default function AdminPage() {
                     <h1 className="text-2xl font-bold">營運總覽</h1>
                     <p className="mt-1 text-sm text-zinc-500">快速掌握帳號、局、聊天室與異常流程。</p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${
-                    data.system.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                  }`}>
-                    {data.system.ready ? '系統正常' : '系統異常'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setSearch(''); setTab('search'); }}
+                      className="rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white hover:bg-sky-700"
+                    >
+                      快速查詢
+                    </button>
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                      data.system.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {data.system.ready ? '系統正常' : '系統異常'}
+                    </span>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                   <MetricCard label="全部帳號" value={overview.accounts} />
@@ -864,6 +954,211 @@ export default function AdminPage() {
                     ))
                   )}
                 </div>
+              </section>
+            )}
+
+            {tab === 'search' && (
+              <section>
+                <h1 className="text-2xl font-bold">快速查詢</h1>
+                <p className="mt-1 text-sm text-zinc-500">
+                  輸入一次，直接找出相關帳號、局、聊天室、小姐、檢舉與問題回報。
+                </p>
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="輸入帳號、姓名、userId、局編號或聊天室編號"
+                  className="mt-4 w-full rounded-xl border border-sky-200 bg-white px-4 py-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                />
+
+                {!quickQuery ? (
+                  <div className="mt-5 rounded-2xl border border-dashed border-zinc-300 bg-white p-8 text-center">
+                    <p className="font-bold text-zinc-700">輸入任一項資料即可開始</p>
+                    <p className="mt-2 text-sm text-zinc-400">例如：A003、王小明、局編號、threadId 或地區</p>
+                  </div>
+                ) : quickResultCount === 0 ? (
+                  <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-8 text-center">
+                    <p className="font-bold text-zinc-700">找不到符合「{quickQuery}」的資料</p>
+                    <p className="mt-2 text-sm text-zinc-400">請確認編號是否完整，或改用姓名、帳號查詢。</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-4 text-sm font-semibold text-zinc-500">找到 {quickResultCount} 筆相關資料</p>
+                    <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                      {filteredAccounts.length > 0 && (
+                        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+                          <h2 className="border-b border-zinc-100 px-4 py-3 text-sm font-bold">帳號（{filteredAccounts.length}）</h2>
+                          {filteredAccounts.slice(0, 6).map((account) => (
+                            <button
+                              type="button"
+                              key={account.userId}
+                              onClick={() => { setSearch(account.userId); setTab('accounts'); }}
+                              className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-sky-50"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">{account.nickname}</p>
+                                <p className="truncate text-xs text-zinc-400">{account.key} · {account.userId}</p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-sky-600">
+                                {ROLE_LABEL[account.role]} · 查看 →
+                              </span>
+                            </button>
+                          ))}
+                          {filteredAccounts.length > 6 && (
+                            <button type="button" onClick={() => setTab('accounts')} className="w-full px-4 py-3 text-xs font-bold text-sky-600 hover:bg-sky-50">
+                              查看全部 {filteredAccounts.length} 筆帳號 →
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {filteredFlows.length > 0 && (
+                        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+                          <h2 className="border-b border-zinc-100 px-4 py-3 text-sm font-bold">目前的局（{filteredFlows.length}）</h2>
+                          {filteredFlows.slice(0, 6).map((flow) => (
+                            <button
+                              type="button"
+                              key={flow.requestId}
+                              onClick={() => { setSearch(flow.requestId); setFlowOpen(flow.requestId); setTab('flows'); }}
+                              className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-sky-50"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">{flow.creatorName} · {flow.area || '未填地區'}</p>
+                                <p className={`truncate text-xs ${flow.health === 'error' ? 'text-red-600' : 'text-zinc-400'}`}>{flow.issue}</p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-sky-600">查看流程 →</span>
+                            </button>
+                          ))}
+                          {filteredFlows.length > 6 && (
+                            <button type="button" onClick={() => setTab('flows')} className="w-full px-4 py-3 text-xs font-bold text-sky-600 hover:bg-sky-50">
+                              查看全部 {filteredFlows.length} 個流程 →
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {filteredHistory.length > 0 && (
+                        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+                          <h2 className="border-b border-zinc-100 px-4 py-3 text-sm font-bold">歷史局（{filteredHistory.length}）</h2>
+                          {filteredHistory.slice(0, 6).map((record) => (
+                            <button
+                              type="button"
+                              key={record.id}
+                              onClick={() => { setSearch(record.id); setHistoryOpen(record.id); setTab('history'); }}
+                              className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-sky-50"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">{record.creatorName} · {record.area || '未填地區'}</p>
+                                <p className="truncate text-xs text-zinc-400">{HISTORY_RESULT[record.result].label} · {fmtTime(record.createdAt)}</p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-sky-600">查看紀錄 →</span>
+                            </button>
+                          ))}
+                          {filteredHistory.length > 6 && (
+                            <button type="button" onClick={() => setTab('history')} className="w-full px-4 py-3 text-xs font-bold text-sky-600 hover:bg-sky-50">
+                              查看全部 {filteredHistory.length} 筆歷史局 →
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {filteredChats.length > 0 && (
+                        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+                          <h2 className="border-b border-zinc-100 px-4 py-3 text-sm font-bold">聊天室（{filteredChats.length}）</h2>
+                          {filteredChats.slice(0, 6).map((conversation) => (
+                            <button
+                              type="button"
+                              key={conversation.key}
+                              onClick={() => {
+                                setSearch(conversation.threadId);
+                                setTab('chats');
+                                void loadConversation(conversation, true);
+                              }}
+                              className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-sky-50"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">{conversation.participantNames.join(' ↔ ') || '聊天室'}</p>
+                                <p className="truncate text-xs text-zinc-400">{conversation.threadId} · {conversation.messageCount} 則</p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-sky-600">查看聊天 →</span>
+                            </button>
+                          ))}
+                          {filteredChats.length > 6 && (
+                            <button type="button" onClick={() => setTab('chats')} className="w-full px-4 py-3 text-xs font-bold text-sky-600 hover:bg-sky-50">
+                              查看全部 {filteredChats.length} 個聊天室 →
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {filteredEscortGalleries.length > 0 && (
+                        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+                          <h2 className="border-b border-zinc-100 px-4 py-3 text-sm font-bold">小姐（{filteredEscortGalleries.length}）</h2>
+                          {filteredEscortGalleries.slice(0, 6).map((escort) => (
+                            <button
+                              type="button"
+                              key={escort.id}
+                              onClick={() => { setSearch(escort.nickname); setTab('galleries'); }}
+                              className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-sky-50"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">{escort.nickname} · {escort.defaultArea || '未填地區'}</p>
+                                <p className="truncate text-xs text-zinc-400">所屬：{escort.managerName}（{escort.managerAccount}）</p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-sky-600">查看相簿 →</span>
+                            </button>
+                          ))}
+                          {filteredEscortGalleries.length > 6 && (
+                            <button type="button" onClick={() => setTab('galleries')} className="w-full px-4 py-3 text-xs font-bold text-sky-600 hover:bg-sky-50">
+                              查看全部 {filteredEscortGalleries.length} 位小姐 →
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {(filteredIssues.length > 0 || filteredReports.length > 0) && (
+                        <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+                          <h2 className="border-b border-zinc-100 px-4 py-3 text-sm font-bold">
+                            檢舉與問題回報（{filteredIssues.length + filteredReports.length}）
+                          </h2>
+                          {filteredIssues.slice(0, 3).map((issue) => (
+                            <button
+                              type="button"
+                              key={issue.id}
+                              onClick={() => { setSearch(issue.id); setTab('reports'); }}
+                              className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left hover:bg-sky-50"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">問題回報 · {accountName(issue.reporterId)}</p>
+                                <p className="truncate text-xs text-zinc-400">{issue.description}</p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-sky-600">{issue.resolved ? '已處理' : '待處理'} →</span>
+                            </button>
+                          ))}
+                          {filteredReports.slice(0, 3).map((report) => (
+                            <button
+                              type="button"
+                              key={report.id}
+                              onClick={() => { setSearch(report.id); setTab('reports'); }}
+                              className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-sky-50"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold">使用者檢舉 · {report.targetName || accountName(report.targetId)}</p>
+                                <p className="truncate text-xs text-zinc-400">{report.reason || '未填原因'}</p>
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold text-sky-600">{report.resolved ? '已處理' : '待處理'} →</span>
+                            </button>
+                          ))}
+                          {(filteredIssues.length > 3 || filteredReports.length > 3) && (
+                            <button type="button" onClick={() => setTab('reports')} className="w-full px-4 py-3 text-xs font-bold text-sky-600 hover:bg-sky-50">
+                              查看全部 {filteredIssues.length + filteredReports.length} 筆回報 →
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </section>
             )}
 
@@ -1526,9 +1821,15 @@ export default function AdminPage() {
               <section>
                 <h1 className="text-2xl font-bold">回報與檢舉中心</h1>
                 <p className="mt-1 text-sm text-zinc-500">流程問題會附上 traceId、頁面與裝置；使用者檢舉可直接處理帳號。</p>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="搜尋姓名、帳號、回報內容、局或聊天室編號"
+                  className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-sky-400"
+                />
                 <h2 className="mt-5 text-sm font-bold text-zinc-800">流程問題回報</h2>
                 <div className="mt-3 space-y-3">
-                  {[...data.issues]
+                  {[...filteredIssues]
                     .sort((a, b) => Number(a.resolved) - Number(b.resolved))
                     .map((issue) => (
                       <div key={issue.id} className={`rounded-2xl border bg-white p-4 ${
@@ -1593,13 +1894,15 @@ export default function AdminPage() {
                         </button>
                       </div>
                     ))}
-                  {data.issues.length === 0 && (
-                    <p className="rounded-2xl bg-white p-5 text-center text-sm text-zinc-400">目前沒有流程問題回報。</p>
+                  {filteredIssues.length === 0 && (
+                    <p className="rounded-2xl bg-white p-5 text-center text-sm text-zinc-400">
+                      {search.trim() ? '找不到符合條件的問題回報。' : '目前沒有流程問題回報。'}
+                    </p>
                   )}
                 </div>
                 <h2 className="mt-6 text-sm font-bold text-zinc-800">使用者檢舉</h2>
                 <div className="mt-4 space-y-3">
-                  {[...data.reports]
+                  {[...filteredReports]
                     .sort((a, b) => Number(a.resolved) - Number(b.resolved))
                     .map((report) => {
                       const target = data.accounts.find((account) => account.userId === report.targetId);
@@ -1642,8 +1945,10 @@ export default function AdminPage() {
                         </div>
                       );
                     })}
-                  {data.reports.length === 0 && (
-                    <p className="rounded-2xl bg-white p-6 text-center text-sm text-zinc-400">目前沒有檢舉。</p>
+                  {filteredReports.length === 0 && (
+                    <p className="rounded-2xl bg-white p-6 text-center text-sm text-zinc-400">
+                      {search.trim() ? '找不到符合條件的檢舉。' : '目前沒有檢舉。'}
+                    </p>
                   )}
                 </div>
               </section>
