@@ -87,7 +87,7 @@ type EscortStatus = {
   escortName: string;
   managerId: string;
   managerName: string;
-  stage: 'waiting' | 'on_stage' | 'active' | 'declined' | 'ended' | 'withdrawn';
+  stage: 'waiting' | 'on_stage' | 'active' | 'declined' | 'customer_declined' | 'ended' | 'withdrawn';
   createdAt: string;
   updatedAt: string;
 };
@@ -292,13 +292,18 @@ const ROSTER_STATUS: Record<RosterMember['status'], { label: string; className: 
   removed: { label: '已移除', className: 'bg-red-50 text-red-600' },
 };
 
+// 標籤刻意寫成「誰做了什麼」，因為原本 active 叫「約會進行中」會被誤讀成「流程還在跑、幹部尚未回報」，
+// 而它其實是「幹部已回報成立」；真正待回報的是 on_stage。
+// declined 也原本混了兩種相反的原因：幹部回報未成立 vs 客戶沒選這個人選，
+// 導致無法從列表判斷問題出在幹部還是客戶端，故拆成兩個狀態。
 const ESCORT_STAGE: Record<EscortStatus['stage'], { label: string; className: string }> = {
   waiting: { label: '等待客戶確認', className: 'bg-amber-100 text-amber-700' },
-  on_stage: { label: '已上台・待幹部回報', className: 'bg-sky-100 text-sky-700' },
-  active: { label: '約會進行中', className: 'bg-emerald-100 text-emerald-700' },
-  declined: { label: '約會未成立', className: 'bg-red-100 text-red-700' },
+  on_stage: { label: '客戶已同意・待幹部回報', className: 'bg-sky-100 text-sky-700' },
+  active: { label: '幹部已回報成立', className: 'bg-emerald-100 text-emerald-700' },
+  declined: { label: '幹部回報未成立', className: 'bg-red-100 text-red-700' },
+  customer_declined: { label: '客戶未選擇', className: 'bg-orange-100 text-orange-700' },
   ended: { label: '約會已結束', className: 'bg-zinc-200 text-zinc-700' },
-  withdrawn: { label: '已取消', className: 'bg-zinc-100 text-zinc-500' },
+  withdrawn: { label: '人員已撤回', className: 'bg-zinc-100 text-zinc-500' },
 };
 
 const REQUEST_STATUS_LABEL: Record<string, string> = {

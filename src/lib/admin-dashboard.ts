@@ -49,7 +49,11 @@ export interface AdminFlow {
   escortStatuses: AdminEscortStatus[];
 }
 
-export type AdminEscortStage = 'waiting' | 'on_stage' | 'active' | 'declined' | 'ended' | 'withdrawn';
+// declined：幹部在聊天室回報「約會未成立」（invitation.managerDecision）
+// customer_declined：客戶婉拒或取消已接受的人選（response.responseStatus，只有局主能設）
+// 兩者原因相反——前者問題在幹部端，後者是客戶不選——故分開，不可再併回同一個狀態。
+export type AdminEscortStage =
+  | 'waiting' | 'on_stage' | 'active' | 'declined' | 'customer_declined' | 'ended' | 'withdrawn';
 
 export interface AdminEscortStatus {
   responseId: string;
@@ -163,7 +167,7 @@ export function buildAdminEscortStatuses(input: {
               : responseStatus === 'withdrawn'
                 ? 'withdrawn'
                 : responseStatus === 'declined'
-                  ? 'declined'
+                  ? 'customer_declined' // 客戶婉拒／取消已接受，非幹部回報失敗
                   : 'waiting';
       return {
         responseId: response.id,
