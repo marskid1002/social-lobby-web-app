@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState, blockedPeerIds, escortPeerIds } from '@/lib/state';
 import { OperatorHome } from '@/components/OperatorHome';
@@ -12,6 +12,7 @@ import { getRequestAccentColor, getRequestTypeLabel, SHOW_REQUEST_CLASSIFICATION
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { activeConfirmedGirlIds, confirmedGirlIdsForRequest } from '@/lib/request-attendance';
 import { onlineEscortLimitForTier } from '@/lib/browse-access';
+import { requestDisplayState } from '@/lib/request-display';
 
 function shouldShowBoostNudge(req: Request): boolean {
   const impressions = req.metrics?.impressions ?? 0;
@@ -22,16 +23,18 @@ function shouldShowBoostNudge(req: Request): boolean {
 function MyRequestCard({
   request,
   responders,
-  atCap,
+  ended,
+  endLabel,
   interestedCount,
 }: {
   request: Request;
   responders: User[];
-  atCap: boolean;
+  ended: boolean;
+  endLabel?: '已過期' | '已結束';
   interestedCount: number;
 }) {
   const router = useRouter();
-  const showNudge = !atCap && shouldShowBoostNudge(request);
+  const showNudge = !ended && shouldShowBoostNudge(request);
   const visibleResponders = responders.slice(0, 3);
   const extraCount = responders.length - visibleResponders.length;
   const accent = getRequestAccentColor(request.id);
@@ -40,10 +43,10 @@ function MyRequestCard({
     <div
       onClick={() => router.push(`/requests/${request.id}`)}
       className={`juga-request-card rounded-2xl shadow-sm overflow-hidden cursor-pointer transition-colors ${
-        atCap ? 'opacity-75' : ''
+        ended ? 'opacity-75' : ''
       }`}
     >
-      <div className={`p-4 ${atCap ? 'bg-zinc-50' : 'bg-white active:bg-brand-snow'}`}>
+      <div className={`p-4 ${ended ? 'bg-zinc-50' : 'bg-white active:bg-brand-snow'}`}>
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 flex-wrap">
             {SHOW_REQUEST_CLASSIFICATION && <span
@@ -56,9 +59,9 @@ function MyRequestCard({
             <span className="text-xs text-zinc-400">· {request.peopleCount} 人</span>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {atCap && (
+            {ended && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-500">
-                額滿
+                {endLabel ?? '已結束'}
               </span>
             )}
             <span className="text-[11px] text-zinc-400">
@@ -96,16 +99,16 @@ function MyRequestCard({
         )}
 
         <div className="flex items-center gap-3 text-xs text-zinc-400">
-          {!atCap && (
+          {!ended && (
             <span className="flex items-center gap-1">
               <UserCheck size={13} />
               <span className="font-semibold text-zinc-600">{interestedCount}</span> 人想加入
             </span>
           )}
-          {atCap && (
+          {ended && (
             <span className="flex items-center gap-1 text-zinc-400">
               <Users size={13} />
-              {responders.length}/{request.peopleCount} 人 · 點擊查看群組聊天
+              {responders.length}/{request.peopleCount} 人 · 查看聊天紀錄
             </span>
           )}
           {showNudge && (
@@ -191,6 +194,12 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
 function ExploreContent() {
   const { state, currentUser } = useAppState();
   const router = useRouter();
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (currentUser?.role === 'escort') router.replace('/requests');
@@ -204,12 +213,12 @@ function ExploreContent() {
 
   const isVip = currentUser?.tier === 'vip';
 
-  // Include open + closed (at-cap auto-closed) requests by this user
+  // 自己的局在 server 可能因聊天室仍有效而保留到 48 小時；畫面不能因此誤當成仍在找人。
   const myRequests = state.requests
     .filter((r) => r.creatorId === currentUser?.id && (r.status === 'open' || r.status === 'closed'))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Split: at-cap = joiners >= peopleCount OR closed
+  // 只有 open 且尚未超過發局期限才是進行中；其餘保留為歷史入口，不影響 48 小時聊天室。
   const withJoinerCount = myRequests.map((req) => {
     const confirmedGirlIds = confirmedGirlIdsForRequest(
       req.id,
@@ -222,12 +231,14 @@ function ExploreContent() {
     const interested = state.responses.filter(
       (r) => r.requestId === req.id && r.responseStatus === 'interested'
     ).length;
-    const atCap = req.status === 'closed'; // #5 派工無上限：僅已關閉才算結束
-    return { req, joiners, interested, atCap };
+    const display = requestDisplayState(req, nowMs);
+    const ended = !display.active;
+    const endLabel = display.active ? undefined : display.label;
+    return { req, joiners, interested, ended, endLabel };
   });
 
-  const gathering = withJoinerCount.filter((x) => !x.atCap);
-  const atCapList = withJoinerCount.filter((x) => x.atCap);
+  const gathering = withJoinerCount.filter((x) => !x.ended);
+  const endedList = withJoinerCount.filter((x) => x.ended);
   const hasMyRequests = myRequests.length > 0;
 
   const blocked = blockedPeerIds(state); // 雙向封鎖：從瀏覽清單隱藏
@@ -263,25 +274,25 @@ function ExploreContent() {
           <div className="px-4 pb-4 flex flex-col gap-3">
             {/* Still gathering */}
             {gathering.map(({ req, joiners, interested }) => (
-              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={false} interestedCount={interested} />
+              <MyRequestCard key={req.id} request={req} responders={joiners} ended={false} interestedCount={interested} />
             ))}
 
             {/* Divider — only shown when both groups have items */}
-            {gathering.length > 0 && atCapList.length > 0 && (
+            {gathering.length > 0 && endedList.length > 0 && (
               <div className="flex items-center gap-3 py-1">
                 <div className="flex-1 h-px bg-zinc-200" />
-                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide shrink-0">已額滿</span>
+                <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide shrink-0">已結束</span>
                 <div className="flex-1 h-px bg-zinc-200" />
               </div>
             )}
-            {/* Only at-cap, no gathering — show header inline */}
-            {gathering.length === 0 && atCapList.length > 0 && (
-              <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">已額滿</p>
+            {/* Only ended, no gathering — show header inline */}
+            {gathering.length === 0 && endedList.length > 0 && (
+              <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wide">已結束</p>
             )}
 
-            {/* At-cap */}
-            {atCapList.map(({ req, joiners }) => (
-              <MyRequestCard key={req.id} request={req} responders={joiners} atCap={true} interestedCount={0} />
+            {/* Expired / closed records retained for chat context */}
+            {endedList.map(({ req, joiners, endLabel }) => (
+              <MyRequestCard key={req.id} request={req} responders={joiners} ended endLabel={endLabel} interestedCount={0} />
             ))}
           </div>
         ) : (
