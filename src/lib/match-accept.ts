@@ -116,6 +116,17 @@ export function planAcceptMatch(input: AcceptMatchInput): AcceptMatchResult {
   }
 
   const now = input.now ?? Date.now();
+  // 局已額滿／關閉或已過期 → 不得再「新建立」同意。
+  // 刻意放在 existingInvitation 之後：已同意過的仍可幂等回傳，既有聊天室的進入不受影響。
+  // 幹部派工端（escort-dispatch）本來就有這兩道檢查，此處補齊以免兩端不一致——
+  // 過期後仍能同意會開出新聊天室，而聊天室存活期間又會反過來延長原局的保留期。
+  if (str(request.status) !== 'open') {
+    return { ok: false, status: 409, error: '這個局已經結束，無法再同意加入' };
+  }
+  const requestExpiresAt = Date.parse(str(request.expiresAt) ?? '');
+  if (Number.isFinite(requestExpiresAt) && requestExpiresAt <= now) {
+    return { ok: false, status: 409, error: '這個局已經過期，無法再同意加入' };
+  }
   const iso = new Date(now).toISOString();
   const chatExpiresAt = chatExpiresAtFrom(now);
   const invitation: Item = {
