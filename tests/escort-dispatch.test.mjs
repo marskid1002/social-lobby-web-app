@@ -64,6 +64,7 @@ test('新增小姐成功回應後，不經背景同步也能立即派工', { ski
   assert.equal(dispatched.body.ok, true);
   assert.equal(dispatched.body.responses[0].userId, created.body.escort.id);
   assert.equal(dispatched.body.responses[0].dispatcherId, manager.userId);
+  assert.equal(dispatched.body.responses[0].dispatchOnline, false);
   assert.equal(dispatched.body.updates[0].userId, 'customer-immediate');
 
   const storedResponse = (await store.getCollection('responses'))
@@ -77,6 +78,24 @@ test('新增小姐成功回應後，不經背景同步也能立即派工', { ski
   assert.equal(duplicate.status, 409);
   assert.match(duplicate.body.error, /已經安排過/);
   assert.equal((await store.getCollection('responses')).length, 1);
+});
+
+test('派工會保存當下在線狀態快照', { skip }, async () => {
+  await store.clearShared();
+  const manager = (await authStore.createManagerAccount(`在線快照-${Date.now()}`)).account;
+  const created = await post(createEscort, manager, { nickname: '在線快照人員' });
+  const escortId = created.body.escort.id;
+  const requestId = `req-presence-${Date.now()}`;
+  const updatedAt = new Date(Date.now() - 30_000).toISOString();
+  await store.mergeShared({
+    requests: [{ id: requestId, creatorId: 'customer-presence', status: 'open', peopleCount: 1, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60 * 60_000).toISOString() }],
+    presence: [{ id: escortId, online: true, updatedAt }],
+  });
+
+  const dispatched = await post(dispatchEscorts, manager, { requestId, escortIds: [escortId] });
+  assert.equal(dispatched.status, 200);
+  assert.equal(dispatched.body.responses[0].dispatchOnline, true);
+  assert.equal(dispatched.body.responses[0].dispatchPresenceUpdatedAt, updatedAt);
 });
 
 test('伺服器找不到小姐時明確拒絕，不會回傳假成功或寫入派工', { skip }, async () => {

@@ -15,6 +15,7 @@ import { deviceCookieHeader, recordDeviceSession, removeDevicesForUser } from '@
 import { isTaiwanMobile } from '@/lib/phone';
 import { recordFlowTrace } from '@/lib/flow-trace-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
+import * as Sentry from '@sentry/nextjs';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,25 @@ async function recordSmsResult(
   purpose: OtpPurpose,
   actorUserId?: string,
 ): Promise<void> {
+  if (!result.ok) {
+    try {
+      Sentry.captureMessage('SMS OTP delivery failed', {
+        level: 'error',
+        tags: {
+          provider: result.provider,
+          purpose,
+          failureCode: result.failureCode ?? 'unknown',
+        },
+        extra: {
+          httpStatus: result.httpStatus,
+          providerCode: result.providerCode,
+        },
+      });
+    } catch (error) {
+      // 監控服務本身不可改變 OTP API 的既有回應或洩漏收件人資料。
+      console.error('[sms sentry]', error instanceof Error ? error.name : 'UnknownError');
+    }
+  }
   await recordFlowTrace({
     eventType: 'sms.otp',
     outcome: result.ok ? 'success' : 'failure',

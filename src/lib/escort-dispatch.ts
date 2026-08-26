@@ -22,6 +22,7 @@ export function planEscortDispatch(input: {
   escorts: Item[];
   responses: Item[];
   invitations: Item[];
+  presence: Item[];
   now?: Date;
 }): DispatchSuccess | DispatchFailure {
   if (input.session.role !== 'manager') {
@@ -72,8 +73,18 @@ export function planEscortDispatch(input: {
 
   const responses = uniqueEscortIds.map((escortId) => {
     const previous = effective.get(escortId);
+    const presence = input.presence.find((item) => text(item.id) === escortId);
+    const dispatchOnline = presence?.online === true;
+    const presenceUpdatedAt = text(presence?.updatedAt);
     return previous
-      ? { ...previous, responseStatus: 'interested', createdAt: now, dispatcherId: input.session.userId }
+      ? {
+          ...previous,
+          responseStatus: 'interested',
+          createdAt: now,
+          dispatcherId: input.session.userId,
+          dispatchOnline,
+          ...(presenceUpdatedAt ? { dispatchPresenceUpdatedAt: presenceUpdatedAt } : {}),
+        }
       : {
           id: `rr-dispatch-${crypto.randomUUID()}`,
           requestId: input.requestId,
@@ -81,6 +92,8 @@ export function planEscortDispatch(input: {
           responseStatus: 'interested',
           createdAt: now,
           dispatcherId: input.session.userId,
+          dispatchOnline,
+          ...(presenceUpdatedAt ? { dispatchPresenceUpdatedAt: presenceUpdatedAt } : {}),
         };
   });
   const updates = uniqueEscortIds.map((escortId) => ({

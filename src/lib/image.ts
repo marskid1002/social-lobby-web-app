@@ -40,7 +40,7 @@ export async function uploadChatImage(file: File): Promise<string> {
   const res = await fetch('/api/upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId: 'chat', dataUrl }),
+    body: JSON.stringify({ userId: 'chat', kind: 'chat', dataUrl }),
   });
   if (!res.ok) {
     let detail = String(res.status);

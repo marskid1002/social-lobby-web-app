@@ -122,9 +122,9 @@ test('邀約類型、地點與局型已開啟，且三項皆為發局必選', ()
     "value: 'one_on_one', label: '1 對 1'",
   ]) assert.ok(sheet.includes(binding), `缺少局型：${binding}`);
   assert.ok(utils.includes('export const SHOW_REQUEST_CLASSIFICATION = true'), '分類欄位開關必須開啟');
-  assert.ok(sheet.includes('disabled={!type || !venueType || !partyFormat}'), '三項未選齊時必須禁止發局');
-  assert.ok(sheet.includes('if (!type || !venueType || !partyFormat) return'), '送出處理也必須驗證三項必選');
-  assert.ok(sheet.includes('postRequest({ area, venueType, partyFormat, requestType: type, peopleCount: count, note })'), '新局必須保存三項分類');
+  assert.ok(sheet.includes('disabled={types.length === 0 || !venueType || !partyFormat'), '三項未選齊時必須禁止發局');
+  assert.ok(sheet.includes('if (types.length === 0 || !venueType || !partyFormat) return'), '送出處理也必須驗證三項必選');
+  assert.ok(sheet.includes('postRequest({ area, venueType, partyFormat, requestType: types[0], requestTypes: types, peopleCount: count, note })'), '新局必須保存三項分類');
 });
 
 // ── C：matches/accept/route.ts（推播，靜態字串比對）──────────────────────────
@@ -316,6 +316,6 @@ test('M：ProfileDrawer 側邊選單常駐狀態說明維持不變（依決定�
 
 test('N：sw.js 備援通知文字更新，品牌名稱 JUGA 維持不變', () => {
   const s = src('public/sw.js');
-  assert.ok(s.includes(`title: 'JUGA', body: '你有一則新通知，點進來看看'`), 'sw.js 備援文字應更新，品牌名不變');
-  assert.ok(!s.includes(`body: '你有一則新通知', url`), '舊的（未加後半句的）備援文字不得殘留');
+  assert.ok(s.includes(`title: 'JUGA', body: '你有一則新的通知，點擊查看。'`), 'sw.js 備援文字應與目前產品文案一致，品牌名不變');
+  assert.ok(!s.includes(`body: '你有一則新通知', url`), '更舊的備援文字不得殘留');
 });

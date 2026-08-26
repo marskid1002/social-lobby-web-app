@@ -20,7 +20,7 @@ test('局只公開 2 小時，但資料到第 8 小時才清除', () => {
   assert.deepEqual(plan.remove.requests, ['r1']);
 });
 
-test('局滿 8 小時後清除，但尚未滿 48 小時的聊天室與紀錄保留', () => {
+test('局滿 8 小時但聊天室仍有效時，保留局與聊天室所需關聯資料', () => {
   const openedAt = NOW - 10 * 60 * 60 * 1000;
   const plan = planDataRetention(empty({
     requests: [{ id: 'r1', createdAt: iso(openedAt - 60 * 60 * 1000) }],
@@ -29,7 +29,7 @@ test('局滿 8 小時後清除，但尚未滿 48 小時的聊天室與紀錄保�
     chatMessages: [{ id: 'm1', threadId: 'u1-u2', requestId: 'r1', createdAt: iso(openedAt) }],
     chatReads: [{ id: 'rd1', threadId: 'u1-u2', requestId: 'r1', lastReadAt: iso(openedAt) }],
   }), NOW);
-  assert.deepEqual(plan.state.requests, []);
+  assert.deepEqual(plan.state.requests.map((item) => item.id), ['r1']);
   assert.deepEqual(plan.state.invitations.map((item) => item.id), ['i1']);
   assert.deepEqual(plan.state.responses.map((item) => item.id), ['rp1']);
   assert.deepEqual(plan.state.chatMessages.map((item) => item.id), ['m1']);

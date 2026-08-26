@@ -90,6 +90,8 @@ type EscortStatus = {
   stage: 'waiting' | 'on_stage' | 'active' | 'declined' | 'customer_declined' | 'ended' | 'withdrawn';
   createdAt: string;
   updatedAt: string;
+  dispatchOnline?: boolean;
+  dispatchPresenceUpdatedAt?: string;
 };
 
 type Conversation = {
@@ -197,6 +199,15 @@ type SystemStatus = {
   sentryConfigured: boolean;
   keyPrefix: string;
   version: string;
+  smsRuntime: {
+    state: 'no_data' | 'healthy' | 'degraded';
+    attempts24h: number;
+    failures24h: number;
+    lastAttemptAt?: string;
+    lastSuccessAt?: string;
+    lastFailureAt?: string;
+    lastFailureCode?: string;
+  };
 };
 
 type RequestHistory = {
@@ -1270,6 +1281,12 @@ export default function AdminPage() {
                                           <div className="min-w-0">
                                             <p className="truncate text-sm font-black text-white">{escort.escortName}</p>
                                             <p className="mt-1 truncate text-[11px] text-[#aeb3c2]">所屬幹部：{escort.managerName}</p>
+                                            {escort.dispatchOnline !== undefined && (
+                                              <p className="mt-1 text-[10px] text-[#aeb3c2]">
+                                                派工當下：{escort.dispatchOnline ? '在線' : '離線'}
+                                                {escort.dispatchPresenceUpdatedAt ? ` · 狀態更新 ${fmtTime(escort.dispatchPresenceUpdatedAt)}` : ''}
+                                              </p>
+                                            )}
                                           </div>
                                           <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${status.className}`}>
                                             {status.label}
@@ -2009,6 +2026,12 @@ export default function AdminPage() {
                                         <div className="min-w-0">
                                           <p className="truncate text-xs font-bold text-zinc-900">{escort.escortName}</p>
                                           <p className="truncate text-[10px] text-zinc-500">所屬幹部：{escort.managerName} · 更新 {fmtTime(escort.updatedAt)}</p>
+                                          {escort.dispatchOnline !== undefined && (
+                                            <p className="text-[10px] text-zinc-500">
+                                              派工當下：{escort.dispatchOnline ? '在線' : '離線'}
+                                              {escort.dispatchPresenceUpdatedAt ? ` · 狀態更新 ${fmtTime(escort.dispatchPresenceUpdatedAt)}` : ''}
+                                            </p>
+                                          )}
                                         </div>
                                         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${status.className}`}>
                                           {status.label}
@@ -2081,6 +2104,23 @@ export default function AdminPage() {
                 <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 text-sm">
                   <p>正式站版本：<code className="font-mono font-bold">{data.system.version}</code></p>
                   <p className="mt-2">資料環境：<code className="font-mono font-bold">{data.system.keyPrefix}</code></p>
+                </div>
+                <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <StatusDot ok={data.system.smsConfigured && data.system.smsRuntime.state !== 'degraded'} />
+                    <h2 className="font-bold">SMS 實際發送狀況</h2>
+                  </div>
+                  {data.system.smsRuntime.state === 'no_data' ? (
+                    <p className="mt-3 text-zinc-500">目前尚無簡訊發送紀錄；上方只代表設定完整。</p>
+                  ) : (
+                    <div className="mt-3 space-y-1 text-zinc-600">
+                      <p>最近一次：{data.system.smsRuntime.state === 'healthy' ? '成功' : '失敗'} · {fmtTime(data.system.smsRuntime.lastAttemptAt)}</p>
+                      <p>近 24 小時：發送 {data.system.smsRuntime.attempts24h} 次，失敗 {data.system.smsRuntime.failures24h} 次</p>
+                      {data.system.smsRuntime.lastFailureAt && (
+                        <p className="text-red-600">最近失敗：{fmtTime(data.system.smsRuntime.lastFailureAt)}{data.system.smsRuntime.lastFailureCode ? ` · ${data.system.smsRuntime.lastFailureCode}` : ''}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="mt-5 rounded-2xl border border-zinc-200 bg-white">
                   <div className="border-b border-zinc-100 px-4 py-3">

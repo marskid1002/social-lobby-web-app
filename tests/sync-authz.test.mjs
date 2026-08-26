@@ -64,11 +64,11 @@ test('presence/photos：本人 escort 可寫；他人/未知/removed/非 manager
 
 // ══ requests（M5）══
 test('requests：creator-only、發局者可編輯白名單欄位、凍結身份/時間、takeover 丟棄', () => {
-  const created = one(run({ requests: [{ id: 'r1', creatorId: 'A', createdAt: CA }] }, usr('A')).requests);
+  const created = one(run({ requests: [{ id: 'r1', creatorId: 'A', area: '信義區', requestType: 'other', venueType: 'bar', createdAt: CA }] }, usr('A')).requests);
   assert.equal(created.createdAt, ACCEPTED_AT);
   assert.equal(created.expiresAt, new Date(NOW + 2 * 60 * 60 * 1000).toISOString());
   assert.equal(created.status, 'open');
-  assert.deepEqual(run({ requests: [{ id: 'r1', creatorId: 'B', createdAt: CA }] }, usr('A')).requests, []);
+  assert.deepEqual(run({ requests: [{ id: 'r1', creatorId: 'B', area: '信義區', requestType: 'other', venueType: 'bar', createdAt: CA }] }, usr('A')).requests, []);
   const cols = { requests: [{ id: 'r1', creatorId: 'A', createdAt: CA, expiresAt: CA, area: '信義區', venueType: 'bar', partyFormat: 'with_women', requestType: 'other', peopleCount: 2, note: '原文', status: 'open' }] };
   const m = one(run({ requests: [{ id: 'r1', creatorId: 'HACK', createdAt: 'HACK', expiresAt: 'HACK', area: '大安區', venueType: 'nightclub', partyFormat: 'one_on_one', requestType: 'dancing', peopleCount: 4, note: '更新', status: 'closed' }] }, usr('A'), cols).requests);
   assert.equal(m.status, 'closed'); assert.equal(m.creatorId, 'A'); assert.equal(m.createdAt, CA); assert.equal(m.expiresAt, CA);
@@ -278,7 +278,7 @@ test('chatMessages：senderId===me 且必須是聊天室合法成員（1:1 由 i
 // ══ full snapshot（F）══
 test('full snapshot：數千筆外來項丟棄，本人合法項保留、不整批失敗', () => {
   const foreign = Array.from({ length: 3000 }, (_, i) => ({ id: `fr${i}`, creatorId: `other-${i}`, createdAt: CA }));
-  assert.deepEqual(ids(run({ requests: [...foreign, { id: 'mine', creatorId: 'A', createdAt: CA }] }, usr('A')).requests), ['mine']);
+  assert.deepEqual(ids(run({ requests: [...foreign, { id: 'mine', creatorId: 'A', area: '信義區', requestType: 'other', venueType: 'bar', createdAt: CA }] }, usr('A')).requests), ['mine']);
 });
 
 // ══ 多幹部、同一真實小姐完全獨立（G：H2 回歸）══

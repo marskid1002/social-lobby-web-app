@@ -16,6 +16,8 @@ import { buildChatAccessIndex, activeBlockPeers, canWriteChatMessage, restricted
 import { chatExpiresAtFrom } from './chat-lifetime';
 import { activeConfirmedGirlIds, confirmedCountForRequest } from './request-attendance';
 import { REQUEST_ACTIVE_MS, REQUEST_RETENTION_MS } from './data-retention';
+import { ALL_ACCEPTED_AREAS } from './area-options';
+import { parseBlobUrl } from './image-upload';
 
 type Item = Record<string, unknown>;
 
@@ -48,6 +50,7 @@ const asArr = (v: unknown): Item[] => (Array.isArray(v) ? (v.filter(isObj) as It
 const REQUEST_TYPES = new Set(['after_party', 'drinking', 'fill_spot', 'last_minute', 'music', 'dancing', 'private_party', 'dining', 'other']);
 const VENUE_TYPES = new Set(['nightclub', 'clubhouse', 'home', 'bar', 'motel', 'ktv', 'restaurant']);
 const PARTY_FORMATS = new Set(['with_women', 'without_women', 'one_on_one']);
+const ALLOWED_AREAS = new Set<string>(ALL_ACCEPTED_AREAS);
 const UPDATE_EVENTTYPES = new Set(['request_posted', 'response_received', 'invite_received', 'invite_accepted']);
 
 // response 狀態轉移矩陣（依 state.ts 實際流程；[from,to]）
@@ -137,7 +140,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         }
         if (s(existing.status) === 'open' && r.status === 'closed') merged.status = 'closed';
         if (s(existing.status) === 'open') {
-          if (typeof r.area === 'string' && r.area.trim().length > 0 && r.area.length <= 40) {
+          if (typeof r.area === 'string' && ALLOWED_AREAS.has(r.area.trim())) {
             merged.area = r.area.trim();
           }
           if (typeof r.requestType === 'string' && REQUEST_TYPES.has(r.requestType)) {
@@ -174,10 +177,13 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       if (!primaryRequestType || !REQUEST_TYPES.has(primaryRequestType)) return [];
       const venueType = s(r.venueType);
       if (!venueType || !VENUE_TYPES.has(venueType)) return [];
+      const area = s(r.area)?.trim();
+      if (!area || !ALLOWED_AREAS.has(area)) return [];
       const suppliedExpiry = Date.parse(s(r.expiresAt) ?? '');
       if (Number.isFinite(suppliedExpiry) && suppliedExpiry <= now - (REQUEST_RETENTION_MS - REQUEST_ACTIVE_MS)) return [];
       return [{
         ...r,
+        area,
         requestType: primaryRequestType,
         requestTypes: requestTypes.length > 0 ? requestTypes : [primaryRequestType],
         venueType,
@@ -381,7 +387,10 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
         if (typeof p.commentCount === 'number') merged.commentCount = p.commentCount;
         return [merged];
       }
-      return s(p.authorId) === me ? [p] : [];
+      if (s(p.authorId) !== me) return [];
+      // 只驗新貼文；舊資料仍可更新按讚／留言數，避免歷史外部網址卡住正常互動。
+      if (p.imageUrl !== undefined && !parseBlobUrl(p.imageUrl).ok) return [];
+      return [p];
     });
   }
   if ('plazaComments' in out) {

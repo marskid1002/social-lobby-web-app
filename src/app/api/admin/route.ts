@@ -42,6 +42,7 @@ import {
   updateSystemMessagePush,
 } from '@/lib/system-message-store';
 import { listRequestHistory } from '@/lib/request-history-store';
+import { summarizeSmsRuntime } from '@/lib/sms-runtime';
 
 export const dynamic = 'force-dynamic';
 
@@ -302,7 +303,7 @@ export async function GET(req: NextRequest) {
       escortGalleries,
       systemMessages,
       requestHistory,
-      system,
+      system: { ...system, smsRuntime: summarizeSmsRuntime(traceEvents) },
       auditLogs,
       traceEvents,
       issues: safeIssues,

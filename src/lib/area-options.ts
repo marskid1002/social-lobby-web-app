@@ -58,6 +58,12 @@ const LEGACY_AREA_CITY: Record<string, AreaCity> = {
   西門町: '台北市',
 };
 
+// 伺服器寫入白名單：新選單行政區 + 既有資料仍會顯示並可送出的舊地點。
+export const ALL_ACCEPTED_AREAS = [
+  ...ALL_AREA_DISTRICTS,
+  ...Object.keys(LEGACY_AREA_CITY),
+] as string[];
+
 export function cityForArea(area: string): AreaCity {
   for (const city of AREA_CITIES) {
     if ((AREA_OPTIONS[city] as readonly string[]).includes(area)) return city;

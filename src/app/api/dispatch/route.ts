@@ -26,11 +26,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '派工資料格式錯誤' }, { status: 400 });
     }
 
-    const [requests, escorts, responses, invitations] = await Promise.all([
+    const [requests, escorts, responses, invitations, presence] = await Promise.all([
       getCollection('requests'),
       getCollection('escorts'),
       getCollection('responses'),
       getCollection('invitations'),
+      getCollection('presence'),
     ]);
     const result = planEscortDispatch({
       session: auth.session,
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
       escorts,
       responses,
       invitations,
+      presence,
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
 

@@ -64,6 +64,8 @@ export interface AdminEscortStatus {
   stage: AdminEscortStage;
   createdAt: string;
   updatedAt: string;
+  dispatchOnline?: boolean;
+  dispatchPresenceUpdatedAt?: string;
 }
 
 export interface AdminConversationSummary {
@@ -177,6 +179,12 @@ export function buildAdminEscortStatuses(input: {
         managerName: managerId ? accountName(input.accounts, managerId) : '自行報名',
         stage,
         createdAt: text(response.createdAt),
+        ...(typeof response.dispatchOnline === 'boolean'
+          ? { dispatchOnline: response.dispatchOnline }
+          : {}),
+        ...(text(response.dispatchPresenceUpdatedAt)
+          ? { dispatchPresenceUpdatedAt: text(response.dispatchPresenceUpdatedAt) }
+          : {}),
         updatedAt: text(invitation?.meetupEndedAt)
           || text(invitation?.managerDecisionAt)
           || text(invitation?.respondedAt)
