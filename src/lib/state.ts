@@ -295,6 +295,7 @@ function reconcilePresence(next: AppState): AppState {
 }
 const SYNC_POLL_MS = 4000;
 let syncStarted = false;
+let sharedSyncReady = false;
 let isPushing = false;
 
 // 尚未確認送達 server 的本機項目（避免 poll 以 server 舊版覆蓋樂觀更新造成靜默遺失，#10）
@@ -533,6 +534,10 @@ async function pollShared() {
     if (!res.ok) return;
     const shared = await res.json();
     applyServerShared(shared);
+    if (!sharedSyncReady) {
+      sharedSyncReady = true;
+      listeners.forEach((listener) => listener());
+    }
   } catch {}
 }
 
@@ -1511,6 +1516,7 @@ export function useAppState(options: { sync?: boolean } = {}) {
 
   return {
     state,
+    sharedSyncReady,
     currentUser,
     isOnline,
     currentOnlineStatus,
