@@ -163,34 +163,33 @@ test('11) 解除封鎖（active:false）後，原合法雙方可重新傳訊', (
   assert.deepEqual(Wids({ chatMessages: [cm('m', 'A-B', 'B')] }, usr('B'), cols), ['m']);
 });
 
-test('13/14) 群組：成員可寫、非成員不可；群組內單一 block 不誤殺整團', () => {
+test('13/14) 舊群組：所有人都不能再寫入', () => {
   const cols = {
     requests: [{ id: 'r1', creatorId: 'C', createdAt: CA }],
     responses: [{ id: 'rr1', requestId: 'r1', userId: 'g1', responseStatus: 'joining', createdAt: CA }],
     invitations: [{ id: 'gi1', requestId: 'r1', fromUserId: 'g1', toUserId: 'C', groupThreadId: 'g-r1', status: 'accepted', chatExpiresAt: FE, createdAt: CA }],
-    // C 與 g1 互相封鎖，但群組不受影響
     blocks: [{ id: 'C__g1', blockerId: 'C', blockedId: 'g1', active: true, createdAt: CA }],
   };
-  assert.deepEqual(Wids({ chatMessages: [cm('m', 'g-r1', 'C', { requestId: 'r1' })] }, usr('C'), cols), ['m']);   // creator 成員（有 block 仍可寫群組）
-  assert.deepEqual(Wids({ chatMessages: [cm('m', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), cols), ['m']); // joining 成員
-  assert.deepEqual(Wids({ chatMessages: [cm('m', 'g-r1', 'z9', { requestId: 'r1' })] }, usr('z9'), cols), []);    // 非成員
+  assert.deepEqual(Wids({ chatMessages: [cm('m', 'g-r1', 'C', { requestId: 'r1' })] }, usr('C'), cols), []);
+  assert.deepEqual(Wids({ chatMessages: [cm('m', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), cols), []);
+  assert.deepEqual(Wids({ chatMessages: [cm('m', 'g-r1', 'z9', { requestId: 'r1' })] }, usr('z9'), cols), []);
 });
 
-test('13b) 舊群組沒有 groupThreadId invitation：維持既有 request/response 成員寫入相容', () => {
+test('13b) 沒有 groupThreadId 的舊群組也不能再寫入', () => {
   const cols = {
     requests: [{ id: 'r1', creatorId: 'C', createdAt: CA }],
     responses: [{ id: 'rr1', requestId: 'r1', userId: 'g1', responseStatus: 'joining', createdAt: CA }],
   };
-  assert.deepEqual(Wids({ chatMessages: [cm('creator', 'g-r1', 'C', { requestId: 'r1' })] }, usr('C'), cols), ['creator']);
-  assert.deepEqual(Wids({ chatMessages: [cm('joiner', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), cols), ['joiner']);
+  assert.deepEqual(Wids({ chatMessages: [cm('creator', 'g-r1', 'C', { requestId: 'r1' })] }, usr('C'), cols), []);
+  assert.deepEqual(Wids({ chatMessages: [cm('joiner', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), cols), []);
 });
 
-test('13c) 局資料 8 小時後已清除，群組 invitation 仍讓聊天室雙方使用到 48 小時', () => {
+test('13c) 局資料已清除的舊群組仍不能再寫入', () => {
   const invitationOnly = {
     invitations: [{ id: 'gi1', requestId: 'r1', fromUserId: 'g1', toUserId: 'C', groupThreadId: 'g-r1', status: 'accepted', chatExpiresAt: FE, createdAt: CA }],
   };
-  assert.deepEqual(Wids({ chatMessages: [cm('creator', 'g-r1', 'C', { requestId: 'r1' })] }, usr('C'), invitationOnly), ['creator']);
-  assert.deepEqual(Wids({ chatMessages: [cm('joiner', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), invitationOnly), ['joiner']);
+  assert.deepEqual(Wids({ chatMessages: [cm('creator', 'g-r1', 'C', { requestId: 'r1' })] }, usr('C'), invitationOnly), []);
+  assert.deepEqual(Wids({ chatMessages: [cm('joiner', 'g-r1', 'g1', { requestId: 'r1' })] }, usr('g1'), invitationOnly), []);
 });
 
 test('15/16) 派工→接受→代談：幹部/客戶可寫；其他幹部不能寫別人的代談', () => {

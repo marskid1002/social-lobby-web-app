@@ -105,14 +105,10 @@ export function buildChatAccessIndex(
     requestIds.add(str(inv.requestId) ?? null);
     directRequestIds.set(threadId, requestIds);
 
+    // 舊版 groupThreadId 僅保留讀取歷史；新版不再建立群組聊天室，寫入端一律不授權。
     const groupThreadId = str(inv.groupThreadId);
-    if (groupThreadId && str(inv.status) === 'accepted') {
-      if (!opts.writable || (
-        inv.meetupConfirmed !== true
-        && str(inv.managerDecision) !== 'declined'
-        && !str(inv.meetupEndedAt)
-        && hasValidWritableExpiry(str(inv.chatExpiresAt), now)
-      )) group.add(groupThreadId);
+    if (!opts.writable && groupThreadId && str(inv.status) === 'accepted') {
+      group.add(groupThreadId);
     }
   }
 
@@ -127,18 +123,8 @@ export function buildChatAccessIndex(
     }
   }
   for (const rid of memberReqIds) {
-    if (opts.writable) {
-      // 群組寫入：至少要有一筆尚未確認見面、期限合法且未過期的 accepted 群組 invitation。
-      const gInvites = (data.invitations ?? []).filter(
-        (i) => str(i.requestId) === rid && str(i.status) === 'accepted' && str(i.groupThreadId) === `g-${rid}`,
-      );
-      const hasActiveInvite = gInvites.some(
-        (i) => i.meetupConfirmed !== true && hasValidWritableExpiry(str(i.chatExpiresAt), now),
-      );
-      // 舊群組資料可能沒有 groupThreadId；保留既有 request/response 成員判斷，
-      // 但只要已有群組 invitation，就必須通過關閉狀態與期限檢查。
-      if (gInvites.length > 0 && !hasActiveInvite) continue;
-    }
+    // 舊版 g-{requestId} 僅供讀取歷史，不再允許任何新訊息。
+    if (opts.writable) continue;
     group.add(`g-${rid}`);
   }
 
