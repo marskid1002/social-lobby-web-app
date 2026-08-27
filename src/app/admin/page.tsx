@@ -344,6 +344,7 @@ const ACTION_LABEL: Record<string, string> = {
   'clear-shared': '清除局與聊天資料',
   'reset-all-managers': '清空所有幹部密碼',
   'delete-all-customers': '刪除所有客戶',
+  'permanently-delete-escort': '永久刪除人員',
   'send-system-message': '發送單人系統訊息',
   'send-system-message-all': '群發系統訊息',
 };
@@ -676,11 +677,12 @@ export default function AdminPage() {
       account?: string;
       reportId?: string;
       issueId?: string;
+      escortId?: string;
       confirmation?: string;
       nickname?: string;
     } = {},
   ) {
-    setBusy(`${action}:${input.account ?? input.reportId ?? input.issueId ?? ''}`);
+    setBusy(`${action}:${input.account ?? input.reportId ?? input.issueId ?? input.escortId ?? ''}`);
     try {
       const response = await fetch('/api/admin', {
         method: 'POST',
@@ -1627,6 +1629,27 @@ export default function AdminPage() {
                                     </span>
                                     <span className="font-mono text-zinc-400">{member.id}</span>
                                     <span className="ml-auto text-zinc-400">建立：{fmtTime(member.createdAt)}</span>
+                                    <button
+                                      type="button"
+                                      disabled={Boolean(busy) || member.status === 'busy'}
+                                      onClick={() => {
+                                        const confirmation = window.prompt(
+                                          `將永久刪除 ${member.nickname}，包含人員資料與照片。歷史局與聊天室紀錄會保留。\n\n請輸入人員編號確認：\n${member.id}`,
+                                        );
+                                        if (confirmation === null) return;
+                                        if (confirmation.trim() !== member.id) {
+                                          showToast('人員編號不一致，已取消刪除');
+                                          return;
+                                        }
+                                        runAction('permanently-delete-escort', {
+                                          escortId: member.id,
+                                          confirmation: confirmation.trim(),
+                                        });
+                                      }}
+                                      className="rounded-lg border border-red-200 px-2 py-1 text-[10px] font-bold text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      {member.status === 'busy' ? '約會中不可刪除' : '永久刪除'}
+                                    </button>
                                   </div>
                                 );
                               })}

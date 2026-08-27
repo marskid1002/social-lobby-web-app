@@ -331,6 +331,79 @@ test('危險操作：只有前端確認不夠，API 確認文字錯誤必須 400
   assert.equal((await store.getCollection('requests')).some((item) => item.id === 'keep-request'), true);
 });
 
+test('A000 永久刪除人員：確認碼、進行中約會與 Blob 清理都由伺服器把關', { skip }, async () => {
+  await store.clearShared();
+  const oldBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  process.env.BLOB_READ_WRITE_TOKEN = 'test-token';
+  globalThis.__BLOB_DEL_CALLS__ = [];
+  const blobA = 'https://store.public.blob.vercel-storage.com/uploads/manager/image/123e4567-e89b-42d3-a456-426614174000.jpg';
+  const blobB = 'https://store.public.blob.vercel-storage.com/uploads/manager/gallery/223e4567-e89b-42d3-a456-426614174000.jpg';
+  try {
+    await store.mergeShared({
+      escorts: [
+        { id: 'escort-delete', managerId: 'manager-delete', nickname: '待刪除人員', createdAt: RECENT },
+        { id: 'escort-busy', managerId: 'manager-delete', nickname: '約會中人員', createdAt: RECENT },
+      ],
+      presence: [
+        { id: 'escort-delete', online: false, updatedAt: RECENT },
+        { id: 'escort-busy', online: true, updatedAt: RECENT },
+      ],
+      photoOverrides: [{ id: 'escort-delete', avatarUrl: blobA }],
+      photoGalleries: [
+        { id: 'escort-delete', urls: [blobA, blobB] },
+        { id: 'escort-other', urls: [blobB] },
+      ],
+      responses: [{ id: 'response-busy', requestId: 'request-busy', userId: 'escort-busy', responseStatus: 'joining', createdAt: RECENT }],
+      invitations: [{
+        id: 'invitation-busy',
+        requestId: 'request-busy',
+        responseId: 'response-busy',
+        fromUserId: 'manager-delete',
+        toUserId: 'customer-busy',
+        status: 'accepted',
+        meetupConfirmed: true,
+        chatExpiresAt: LIVE_FUTURE,
+        createdAt: RECENT,
+      }],
+    });
+
+    const wrong = await adminRequest('POST', {
+      action: 'permanently-delete-escort',
+      escortId: 'escort-delete',
+      confirmation: 'wrong',
+    });
+    assert.equal(wrong.status, 400);
+    assert.equal((await store.getCollection('escorts')).some((item) => item.id === 'escort-delete'), true);
+
+    const busy = await adminRequest('POST', {
+      action: 'permanently-delete-escort',
+      escortId: 'escort-busy',
+      confirmation: 'escort-busy',
+    });
+    assert.equal(busy.status, 409);
+    assert.equal((await store.getCollection('escorts')).some((item) => item.id === 'escort-busy'), true);
+
+    const deleted = await adminRequest('POST', {
+      action: 'permanently-delete-escort',
+      escortId: 'escort-delete',
+      confirmation: 'escort-delete',
+    });
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.body.deletedImageCount, 1);
+    assert.equal(deleted.body.preservedSharedImageCount, 1);
+    assert.deepEqual(globalThis.__BLOB_DEL_CALLS__, [[blobA]]);
+    for (const key of ['escorts', 'presence', 'photoOverrides', 'photoGalleries']) {
+      assert.equal((await store.getCollection(key)).some((item) => item.id === 'escort-delete'), false);
+    }
+    assert.equal((await store.getCollection('photoGalleries')).some((item) => item.id === 'escort-other' && item.urls.includes(blobB)), true, '其他資料仍引用的共用照片必須保留');
+    assert.equal((await store.getCollection('responses')).some((item) => item.id === 'response-busy'), true, '歷史／約會關聯不應被清除');
+  } finally {
+    if (oldBlobToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+    else process.env.BLOB_READ_WRITE_TOKEN = oldBlobToken;
+    delete globalThis.__BLOB_DEL_CALLS__;
+  }
+});
+
 test('聊天室內容按需載入，並以 requestId 精確隔離', { skip }, async () => {
   await store.clearShared();
   await store.mergeShared({

@@ -17,7 +17,14 @@ import {
   getAccountByUserId,
 } from '@/lib/auth-store';
 import { requireActiveSession } from '@/lib/active-session';
-import { deleteUserData, clearShared, getCollection, mergeShared } from '@/lib/sync-store';
+import {
+  deleteUserData,
+  clearShared,
+  getCollection,
+  mergeShared,
+  permanentlyDeleteEscort,
+  SHARED_KEYS,
+} from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { listReports, setReportResolved } from '@/lib/report-store';
 import {
@@ -43,6 +50,8 @@ import {
 } from '@/lib/system-message-store';
 import { listRequestHistory } from '@/lib/request-history-store';
 import { summarizeSmsRuntime } from '@/lib/sms-runtime';
+import { activeConfirmedGirlIds } from '@/lib/request-attendance';
+import { parseBlobUrl } from '@/lib/image-upload';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,6 +118,21 @@ function safeAccount(account: {
 
 const stringValue = (value: unknown): string =>
   typeof value === 'string' ? value : '';
+
+function collectBlobPathnames(value: unknown, output: Set<string>): void {
+  if (typeof value === 'string') {
+    const parsed = parseBlobUrl(value);
+    if (parsed.ok) output.add(parsed.pathname);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectBlobPathnames(item, output);
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) collectBlobPathnames(item, output);
+  }
+}
 
 async function getSystemStatus() {
   const redisConfigured = isRedisConfigured();
@@ -528,6 +552,77 @@ export async function POST(req: NextRequest) {
       }
       await audit(admin, action, undefined, `count=${removed.length}`);
       return NextResponse.json({ ok: true, count: removed.length });
+    }
+
+    if (action === 'permanently-delete-escort') {
+      const escortId = stringValue(body.escortId);
+      if (!escortId || escortId.length > 100) {
+        return NextResponse.json({ error: '人員編號格式錯誤' }, { status: 400 });
+      }
+      if (confirmation !== escortId) {
+        return NextResponse.json({ error: '確認文字錯誤，已取消刪除' }, { status: 400 });
+      }
+      const collections = await Promise.all(SHARED_KEYS.map((key) => getCollection(key)));
+      const escorts = collections[SHARED_KEYS.indexOf('escorts')];
+      const responses = collections[SHARED_KEYS.indexOf('responses')];
+      const invitations = collections[SHARED_KEYS.indexOf('invitations')];
+      const photoOverrides = collections[SHARED_KEYS.indexOf('photoOverrides')];
+      const photoGalleries = collections[SHARED_KEYS.indexOf('photoGalleries')];
+      const escort = escorts.find((item) => item.id === escortId);
+      if (!escort) return NextResponse.json({ error: '人員資料不存在' }, { status: 404 });
+      if (activeConfirmedGirlIds(responses, invitations).has(escortId)) {
+        return NextResponse.json({ error: '這位人員目前有進行中的約會，暫時不能永久刪除' }, { status: 409 });
+      }
+
+      const imageUrls = [...new Set([
+        stringValue(photoOverrides.find((item) => item.id === escortId)?.avatarUrl),
+        ...photoGalleries
+          .filter((item) => item.id === escortId)
+          .flatMap((item) => Array.isArray(item.urls) ? item.urls.map(stringValue) : []),
+      ].filter(Boolean))];
+      const referencedElsewhere = new Set<string>();
+      SHARED_KEYS.forEach((key, index) => {
+        const records = collections[index].filter((item) => !(
+          (key === 'photoOverrides' || key === 'photoGalleries') && item.id === escortId
+        ));
+        collectBlobPathnames(records, referencedElsewhere);
+      });
+      const validBlobUrls = imageUrls.flatMap((url) => {
+        const parsed = parseBlobUrl(url);
+        return parsed.ok ? [{ url, pathname: parsed.pathname }] : [];
+      });
+      const blobUrls = validBlobUrls
+        .filter((item) => !referencedElsewhere.has(item.pathname))
+        .map((item) => item.url);
+      const sharedImageCount = validBlobUrls.length - blobUrls.length;
+      if (blobUrls.length > 0) {
+        const blobConfigured = Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
+        if (!blobConfigured) {
+          return NextResponse.json({ error: 'Blob 圖片服務尚未設定，為避免留下照片，本次未刪除' }, { status: 503 });
+        }
+        try {
+          const { del } = await import('@vercel/blob');
+          await del(blobUrls);
+        } catch {
+          console.error('[admin escort delete] blob delete failed');
+          return NextResponse.json({ error: '照片刪除失敗，人員資料尚未刪除，請稍後重試' }, { status: 502 });
+        }
+      }
+
+      await permanentlyDeleteEscort(escortId);
+      await audit(
+        admin,
+        action,
+        escortId,
+        `nickname=${stringValue(escort.nickname)};managerId=${stringValue(escort.managerId)};blobCount=${blobUrls.length};sharedImageCount=${sharedImageCount};invalidImageCount=${imageUrls.length - validBlobUrls.length}`,
+      );
+      return NextResponse.json({
+        ok: true,
+        deletedEscortId: escortId,
+        deletedImageCount: blobUrls.length,
+        preservedSharedImageCount: sharedImageCount,
+        skippedInvalidImageCount: imageUrls.length - validBlobUrls.length,
+      });
     }
 
     if (!account) return NextResponse.json({ error: '缺少帳號' }, { status: 400 });
