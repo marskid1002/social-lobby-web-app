@@ -42,7 +42,7 @@ test('A888 is isolated from A000 and activates with its own one-time code', { sk
   assert.equal(reused, null);
 });
 
-test('A777 is a read-only observer limited to A001-A010', { skip }, async () => {
+test('A777 can inspect every manager and keep a private manager name without gaining account controls', { skip }, async () => {
   const viewer = await authStore.getAccount('A777');
   assert.equal(viewer?.role, 'account_viewer');
   assert.equal(viewer?.nickname, '幹部稽查員');
@@ -74,9 +74,9 @@ test('A777 is a read-only observer limited to A001-A010', { skip }, async () => 
   const getBody = getResponse.body;
   assert.equal(getResponse.status, 200);
   assert.equal(getBody.readOnly, true);
-  assert.deepEqual(getBody.managers.map((manager) => manager.key), [
-    'A001', 'A002', 'A003', 'A004', 'A005', 'A006', 'A007', 'A008', 'A009', 'A010',
-  ]);
+  assert.equal(getBody.managers.some((item) => item.key === 'A001'), true);
+  assert.equal(getBody.managers.some((item) => item.key === 'A025'), true);
+  assert.equal(getBody.managers.some((item) => item.key === 'A777' || item.key === 'A888'), false);
 
   const roster = getBody.rosters.find((item) => item.managerKey === 'A001');
   assert.ok(roster);
@@ -89,6 +89,32 @@ test('A777 is a read-only observer limited to A001-A010', { skip }, async () => 
   assert.equal('createdAt' in member, false);
   assert.equal(JSON.stringify(getBody).includes('private-photo.jpg'), false);
   assert.equal(JSON.stringify(getBody).includes('不應回傳的自介'), false);
+
+  const privateNameResponse = await accountAdminRoute.POST(new Request('http://localhost/api/account-admin', {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'save-private-name', account: 'A001', privateName: '東區阿明' }),
+  }));
+  assert.equal(privateNameResponse.status, 200);
+
+  const refreshedResponse = await accountAdminRoute.GET(new Request('http://localhost/api/account-admin', { headers }));
+  const refreshedManager = refreshedResponse.body.managers.find((item) => item.key === 'A001');
+  assert.equal(refreshedManager.privateName, '東區阿明');
+  assert.equal(refreshedManager.nickname, manager.nickname);
+
+  const accountAdmin = await authStore.getAccount('A888');
+  assert.ok(accountAdmin);
+  const accountAdminToken = await sessionStore.signSession({
+    userId: accountAdmin.userId,
+    role: 'account_admin',
+    tier: accountAdmin.tier,
+    sessionVersion: accountAdmin.sessionVersion,
+  });
+  const accountAdminResponse = await accountAdminRoute.GET(new Request('http://localhost/api/account-admin', {
+    headers: { cookie: `${sessionStore.SESSION_COOKIE}=${encodeURIComponent(accountAdminToken)}` },
+  }));
+  const accountAdminManager = accountAdminResponse.body.managers.find((item) => item.key === 'A001');
+  assert.equal('privateName' in accountAdminManager, false);
 
   const postResponse = await accountAdminRoute.POST(new Request('http://localhost/api/account-admin', {
     method: 'POST',

@@ -61,6 +61,8 @@ test('已關閉的局立即封存，但原始資料仍在 8 小時保留期內',
 
 test('過期資料清理前先封存參與結果，且歷史快照不含聊天文字或圖片網址', { skip }, async () => {
   await reset();
+  const manager = await authStore.getAccount('A003');
+  assert.ok(manager);
   const old = new Date(Date.now() - 9 * 60 * 60_000).toISOString();
   await store.mergeShared({
     requests: [{
@@ -72,16 +74,16 @@ test('過期資料清理前先封存參與結果，且歷史快照不含聊天�
       createdAt: old,
       expiresAt: old,
     }],
-    escorts: [{ id: 'escort-history', managerId: 'manager-history', nickname: '小歷', createdAt: old }],
+    escorts: [{ id: 'escort-history', managerId: manager.userId, nickname: '小歷', createdAt: old }],
     registeredUsers: [
       { id: 'customer-expired', nickname: '歷史客戶' },
-      { id: 'manager-history', nickname: '歷史幹部' },
+      { id: manager.userId, nickname: '歷史幹部' },
     ],
     responses: [{
       id: 'response-history',
       requestId: 'history-expired',
       userId: 'escort-history',
-      dispatcherId: 'manager-history',
+      dispatcherId: manager.userId,
       responseStatus: 'interested',
       createdAt: old,
     }],
@@ -89,7 +91,7 @@ test('過期資料清理前先封存參與結果，且歷史快照不含聊天�
       id: 'message-history',
       threadId: 'thread-history',
       requestId: 'history-expired',
-      senderId: 'manager-history',
+      senderId: manager.userId,
       text: '不可進入歷史的秘密聊天內容',
       imageUrl: 'https://example.com/private-photo.jpg',
       createdAt: old,
@@ -114,5 +116,7 @@ test('A000 管理 API 可讀歷史局；未登入仍不可讀', { skip }, async 
   const allowed = await a000Request();
   assert.equal(allowed.status, 200);
   assert.equal(Array.isArray(allowed.body.requestHistory), true);
-  assert.equal(allowed.body.requestHistory.some((item) => item.id === 'history-expired'), true);
+  const history = allowed.body.requestHistory.find((item) => item.id === 'history-expired');
+  assert.ok(history);
+  assert.equal(history.participants[0].dispatcherAccount, 'A003');
 });

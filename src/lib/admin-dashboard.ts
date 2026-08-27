@@ -60,6 +60,7 @@ export interface AdminEscortStatus {
   escortId: string;
   escortName: string;
   managerId: string;
+  managerAccount: string;
   managerName: string;
   stage: AdminEscortStage;
   createdAt: string;
@@ -126,6 +127,9 @@ const byOldest = (a: Item, b: Item): number =>
 const accountName = (accounts: AdminAccountSummary[], userId: string): string =>
   accounts.find((account) => account.userId === userId)?.nickname || userId;
 
+const accountKey = (accounts: AdminAccountSummary[], userId: string): string =>
+  accounts.find((account) => account.userId === userId)?.key || userId;
+
 export function buildAdminEscortStatuses(input: {
   accounts: AdminAccountSummary[];
   escorts: Item[];
@@ -176,6 +180,7 @@ export function buildAdminEscortStatuses(input: {
         escortId,
         escortName: text(escort?.nickname) || escortId || '未知小姐',
         managerId,
+        managerAccount: managerId ? accountKey(input.accounts, managerId) : '',
         managerName: managerId ? accountName(input.accounts, managerId) : '自行報名',
         stage,
         createdAt: text(response.createdAt),

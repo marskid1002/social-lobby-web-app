@@ -197,6 +197,10 @@ test('流程診斷：聊天室與訊息完成 → healthy；相同 thread 不同
     dashboard.flows.find((flow) => flow.requestId === 'request-1')?.escortStatuses[0]?.stage,
     'on_stage',
   );
+  assert.equal(
+    dashboard.flows.find((flow) => flow.requestId === 'request-1')?.escortStatuses[0]?.managerAccount,
+    'A001',
+  );
   assert.equal(dashboard.conversations.every(
     (conversation) => !conversation.lastPreview.includes('第一局')
       && !conversation.lastPreview.includes('第二局'),

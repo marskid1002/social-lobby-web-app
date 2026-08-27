@@ -86,6 +86,7 @@ type EscortStatus = {
   escortId: string;
   escortName: string;
   managerId: string;
+  managerAccount: string;
   managerName: string;
   stage: 'waiting' | 'on_stage' | 'active' | 'declined' | 'customer_declined' | 'ended' | 'withdrawn';
   createdAt: string;
@@ -234,6 +235,7 @@ type RequestHistory = {
     userId: string;
     userName: string;
     dispatcherId?: string;
+    dispatcherAccount?: string;
     dispatcherName?: string;
     responseStatus: string;
     invitationStatus?: string;
@@ -519,6 +521,7 @@ export default function AdminPage() {
           escort.escortId,
           escort.escortName,
           escort.managerId,
+          escort.managerAccount,
           escort.managerName,
         ]),
       ]
@@ -552,6 +555,7 @@ export default function AdminPage() {
           participant.userId,
           participant.userName,
           participant.dispatcherId ?? '',
+          participant.dispatcherAccount ?? '',
           participant.dispatcherName ?? '',
         ]),
       ].some((value) => value.toLowerCase().includes(query)));
@@ -1282,7 +1286,9 @@ export default function AdminPage() {
                                         <div key={escort.responseId} className="flex items-center justify-between gap-3 rounded-xl bg-[#252a3a] p-3">
                                           <div className="min-w-0">
                                             <p className="truncate text-sm font-black text-white">{escort.escortName}</p>
-                                            <p className="mt-1 truncate text-[11px] text-[#aeb3c2]">所屬幹部：{escort.managerName}</p>
+                                            <p className="mt-1 truncate text-[11px] text-[#aeb3c2]">
+                                              所屬幹部：{escort.managerAccount ? `${escort.managerAccount}・` : ''}{escort.managerName}
+                                            </p>
                                             {escort.dispatchOnline !== undefined && (
                                               <p className="mt-1 text-[10px] text-[#aeb3c2]">
                                                 派工當下：{escort.dispatchOnline ? '在線' : '離線'}
@@ -1448,7 +1454,9 @@ export default function AdminPage() {
                                         </span>
                                       </div>
                                       <p className="mt-1 text-zinc-500">
-                                        {participant.dispatcherName ? `派工幹部：${participant.dispatcherName}` : '自行加入'}
+                                        {participant.dispatcherName
+                                          ? `派工幹部：${participant.dispatcherAccount ? `${participant.dispatcherAccount}・` : ''}${participant.dispatcherName}`
+                                          : '自行加入'}
                                       </p>
                                       <p className="mt-1 break-all font-mono text-[10px] text-zinc-400">{participant.userId}</p>
                                     </div>
@@ -2048,7 +2056,9 @@ export default function AdminPage() {
                                       <div key={escort.responseId} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
                                         <div className="min-w-0">
                                           <p className="truncate text-xs font-bold text-zinc-900">{escort.escortName}</p>
-                                          <p className="truncate text-[10px] text-zinc-500">所屬幹部：{escort.managerName} · 更新 {fmtTime(escort.updatedAt)}</p>
+                                          <p className="truncate text-[10px] text-zinc-500">
+                                            所屬幹部：{escort.managerAccount ? `${escort.managerAccount}・` : ''}{escort.managerName} · 更新 {fmtTime(escort.updatedAt)}
+                                          </p>
                                           {escort.dispatchOnline !== undefined && (
                                             <p className="text-[10px] text-zinc-500">
                                               派工當下：{escort.dispatchOnline ? '在線' : '離線'}

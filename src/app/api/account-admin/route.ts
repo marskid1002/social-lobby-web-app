@@ -17,18 +17,13 @@ import { removeDevicesForUser } from '@/lib/device-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import { clientIp, rateLimit } from '@/lib/rate-limit';
 import { buildAdminManagerRosters, type AdminAccountSummary } from '@/lib/admin-dashboard';
+import {
+  listManagerPrivateNames,
+  MAX_MANAGER_PRIVATE_NAME_LENGTH,
+  setManagerPrivateName,
+} from '@/lib/manager-private-name-store';
 
 export const dynamic = 'force-dynamic';
-const READ_ONLY_MANAGER_KEYS = new Set(Array.from({ length: 10 }, (_, index) => `A${String(index + 1).padStart(3, '0')}`));
-
-async function requireA888(req: NextRequest) {
-  const auth = await requireActiveSession(req);
-  if (!auth.ok) return auth;
-  if (auth.session.role !== 'account_admin' || auth.account?.role !== 'account_admin' || auth.account.key !== 'A888') {
-    return { ok: false as const, response: NextResponse.json({ error: 'forbidden' }, { status: 403 }) };
-  }
-  return auth;
-}
 
 async function requireAccountConsole(req: NextRequest) {
   const auth = await requireActiveSession(req);
@@ -45,7 +40,7 @@ async function requireAccountConsole(req: NextRequest) {
   return auth;
 }
 
-function safeManager(account: Account) {
+function safeManager(account: Account, privateName?: string) {
   return {
     key: account.key,
     nickname: account.nickname,
@@ -54,6 +49,7 @@ function safeManager(account: Account) {
     archived: Boolean(account.archived),
     mustChangeNickname: Boolean(account.mustChangeNickname),
     createdAt: account.createdAt,
+    ...(privateName ? { privateName } : {}),
   };
 }
 
@@ -69,10 +65,13 @@ export async function GET(req: NextRequest) {
   const readOnly = accountKey === 'A777';
   const accounts = await listAccounts();
   const managerAccounts = accounts
-    .filter((account) => account.role === 'manager' && (!readOnly || READ_ONLY_MANAGER_KEYS.has(account.key)))
+    .filter((account) => account.role === 'manager')
     .sort((a, b) => a.key.localeCompare(b.key));
+  const privateNames = readOnly
+    ? await listManagerPrivateNames(auth.session.userId)
+    : new Map<string, string>();
   const managers = managerAccounts
-    .map(safeManager);
+    .map((account) => safeManager(account, privateNames.get(account.userId)));
   let rosters: Array<{
     managerKey: string;
     activeCount: number;
@@ -115,7 +114,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireA888(req);
+  const auth = await requireAccountConsole(req);
   if (!auth.ok) return auth.response;
   const limited = await rateLimit('account-admin', `${auth.session.userId}:${clientIp(req)}`, 60, 60);
   if (!limited.ok) return NextResponse.json({ error: '操作過於頻繁，請稍後再試' }, { status: 429 });
@@ -124,6 +123,35 @@ export async function POST(req: NextRequest) {
   if (!body) return NextResponse.json({ error: 'invalid body' }, { status: 400 });
   const action = typeof body.action === 'string' ? body.action : '';
   const nickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
+
+  if (action === 'save-private-name') {
+    const isViewer = auth.session.role === 'account_viewer'
+      && auth.account?.role === 'account_viewer'
+      && auth.account.key === 'A777';
+    if (!isViewer) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+
+    if (typeof body.privateName !== 'string' || body.privateName.trim().length > MAX_MANAGER_PRIVATE_NAME_LENGTH) {
+      return NextResponse.json({ error: `私人名稱最多 ${MAX_MANAGER_PRIVATE_NAME_LENGTH} 字` }, { status: 400 });
+    }
+    const key = typeof body.account === 'string' ? body.account.trim().toUpperCase() : '';
+    const target = await getAccount(key);
+    if (!target || target.role !== 'manager') {
+      return NextResponse.json({ error: '找不到幹部帳號' }, { status: 400 });
+    }
+    const privateName = body.privateName.trim();
+    await setManagerPrivateName({
+      viewerUserId: auth.session.userId,
+      managerUserId: target.userId,
+      privateName,
+    });
+    await audit(auth.session.userId, 'save-private-name', key, privateName ? 'updated' : 'cleared');
+    return NextResponse.json({ ok: true, account: key, privateName });
+  }
+
+  const isAdmin = auth.session.role === 'account_admin'
+    && auth.account?.role === 'account_admin'
+    && auth.account.key === 'A888';
+  if (!isAdmin) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   if (action === 'create') {
     if (nickname.length < 2 || nickname.length > 60) {

@@ -297,6 +297,15 @@ export async function GET(req: NextRequest) {
     ]),
   );
   const accountByUserId = new Map(accounts.map((account) => [account.userId, account]));
+  const safeRequestHistory = requestHistory.map((record) => ({
+    ...record,
+    participants: record.participants.map((participant) => ({
+      ...participant,
+      ...(participant.dispatcherId ? {
+        dispatcherAccount: accountByUserId.get(participant.dispatcherId)?.key || participant.dispatcherId,
+      } : {}),
+    })),
+  }));
   const escortGalleries = escorts
     .filter((escort) => !escort.removed)
     .map((escort) => {
@@ -326,7 +335,7 @@ export async function GET(req: NextRequest) {
       managerRosters,
       escortGalleries,
       systemMessages,
-      requestHistory,
+      requestHistory: safeRequestHistory,
       system: { ...system, smsRuntime: summarizeSmsRuntime(traceEvents) },
       auditLogs,
       traceEvents,
