@@ -33,7 +33,7 @@ export default function OnlineTilesPreviewPage() {
           {people.map((person) => (
             <article
               key={person.name}
-              className="group w-full max-w-[180px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+              className="group w-full max-w-[160px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
             >
               <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
                 <img src={person.image} alt={person.name} className="h-full w-full object-cover" />

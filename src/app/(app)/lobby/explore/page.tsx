@@ -134,7 +134,7 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
   // 訪客超過可見數的人物磚：維持版面尺寸，但照片與資料馬賽克、不可點擊。
   if (blurred) {
     return (
-      <div className="w-full max-w-[180px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 select-none pointer-events-none">
+      <div className="w-full max-w-[160px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 select-none pointer-events-none">
         <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
           <div className="absolute inset-0 scale-110 blur-[8px]">
             <img
@@ -158,7 +158,7 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
   }
 
   return (
-    <article className="group w-full max-w-[180px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+    <article className="group w-full max-w-[160px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
       <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
         <img
           src={user.cardImageUrl || user.avatarUrl}
