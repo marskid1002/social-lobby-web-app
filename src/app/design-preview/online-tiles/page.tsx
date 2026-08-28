@@ -33,22 +33,18 @@ export default function OnlineTilesPreviewPage() {
           {people.map((person) => (
             <article
               key={person.name}
-              className="group relative aspect-square overflow-hidden rounded-2xl bg-zinc-100 text-left shadow-sm ring-1 ring-black/5"
+              className="group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
             >
-              <img src={person.image} alt={person.name} className="h-full w-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/5 to-black/15" />
-              <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/85 px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
-                <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                今晚在線
-              </span>
-              <div className="absolute inset-x-0 bottom-0 p-3 text-white">
-                <div className="flex items-end justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold leading-tight drop-shadow-sm">{person.name}</p>
-                    <p className="mt-1 truncate text-[11px] text-white/80">{person.area} · {person.time}</p>
-                  </div>
-                  <span className="shrink-0 rounded-full bg-white/20 px-2 py-1 text-[10px] font-semibold backdrop-blur-md">查看</span>
+              <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
+                <img src={person.image} alt={person.name} className="h-full w-full object-cover" />
+                <span className="absolute left-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(255,255,255,0.9)]" role="status" aria-label="今晚在線" />
+              </div>
+              <div className="p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-xs text-zinc-500">{person.area}</p>
+                  <p className="min-w-0 truncate text-sm font-bold text-brand-ink">{person.name}</p>
                 </div>
+                <button type="button" className="mt-2.5 w-full rounded-lg bg-pink-50 px-3 py-2 text-xs font-bold text-brand-pink">查看</button>
               </div>
             </article>
           ))}
