@@ -29,11 +29,11 @@ export default function OnlineTilesPreviewPage() {
           <span className="ml-auto text-xs font-semibold text-zinc-400">{people.length} 位</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 p-3">
+        <div className="grid grid-cols-2 justify-items-center gap-3 p-3">
           {people.map((person) => (
             <article
               key={person.name}
-              className="group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
+              className="group w-full max-w-[180px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5"
             >
               <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
                 <img src={person.image} alt={person.name} className="h-full w-full object-cover" />
