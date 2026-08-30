@@ -29,7 +29,7 @@ export default function OnlineTilesPreviewPage() {
           <span className="ml-auto text-xs font-semibold text-zinc-400">{people.length} 位</span>
         </div>
 
-        <div className="grid grid-cols-2 justify-items-center gap-3 p-3">
+        <div className="mx-auto grid w-full max-w-[356px] grid-cols-2 justify-items-center gap-3 p-3">
           {people.map((person) => (
             <article
               key={person.name}
