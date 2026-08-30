@@ -134,7 +134,7 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
   // 訪客超過可見數的人物磚：維持版面尺寸，但照片與資料馬賽克、不可點擊。
   if (blurred) {
     return (
-      <div className="w-full max-w-[160px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5 select-none pointer-events-none">
+      <div className="w-full max-w-[100px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 select-none pointer-events-none">
         <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
           <div className="absolute inset-0 scale-110 blur-[8px]">
             <img
@@ -144,39 +144,39 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
               className="h-full w-full object-cover"
             />
           </div>
-          <span className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-xs text-white backdrop-blur-sm">🔒</span>
+          <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/45 text-[10px] text-white backdrop-blur-sm">🔒</span>
         </div>
-        <div className="space-y-2 p-3">
+        <div className="space-y-1.5 p-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="h-3 w-12 rounded bg-zinc-200 blur-[2px]" />
-            <div className="h-3 w-16 rounded bg-zinc-300 blur-[2px]" />
+            <div className="h-2.5 w-10 rounded bg-zinc-200 blur-[2px]" />
+            <div className="h-2.5 w-12 rounded bg-zinc-300 blur-[2px]" />
           </div>
-          <div className="h-8 w-full rounded-lg bg-zinc-200 blur-[2px]" />
+          <div className="h-6 w-full rounded-md bg-zinc-200 blur-[2px]" />
         </div>
       </div>
     );
   }
 
   return (
-    <article className="group w-full max-w-[160px] overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+    <article className="group w-full max-w-[100px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5">
       <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
         <img
           src={user.cardImageUrl || user.avatarUrl}
           alt={user.nickname}
           className="h-full w-full object-cover transition-transform duration-300 group-active:scale-[1.02]"
         />
-        <span className="absolute left-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(255,255,255,0.9)]" role="status" aria-label="今晚在線" />
+        <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]" role="status" aria-label="今晚在線" />
       </div>
 
-      <div className="p-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="min-w-0 truncate text-xs text-zinc-500">{onlineStatus.area}</p>
-          <p className="min-w-0 truncate text-sm font-bold text-brand-ink">{user.nickname}</p>
+      <div className="p-2">
+        <div className="flex items-center justify-between gap-1.5">
+          <p className="min-w-0 truncate text-[10px] text-zinc-500">{onlineStatus.area}</p>
+          <p className="min-w-0 truncate text-xs font-bold text-brand-ink">{user.nickname}</p>
         </div>
         <button
           type="button"
           onClick={() => router.push(`/u/${userId}`)}
-          className="mt-2.5 w-full rounded-lg bg-pink-50 px-3 py-2 text-xs font-bold text-brand-pink transition-colors active:bg-pink-100"
+          className="mt-1.5 w-full rounded-md bg-pink-50 px-2 py-1.5 text-[10px] font-bold text-brand-pink transition-colors active:bg-pink-100"
           aria-label={`查看 ${user.nickname} 的個人頁`}
         >
           查看
@@ -314,7 +314,7 @@ function ExploreContent() {
 
       {/* === SECTION B: Online Women === */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
-        <div className={`mx-auto grid w-full max-w-[356px] grid-cols-2 justify-items-center gap-3 p-3 ${tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}`}>
+        <div className={`mx-auto grid w-full max-w-[230px] grid-cols-2 justify-items-center gap-1.5 p-3 ${tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}`}>
           {sectionBRenderIds.map((uid, idx) => (
             <FemaleTile key={uid} userId={uid} blurred={isGuest && idx >= limit} />
           ))}
