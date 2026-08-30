@@ -29,22 +29,22 @@ export default function OnlineTilesPreviewPage() {
           <span className="ml-auto text-xs font-semibold text-zinc-400">{people.length} 位</span>
         </div>
 
-        <div className="mx-auto grid w-full max-w-[230px] grid-cols-2 justify-items-center gap-1.5 p-3">
+        <div className="mx-auto grid w-full max-w-[310px] grid-cols-2 justify-items-center gap-1.5 p-3">
           {people.map((person) => (
             <article
               key={person.name}
-              className="group w-full max-w-[100px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5"
+              className="group w-full max-w-[140px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5"
             >
-              <div className="relative aspect-[4/5] overflow-hidden bg-zinc-100">
+              <div className="relative aspect-[7/6] overflow-hidden bg-zinc-100">
                 <img src={person.image} alt={person.name} className="h-full w-full object-cover" />
                 <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]" role="status" aria-label="今晚在線" />
               </div>
-              <div className="p-2">
+              <div className="p-1.5">
                 <div className="flex items-center justify-between gap-1.5">
                   <p className="min-w-0 truncate text-[10px] text-zinc-500">{person.area}</p>
                   <p className="min-w-0 truncate text-xs font-bold text-brand-ink">{person.name}</p>
                 </div>
-                <button type="button" className="mt-1.5 w-full rounded-md bg-pink-50 px-2 py-1.5 text-[10px] font-bold text-brand-pink">查看</button>
+                <button type="button" className="mt-1 w-full rounded-md bg-pink-50 px-2 py-1 text-[10px] font-bold text-brand-pink">查看</button>
               </div>
             </article>
           ))}
