@@ -134,8 +134,8 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
   // 訪客超過可見數的人物磚：維持版面尺寸，但照片與資料馬賽克、不可點擊。
   if (blurred) {
     return (
-      <div className="w-full max-w-[140px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 select-none pointer-events-none">
-        <div className="relative aspect-[7/6] overflow-hidden bg-zinc-100">
+      <div className="w-full max-w-[140px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 select-none pointer-events-none [@media(min-height:700px)]:max-w-[170px]">
+        <div className="relative aspect-[7/6] overflow-hidden bg-zinc-100 [@media(min-height:700px)]:aspect-[4/5]">
           <div className="absolute inset-0 scale-110 blur-[8px]">
             <img
               src={user.avatarUrl}
@@ -158,8 +158,8 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
   }
 
   return (
-    <article className="group w-full max-w-[140px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5">
-      <div className="relative aspect-[7/6] overflow-hidden bg-zinc-100">
+    <article className="group w-full max-w-[140px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 [@media(min-height:700px)]:max-w-[170px]">
+      <div className="relative aspect-[7/6] overflow-hidden bg-zinc-100 [@media(min-height:700px)]:aspect-[4/5]">
         <img
           src={user.cardImageUrl || user.avatarUrl}
           alt={user.nickname}
@@ -314,7 +314,7 @@ function ExploreContent() {
 
       {/* === SECTION B: Online Women === */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
-        <div className={`mx-auto grid w-full max-w-[310px] grid-cols-2 justify-items-center gap-1.5 p-3 ${tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}`}>
+        <div className={`mx-auto grid w-full max-w-[310px] grid-cols-2 justify-items-center gap-1.5 p-3 [@media(min-height:700px)]:max-w-[376px] [@media(min-height:700px)]:gap-3 ${tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}`}>
           {sectionBRenderIds.map((uid, idx) => (
             <FemaleTile key={uid} userId={uid} blurred={isGuest && idx >= limit} />
           ))}

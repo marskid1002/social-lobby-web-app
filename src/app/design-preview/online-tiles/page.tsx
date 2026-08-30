@@ -29,13 +29,13 @@ export default function OnlineTilesPreviewPage() {
           <span className="ml-auto text-xs font-semibold text-zinc-400">{people.length} 位</span>
         </div>
 
-        <div className="mx-auto grid w-full max-w-[310px] grid-cols-2 justify-items-center gap-1.5 p-3">
+        <div className="mx-auto grid w-full max-w-[310px] grid-cols-2 justify-items-center gap-1.5 p-3 [@media(min-height:700px)]:max-w-[376px] [@media(min-height:700px)]:gap-3">
           {people.map((person) => (
             <article
               key={person.name}
-              className="group w-full max-w-[140px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5"
+              className="group w-full max-w-[140px] overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 [@media(min-height:700px)]:max-w-[170px]"
             >
-              <div className="relative aspect-[7/6] overflow-hidden bg-zinc-100">
+              <div className="relative aspect-[7/6] overflow-hidden bg-zinc-100 [@media(min-height:700px)]:aspect-[4/5]">
                 <img src={person.image} alt={person.name} className="h-full w-full object-cover" />
                 <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]" role="status" aria-label="今晚在線" />
               </div>
