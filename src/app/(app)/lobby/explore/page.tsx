@@ -6,13 +6,14 @@ import { useAppState, blockedPeerIds, escortPeerIds } from '@/lib/state';
 import { OperatorHome } from '@/components/OperatorHome';
 import { formatDistanceToNow, differenceInMinutes } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { Lock, Crown, Users, UserCheck, Zap } from 'lucide-react';
+import { Lock, Crown, Users, UserCheck, Zap, Bell } from 'lucide-react';
 import type { Request, User } from '@/lib/mock/types';
 import { getRequestAccentColor, getRequestTypeLabel, SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { activeConfirmedGirlIds, confirmedGirlIdsForRequest } from '@/lib/request-attendance';
 import { onlineEscortLimitForTier } from '@/lib/browse-access';
 import { requestDisplayState } from '@/lib/request-display';
+import { useNotificationPermission } from '@/components/PushManager';
 
 function shouldShowBoostNudge(req: Request): boolean {
   const impressions = req.metrics?.impressions ?? 0;
@@ -203,6 +204,10 @@ function ExploreContent() {
   const { state, currentUser } = useAppState();
   const router = useRouter();
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // 發過局但沒開通知的客戶，等於完全不會知道有人想加入（實測案例：新註冊 16 分鐘就發局，
+  // 三次派工推播皆 sent=0，最後自行關閉邀請）。permission 為 'default' 才提示——
+  // 'granted' 不需要、'denied' 無法再用 API 詢問（要由使用者到瀏覽器設定開啟，此情況尚未處理）。
+  const { permission: notifyPermission, request: requestNotify } = useNotificationPermission();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
@@ -277,6 +282,23 @@ function ExploreContent() {
         <div className="px-4 pt-4 pb-2">
           <p className="text-sm font-bold text-brand-ink uppercase tracking-wider">我的邀請</p>
         </div>
+
+        {/* 有局在等回應、但還沒開啟通知 → 引導開啟。必須由點擊觸發（iOS 要求使用者手勢）。 */}
+        {hasMyRequests && notifyPermission === 'default' && (
+          <div className="mx-4 mb-3 flex items-center gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <Bell size={16} className="shrink-0 text-amber-600" />
+            <p className="flex-1 text-xs leading-snug text-amber-800">
+              開啟通知，有人想加入時才會馬上知道
+            </p>
+            <button
+              type="button"
+              onClick={() => { void requestNotify(); }}
+              className="shrink-0 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform active:scale-95"
+            >
+              開啟
+            </button>
+          </div>
+        )}
 
         {hasMyRequests ? (
           <div className="px-4 pb-4 flex flex-col gap-3">
