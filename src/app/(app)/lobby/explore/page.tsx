@@ -99,10 +99,23 @@ function MyRequestCard({
         )}
 
         <div className="flex items-center gap-3 text-xs text-zinc-400">
-          {!ended && (
+          {/* 有人在等確認時做成明顯的行動按鈕，並直接導到收件匣（確認人選的地方）。
+              原本只有一行 12px 淺灰字、且整張卡片只導向局詳情頁，客戶看不出要去哪裡處理——
+              新註冊客戶又常還沒開推播（診斷可見 response.push sent=0），等於完全不知道有人想加入。 */}
+          {!ended && interestedCount > 0 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); router.push('/inbox'); }}
+              className="flex items-center gap-1.5 rounded-full bg-pink-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-transform active:scale-95"
+            >
+              <UserCheck size={13} />
+              {interestedCount} 人想加入・點我確認
+            </button>
+          )}
+          {!ended && interestedCount === 0 && (
             <span className="flex items-center gap-1">
               <UserCheck size={13} />
-              <span className="font-semibold text-zinc-600">{interestedCount}</span> 人想加入
+              還沒有人想加入
             </span>
           )}
           {ended && (
