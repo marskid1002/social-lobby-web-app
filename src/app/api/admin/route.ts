@@ -275,6 +275,7 @@ export async function GET(req: NextRequest) {
     responses,
     invitations,
     chatMessages,
+    traceEvents, // 供步驟判定辨識「已派工但通知未送達」
   });
   const managerRosters = buildAdminManagerRosters({
     accounts,

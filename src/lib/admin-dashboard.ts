@@ -251,9 +251,28 @@ export function buildAdminDashboard(input: {
   responses: Item[];
   invitations: Item[];
   chatMessages: Item[];
+  // 推播結果：步驟判定要用。沒傳時行為與過去相同（只看有無派工資料）。
+  traceEvents?: Array<{ requestId?: string; detail?: string }>;
   now?: number;
 }): AdminDashboard {
   const now = input.now ?? Date.now();
+
+  // 「派工已儲存」不等於「客戶收得到」。實測案例：三次派工皆 sent=0（客戶無推播訂閱），
+  // 但步驟仍顯示成功，導致從後台看不出流程其實已經斷了。
+  // 所有推播事件的 detail 皆為 `sent=N;total=M`，據此彙整每個局的送達數，不依賴 eventType 命名。
+  const pushByRequest = new Map<string, { sent: number; events: number }>();
+  for (const event of input.traceEvents ?? []) {
+    const requestId = text(event.requestId);
+    const detail = text(event.detail);
+    if (!requestId || !detail.includes('sent=')) continue;
+    const matched = /sent=(\d+)/.exec(detail);
+    if (!matched) continue;
+    const prev = pushByRequest.get(requestId) ?? { sent: 0, events: 0 };
+    pushByRequest.set(requestId, {
+      sent: prev.sent + Number(matched[1]),
+      events: prev.events + 1,
+    });
+  }
   const messagesByRequest = new Map<string, Item[]>();
   for (const message of input.chatMessages) {
     const requestId = text(message.requestId);
@@ -269,6 +288,9 @@ export function buildAdminDashboard(input: {
       .filter((response) => response.requestId === requestId)
       .sort(byOldest);
     const joining = responses.filter((response) => response.responseStatus === 'joining');
+    // 有推播紀錄、但累計送達數為 0 → 通知完全沒送出去（客戶無訂閱或訂閱已失效）
+    const pushStat = pushByRequest.get(requestId);
+    const pushUndelivered = Boolean(pushStat && pushStat.events > 0 && pushStat.sent === 0);
     const invitations = input.invitations
       .filter((invitation) => invitation.requestId === requestId)
       .sort(byOldest);
@@ -309,6 +331,11 @@ export function buildAdminDashboard(input: {
     } else if (responses.length > 0) {
       issue = '已有回應，等待客戶同意';
     }
+    // 通知完全沒送達時覆寫描述：這種情況客戶根本不知道有人加入，不是單純「等待同意」
+    if (pushUndelivered && messages.length === 0) {
+      health = 'error';
+      issue = '已派工但通知未送達（客戶可能沒開啟通知）';
+    }
 
     const responseAt = responses[0]?.createdAt;
     const acceptedAt = joining[0]?.createdAt;
@@ -318,8 +345,14 @@ export function buildAdminDashboard(input: {
       { key: 'created', label: '客戶發局', state: 'done', at: text(request.createdAt) },
       {
         key: 'responded',
-        label: '收到加入／派工',
-        state: responses.length > 0 ? 'done' : 'waiting',
+        // 有派工但推播一封都沒送出（客戶無訂閱／訂閱失效）→ 標為 error 並在名稱點明，
+        // 否則會顯示綠色「成功」，而客戶其實完全不知道有人想加入。
+        label: responses.length > 0 && pushUndelivered
+          ? '收到加入／派工（通知未送達）'
+          : '收到加入／派工',
+        state: responses.length > 0
+          ? (pushUndelivered ? 'error' : 'done')
+          : 'waiting',
         at: text(responseAt),
       },
       {
