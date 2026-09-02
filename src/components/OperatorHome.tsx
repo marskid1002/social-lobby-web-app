@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { refreshShared, useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
-import { X, Check, UserCog, Camera, Trash2, Pencil } from 'lucide-react';
+import { X, Check, UserCog, Camera, Trash2, Pencil, Search } from 'lucide-react';
 import { RequestHeartSlots } from '@/components/RequestHeartSlots';
 import { AREA_CITIES, AREA_OPTIONS, cityForArea, type AreaCity } from '@/lib/area-options';
 import { getRequestTypeLabel, SHOW_REQUEST_CLASSIFICATION } from '@/lib/utils';
@@ -13,6 +13,7 @@ import {
   activeConfirmedGirlIds,
   confirmedCountForRequest,
 } from '@/lib/request-attendance';
+import { filterRosterBySearch } from '@/lib/roster-search';
 
 
 const TYPE_COLORS: Record<string, string> = {
@@ -235,9 +236,13 @@ export function OperatorHome() {
   const [editEscortBio, setEditEscortBio] = useState('');
   const [editEscortCity, setEditEscortCity] = useState<AreaCity>('台北市');
   const [editEscortArea, setEditEscortArea] = useState('信義區');
+  const [rosterSearch, setRosterSearch] = useState('');
 
   // 幹部自建的小姐（B）：名單以 managerId === 本人 動態產生（一開始為空，全部由幹部自建）
   const rosterGirls = state.users.filter((u) => u.role === 'escort' && u.managerId === state.currentUserId);
+  // 先限定本人旗下名單，再做名稱／人員編號搜尋，避免搜尋介面誤帶出其他幹部的人員。
+  const filteredRosterGirls = filterRosterBySearch(rosterGirls, rosterSearch);
+  const hasRosterSearch = rosterSearch.trim().length > 0;
   const currentRosterIds = rosterGirls.map((u) => u.id);
   const busyGirlIds = activeConfirmedGirlIds(state.responses, state.invitations);
 
@@ -497,7 +502,40 @@ export function OperatorHome() {
         </div>
       ) : (
         <div>
-          {rosterGirls.map((user) => {
+          <div className="border-b border-zinc-100 bg-white px-4 py-3">
+            <div className="relative">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                type="search"
+                value={rosterSearch}
+                onChange={(event) => setRosterSearch(event.target.value)}
+                placeholder="搜尋小姐名稱或人員編號"
+                aria-label="搜尋小姐名稱或人員編號"
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-10 text-sm text-brand-ink outline-none transition-colors placeholder:text-zinc-400 focus:border-purple-300 focus:bg-white"
+              />
+              {hasRosterSearch && (
+                <button
+                  type="button"
+                  onClick={() => setRosterSearch('')}
+                  aria-label="清除人員搜尋"
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-zinc-100"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {hasRosterSearch && (
+              <p className="mt-2 text-xs text-zinc-400">找到 {filteredRosterGirls.length} 位</p>
+            )}
+          </div>
+
+          {filteredRosterGirls.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="text-sm font-semibold text-zinc-500">找不到符合的人員</p>
+              <p className="mt-1 text-xs text-zinc-400">請確認名稱或人員編號是否正確</p>
+              <button type="button" onClick={() => setRosterSearch('')} className="mt-3 text-xs font-bold text-purple-600 underline">清除搜尋</button>
+            </div>
+          ) : filteredRosterGirls.map((user) => {
             if (!user) return null;
             const isOnline = state.onlineUserIds.includes(user.id);
             const isBusy = busyGirlIds.has(user.id);
@@ -510,6 +548,7 @@ export function OperatorHome() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-brand-ink truncate">{user.nickname}</p>
+                  <p className="mt-0.5 truncate text-[10px] text-zinc-400">人員編號 {user.id}</p>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     {isBusy ? <span className="font-semibold text-pink-500">約會中，忙碌</span> : isOnline ? '🟢 上線中' : '⚪ 離線'}
                     {galleryCount > 0 && <span className="ml-2 text-brand-sky">相簿 {galleryCount}</span>}
