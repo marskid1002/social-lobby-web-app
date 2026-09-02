@@ -3,6 +3,8 @@ export type RosterSearchable = {
   nickname: string;
 };
 
+export type DispatchRosterFilter = 'all' | 'available' | 'selected';
+
 export function normalizeRosterSearch(value: string): string {
   return value.trim().toLocaleLowerCase('zh-TW');
 }
@@ -19,4 +21,22 @@ export function filterRosterBySearch<T extends RosterSearchable>(members: T[], r
     normalizeRosterSearch(member.nickname).includes(query)
     || normalizeRosterSearch(member.id).includes(query)
   ));
+}
+
+export function filterDispatchRoster<T extends RosterSearchable>(
+  members: T[],
+  rawQuery: string,
+  filter: DispatchRosterFilter,
+  selectedIds: ReadonlySet<string>,
+  unavailableIds: ReadonlySet<string>,
+): T[] {
+  const searched = filterRosterBySearch(members, rawQuery);
+  if (filter === 'selected') return searched.filter((member) => selectedIds.has(member.id));
+  if (filter === 'available') return searched.filter((member) => !unavailableIds.has(member.id));
+  return searched;
+}
+
+export function countHiddenSelections(selectedIds: string[], visibleMembers: RosterSearchable[]): number {
+  const visibleIds = new Set(visibleMembers.map((member) => member.id));
+  return selectedIds.filter((id) => !visibleIds.has(id)).length;
 }

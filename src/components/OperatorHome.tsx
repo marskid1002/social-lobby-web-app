@@ -13,7 +13,12 @@ import {
   activeConfirmedGirlIds,
   confirmedCountForRequest,
 } from '@/lib/request-attendance';
-import { filterRosterBySearch } from '@/lib/roster-search';
+import {
+  countHiddenSelections,
+  filterDispatchRoster,
+  filterRosterBySearch,
+  type DispatchRosterFilter,
+} from '@/lib/roster-search';
 
 
 const TYPE_COLORS: Record<string, string> = {
@@ -225,6 +230,8 @@ export function OperatorHome() {
   const router = useRouter();
   const [dispatchSheet, setDispatchSheet] = useState<string | null>(null); // requestId
   const [selectedGirls, setSelectedGirls] = useState<string[]>([]); // 多選
+  const [dispatchSearch, setDispatchSearch] = useState('');
+  const [dispatchRosterFilter, setDispatchRosterFilter] = useState<DispatchRosterFilter>('all');
   const [toast, setToast] = useState('');
   const [nameDraft, setNameDraft] = useState(''); // 首登設定顯示名稱
   const [addOpen, setAddOpen] = useState(false); // 新增人員彈窗
@@ -341,6 +348,15 @@ export function OperatorHome() {
   // 開啟派工彈窗的局物件
   const activeReq = dispatchSheet ? state.requests.find((r) => r.id === dispatchSheet) : null;
   const alreadyDispatched = dispatchSheet ? dispatchedGirlIds(dispatchSheet) : [];
+  const dispatchUnavailableIds = new Set([...alreadyDispatched, ...busyGirlIds]);
+  const dispatchRosterGirls = filterDispatchRoster(
+    rosterGirls,
+    dispatchSearch,
+    dispatchRosterFilter,
+    new Set(selectedGirls),
+    dispatchUnavailableIds,
+  );
+  const hiddenSelectedCount = countHiddenSelections(selectedGirls, dispatchRosterGirls);
   // 離線也可派工：僅「約會中（忙碌）」仍禁止，與伺服器授權一致
   // （sync-authz 的派工檢查只看 isManager／自己旗下／不在約會中，從未檢查在線狀態）。
   // 名單仍顯示上線／離線，保留給幹部判斷，但不再阻擋操作。
@@ -471,7 +487,12 @@ export function OperatorHome() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => { setDispatchSheet(req.id); setSelectedGirls([]); }}
+                      onClick={() => {
+                        setDispatchSheet(req.id);
+                        setSelectedGirls([]);
+                        setDispatchSearch('');
+                        setDispatchRosterFilter('all');
+                      }}
                       className="flex-1 py-2.5 rounded-xl bg-purple-100 text-sm font-semibold text-purple-700 border border-purple-200 active:bg-purple-200 transition-colors"
                     >
                       {dispatchedCount > 0 ? `再安排（已 ${dispatchedCount} 位）` : '安排出席'}
@@ -632,7 +653,16 @@ export function OperatorHome() {
 
       {/* Dispatch bottom sheet */}
       {dispatchSheet && (
-        <div className="app-modal-layer fixed inset-0 flex items-end justify-center" onClick={() => { if (!dispatching) setDispatchSheet(null); }}>
+        <div
+          className="app-modal-layer fixed inset-0 flex items-end justify-center"
+          onClick={() => {
+            if (!dispatching) {
+              setDispatchSheet(null);
+              setDispatchSearch('');
+              setDispatchRosterFilter('all');
+            }
+          }}
+        >
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div
             className="app-bottom-sheet relative w-full max-w-[430px] overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl"
@@ -645,8 +675,72 @@ export function OperatorHome() {
               {selectedGirls.length > 0 && `· 已選 ${selectedGirls.length}`}
             </p>
 
+            <div className="mb-3">
+              <div className="relative">
+                <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="search"
+                  value={dispatchSearch}
+                  onChange={(event) => setDispatchSearch(event.target.value)}
+                  placeholder="搜尋小姐名稱或人員編號"
+                  aria-label="搜尋安排出席人員"
+                  className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-10 text-sm text-brand-ink outline-none transition-colors placeholder:text-zinc-400 focus:border-purple-300 focus:bg-white"
+                />
+                {dispatchSearch.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setDispatchSearch('')}
+                    aria-label="清除安排名單搜尋"
+                    className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 active:bg-zinc-100"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-2 flex gap-2" aria-label="安排名單篩選">
+                {([
+                  { value: 'all', label: '全部' },
+                  { value: 'available', label: '可安排' },
+                  { value: 'selected', label: `已選擇 ${selectedGirls.length}` },
+                ] as const).map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    aria-pressed={dispatchRosterFilter === option.value}
+                    onClick={() => setDispatchRosterFilter(option.value)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
+                      dispatchRosterFilter === option.value
+                        ? 'border-purple-300 bg-purple-100 text-purple-700'
+                        : 'border-zinc-200 bg-white text-zinc-500 active:bg-zinc-50'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              {hiddenSelectedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDispatchSearch('');
+                    setDispatchRosterFilter('selected');
+                  }}
+                  className="mt-2 text-left text-xs font-semibold text-amber-600 underline"
+                >
+                  另有 {hiddenSelectedCount} 位已選人員不在目前結果，點此查看
+                </button>
+              )}
+            </div>
+
             <div className="flex flex-col gap-2 mb-5">
-              {rosterGirls.map((user) => {
+              {dispatchRosterGirls.length === 0 ? (
+                <div className="rounded-2xl bg-brand-snow px-4 py-8 text-center">
+                  <p className="text-sm font-semibold text-zinc-500">找不到符合的人員</p>
+                  <p className="mt-1 text-xs text-zinc-400">可清除搜尋或切換其他篩選</p>
+                </div>
+              ) : dispatchRosterGirls.map((user) => {
                 if (!user) return null;
                 const isOnline = state.onlineUserIds.includes(user.id);
                 const isAlready = alreadyDispatched.includes(user.id);
@@ -666,6 +760,7 @@ export function OperatorHome() {
                     <img src={user.avatarUrl} alt={user.nickname} className="w-10 h-10 rounded-full object-cover shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-brand-ink">{user.nickname}</p>
+                      <p className="truncate text-[10px] text-zinc-400">人員編號 {user.id}</p>
                       {isBusy ? (
                         <p className="text-xs text-pink-500 font-semibold">已確認出席</p>
                       ) : isAlready ? (
@@ -689,7 +784,7 @@ export function OperatorHome() {
               disabled={eligibleSelectedCount === 0 || dispatching}
               className="sticky bottom-0 z-10 w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed active:bg-purple-600 transition-colors"
             >
-              {dispatching ? '伺服器確認中…' : `確認出席${selectedGirls.length > 0 ? `（${selectedGirls.length} 位）` : ''}`}
+              {dispatching ? '伺服器確認中…' : `確認出席${eligibleSelectedCount > 0 ? `（${eligibleSelectedCount} 位）` : ''}`}
             </button>
           </div>
         </div>
