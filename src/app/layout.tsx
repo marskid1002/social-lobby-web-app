@@ -18,6 +18,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  // Chromium/Android 直接縮小 layout viewport；iOS 不支援時由聊天室的 visualViewport fallback 接手。
+  interactiveWidget: 'resizes-content',
   themeColor: '#070812',
 };
 

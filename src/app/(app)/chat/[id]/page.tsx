@@ -7,6 +7,7 @@ import { useAppState, otherIdFromThread } from '@/lib/state';
 import { uploadChatImage } from '@/lib/image';
 import type { ChatMessage } from '@/lib/mock';
 import { directInvitationThreadId } from '@/lib/chat-authz';
+import { resolveChatViewport } from '@/lib/chat-viewport';
 
 interface ChatPageProps {
   params: Promise<{ id: string }>;
@@ -113,10 +114,8 @@ function ChatMessageBody({
   );
 }
 
-// 手機鍵盤／瀏覽器動態 UI 會改變「實際可見區域」。用 visualViewport 量測目前真正可見的高度與位移，
-// 讓聊天外框剛好貼齊可見區（composer 落在鍵盤上方）。跨 iOS／Android 用同一套：只讀取 visualViewport
-// 回報的高度，不用 UA 判斷、不猜測、不自行扣鍵盤高度——因此在 Android 已縮小 viewport 時不會二次扣除。
-// 沒有 visualViewport 時回傳 null，交由 CSS 的 h-dvh(100dvh) fallback。
+// 手機鍵盤只改變 visual viewport；聊天室本身改用 absolute frame，避開 iOS 對 position:fixed
+// 元素的錯誤繪製。鍵盤動畫期間會延遲重測，並先把瀏覽器回報值交給純函式做異常保護。
 function useKeyboardViewport() {
   const [vp, setVp] = useState<{ height: number; offsetTop: number } | null>(null);
   useEffect(() => {
@@ -124,16 +123,16 @@ function useKeyboardViewport() {
     if (!vv) return;
     let raf = 0;
     let last = { height: -1, offsetTop: -1 };
+    let settleTimers: ReturnType<typeof setTimeout>[] = [];
     const measure = () => {
       raf = 0;
-      const height = Math.round(vv.height);
-      const activeElement = document.activeElement;
-      const textInputFocused = activeElement instanceof HTMLInputElement
-        || activeElement instanceof HTMLTextAreaElement;
-      const keyboardLikelyOpen = textInputFocused && window.innerHeight - vv.height > 80;
-      // 一般手勢／瀏覽器工具列收合也會改變 visualViewport.offsetTop。
-      // 只有鍵盤確實開啟時才套用位移，避免手指上滑卻把整個聊天框往下推。
-      const offsetTop = keyboardLikelyOpen ? Math.max(0, Math.round(vv.offsetTop)) : 0;
+      const box = resolveChatViewport({
+        visualHeight: vv.height,
+        visualOffsetTop: vv.offsetTop,
+        layoutHeight: Math.max(window.innerHeight, document.documentElement.clientHeight),
+      });
+      if (!box) return;
+      const { height, offsetTop } = box;
       if (height === last.height && offsetTop === last.offsetTop) return; // 只在實際改變時更新
       last = { height, offsetTop };
       setVp({ height, offsetTop });
@@ -142,16 +141,29 @@ function useKeyboardViewport() {
       if (raf) return; // 用 rAF 合併鍵盤動畫期間的高頻 resize／scroll，避免抖動
       raf = requestAnimationFrame(measure);
     };
-    schedule(); // 初次量測
+    const scheduleSettled = () => {
+      schedule();
+      for (const timer of settleTimers) clearTimeout(timer);
+      // WebKit 的 focus/resize 事件可能早於最終 viewport 數值，動畫結束後再校正。
+      settleTimers = [50, 150, 320].map((delay) => setTimeout(schedule, delay));
+    };
+    scheduleSettled(); // 初次量測
     vv.addEventListener('resize', schedule);
     vv.addEventListener('scroll', schedule);
-    document.addEventListener('focusin', schedule);
-    document.addEventListener('focusout', schedule);
+    window.addEventListener('resize', scheduleSettled);
+    window.addEventListener('orientationchange', scheduleSettled);
+    window.addEventListener('pageshow', scheduleSettled);
+    document.addEventListener('focusin', scheduleSettled);
+    document.addEventListener('focusout', scheduleSettled);
     return () => {
       vv.removeEventListener('resize', schedule);
       vv.removeEventListener('scroll', schedule);
-      document.removeEventListener('focusin', schedule);
-      document.removeEventListener('focusout', schedule);
+      window.removeEventListener('resize', scheduleSettled);
+      window.removeEventListener('orientationchange', scheduleSettled);
+      window.removeEventListener('pageshow', scheduleSettled);
+      document.removeEventListener('focusin', scheduleSettled);
+      document.removeEventListener('focusout', scheduleSettled);
+      for (const timer of settleTimers) clearTimeout(timer);
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);
@@ -321,21 +333,15 @@ export default function ChatPage({ params }: ChatPageProps) {
   const lastScrolledElRef = useRef<HTMLDivElement | null>(null);
   const programmaticScrollRef = useRef(false);
   const vp = useKeyboardViewport();
-  // 聊天外框套用「可見區域」尺寸：有 visualViewport 時用其高度/位移貼齊可見區（composer 在鍵盤上方）；
-  // 沒有時 style 為 undefined，交給下方 className 的 h-dvh(100dvh) fallback。
+  // 用 absolute 而不是 fixed：iOS 可能把 fixed 元素依錯誤的 layout viewport 繪製。
+  // absolute top 補償 visual viewport 位移，height 則讓 composer 留在鍵盤上方。
   const frameStyle: React.CSSProperties | undefined = vp
     ? {
-        position: 'fixed',
+        position: 'absolute',
         top: vp.offsetTop,
         left: 0,
         right: 0,
         height: vp.height,
-        // 水平置中對齊全站 max-w-[430px] 手機欄：position:fixed 的包含塊是 viewport（祖先只有 relative、
-        // 無 transform/filter，不會建立 fixed 包含塊），故用 margin:auto + maxWidth 對齊手機欄。
-        // 刻意不使用 transform 置中——transform 會使內部 position:fixed 的 lightbox/overlay 失準。
-        marginLeft: 'auto',
-        marginRight: 'auto',
-        maxWidth: 430,
       }
     : undefined;
   const [viewAs, setViewAs] = useState<'user' | 'xiaomei'>('user');
