@@ -208,6 +208,14 @@ type SystemStatus = {
     lastSuccessAt?: string;
     lastFailureAt?: string;
     lastFailureCode?: string;
+    history: Array<{
+      id: string;
+      createdAt: string;
+      outcome: 'success' | 'failure';
+      purpose: 'register' | 'reset' | 'unknown';
+      userId?: string;
+      code?: string;
+    }>;
   };
 };
 
@@ -2146,12 +2154,38 @@ export default function AdminPage() {
                   {data.system.smsRuntime.state === 'no_data' ? (
                     <p className="mt-3 text-zinc-500">目前尚無簡訊發送紀錄；上方只代表設定完整。</p>
                   ) : (
-                    <div className="mt-3 space-y-1 text-zinc-600">
-                      <p>最近一次：{data.system.smsRuntime.state === 'healthy' ? '成功' : '失敗'} · {fmtTime(data.system.smsRuntime.lastAttemptAt)}</p>
-                      <p>近 24 小時：發送 {data.system.smsRuntime.attempts24h} 次，失敗 {data.system.smsRuntime.failures24h} 次</p>
-                      {data.system.smsRuntime.lastFailureAt && (
-                        <p className="text-red-600">最近失敗：{fmtTime(data.system.smsRuntime.lastFailureAt)}{data.system.smsRuntime.lastFailureCode ? ` · ${data.system.smsRuntime.lastFailureCode}` : ''}</p>
-                      )}
+                    <div className="mt-3 text-zinc-600">
+                      <div className="space-y-1">
+                        <p>最近一次：{data.system.smsRuntime.state === 'healthy' ? '成功' : '失敗'} · {fmtTime(data.system.smsRuntime.lastAttemptAt)}</p>
+                        <p>近 24 小時：發送 {data.system.smsRuntime.attempts24h} 次，失敗 {data.system.smsRuntime.failures24h} 次</p>
+                        {data.system.smsRuntime.lastFailureAt && (
+                          <p className="text-red-600">最近失敗：{fmtTime(data.system.smsRuntime.lastFailureAt)}{data.system.smsRuntime.lastFailureCode ? ` · ${data.system.smsRuntime.lastFailureCode}` : ''}</p>
+                        )}
+                      </div>
+                      <div className="mt-4 border-t border-zinc-100 pt-4">
+                        <h3 className="font-bold text-zinc-800">最近發送歷程</h3>
+                        <div className="mt-2 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
+                          {data.system.smsRuntime.history.map((item) => (
+                            <div key={item.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2.5">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className={`h-2 w-2 shrink-0 rounded-full ${item.outcome === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                <span className="font-semibold text-zinc-800">
+                                  {item.purpose === 'register' ? '註冊驗證' : item.purpose === 'reset' ? '重設密碼' : '驗證碼'}
+                                </span>
+                                <span className={item.outcome === 'success' ? 'text-emerald-600' : 'text-red-600'}>
+                                  {item.outcome === 'success' ? '成功' : '失敗'}
+                                </span>
+                              </div>
+                              <time className="text-xs text-zinc-400">{fmtTime(item.createdAt)}</time>
+                              <div className="basis-full pl-4 text-xs text-zinc-400">
+                                {item.userId ? `客戶 ID：${item.userId}` : '新註冊號碼（不保存完整手機）'}
+                                {item.outcome === 'failure' && item.code ? ` · 錯誤：${item.code}` : ''}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs text-zinc-400">最多顯示最近 20 筆；不記錄驗證碼或完整手機號碼。</p>
+                      </div>
                     </div>
                   )}
                 </div>

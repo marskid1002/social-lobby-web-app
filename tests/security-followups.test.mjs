@@ -46,7 +46,48 @@ test('SMS 後台摘要以最近一次結果顯示，並統計近 24 小時失敗
     lastSuccessAt: '2026-08-27T10:00:00.000Z',
     lastFailureAt: '2026-08-27T11:00:00.000Z',
     lastFailureCode: 'provider_rejected',
+    history: [
+      {
+        id: '2',
+        createdAt: '2026-08-27T11:00:00.000Z',
+        outcome: 'failure',
+        purpose: 'unknown',
+        code: 'provider_rejected',
+      },
+      {
+        id: '1',
+        createdAt: '2026-08-27T10:00:00.000Z',
+        outcome: 'success',
+        purpose: 'unknown',
+      },
+      {
+        id: 'old',
+        createdAt: '2026-08-25T10:00:00.000Z',
+        outcome: 'failure',
+        purpose: 'unknown',
+      },
+    ],
   });
+});
+
+test('SMS 發送歷程顯示用途與客戶 ID，但不包含詳細傳送內容', () => {
+  const status = summarizeSmsRuntime([{
+    id: 'sms-1',
+    traceId: 'trace-1',
+    eventType: 'sms.otp',
+    outcome: 'success',
+    actorUserId: 'c-customer',
+    entityId: 'reset',
+    detail: 'provider=msgdogs;purpose=reset;http=200',
+    createdAt: '2026-08-27T11:30:00.000Z',
+  }], NOW);
+  assert.deepEqual(status.history, [{
+    id: 'sms-1',
+    createdAt: '2026-08-27T11:30:00.000Z',
+    outcome: 'success',
+    purpose: 'reset',
+    userId: 'c-customer',
+  }]);
 });
 
 test('聊天照片上傳明確標記為 chat 類型', () => {

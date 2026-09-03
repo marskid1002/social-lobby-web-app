@@ -293,10 +293,13 @@ function reconcilePresence(next: AppState): AppState {
   }
   return { ...next, onlineUserIds, onlineStatuses };
 }
-const SYNC_POLL_MS = 4000;
+// 聊天需要較即時；其他頁面降低輪詢頻率，避免閒置頁面持續消耗 /api/sync。
+const CHAT_SYNC_POLL_MS = 4000;
+const GENERAL_SYNC_POLL_MS = 10_000;
 let syncStarted = false;
 let sharedSyncReady = false;
 let isPushing = false;
+let syncPollTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 尚未確認送達 server 的本機項目（避免 poll 以 server 舊版覆蓋樂觀更新造成靜默遺失，#10）
 const unconfirmed: Partial<Record<SharedKey, Map<string, { id: string }>>> = {};
@@ -542,6 +545,40 @@ async function pollShared() {
   } catch {}
 }
 
+function currentSyncPollMs(): number {
+  if (typeof window === 'undefined') return GENERAL_SYNC_POLL_MS;
+  return /^\/chat(?:\/|$)/.test(window.location.pathname)
+    ? CHAT_SYNC_POLL_MS
+    : GENERAL_SYNC_POLL_MS;
+}
+
+function stopScheduledSync(): void {
+  if (syncPollTimer !== null) {
+    clearTimeout(syncPollTimer);
+    syncPollTimer = null;
+  }
+}
+
+function scheduleNextSync(): void {
+  stopScheduledSync();
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+  syncPollTimer = setTimeout(async () => {
+    syncPollTimer = null;
+    await pollShared();
+    scheduleNextSync();
+  }, currentSyncPollMs());
+}
+
+function handleSyncVisibilityChange(): void {
+  if (document.visibilityState !== 'visible') {
+    stopScheduledSync();
+    return;
+  }
+  // 回到前景時立即取得最新資料，再依目前所在頁面的頻率繼續輪詢。
+  stopScheduledSync();
+  void pollShared().finally(scheduleNextSync);
+}
+
 /** 由通知落地頁主動刷新一次權威共享資料。 */
 export async function refreshShared(): Promise<void> {
   await pollShared();
@@ -550,6 +587,7 @@ export async function refreshShared(): Promise<void> {
 function startSync() {
   if (syncStarted || typeof window === 'undefined') return;
   syncStarted = true;
+  document.addEventListener('visibilitychange', handleSyncVisibilityChange);
   // 啟動時：先拉一次（取得 resetAt 並丟棄已被清除的本機殘留），再把「剩餘」本機共享資料推上 server，
   // 避免把管理員已清除的舊資料又回推復活。
   pollShared().then(() => {
@@ -561,8 +599,7 @@ function startSync() {
       if (arr && arr.length) initPatch[key] = arr;
     }
     if (Object.keys(initPatch).length) pushSharedPatch(initPatch);
-  });
-  setInterval(pollShared, SYNC_POLL_MS);
+  }).finally(scheduleNextSync);
 }
 
 // 重設共享資料（同時清 server）

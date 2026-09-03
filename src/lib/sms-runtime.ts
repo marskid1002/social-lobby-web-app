@@ -8,9 +8,26 @@ export type SmsRuntimeStatus = {
   lastSuccessAt?: string;
   lastFailureAt?: string;
   lastFailureCode?: string;
+  history: SmsRuntimeHistoryItem[];
+};
+
+export type SmsRuntimeHistoryItem = {
+  id: string;
+  createdAt: string;
+  outcome: 'success' | 'failure';
+  purpose: 'register' | 'reset' | 'unknown';
+  userId?: string;
+  code?: string;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HISTORY_LIMIT = 20;
+
+function smsPurpose(event: FlowTraceEvent): SmsRuntimeHistoryItem['purpose'] {
+  if (event.entityId === 'register' || event.entityId === 'reset') return event.entityId;
+  const match = event.detail?.match(/(?:^|;)purpose=(register|reset)(?:;|$)/);
+  return match?.[1] === 'register' || match?.[1] === 'reset' ? match[1] : 'unknown';
+}
 
 export function summarizeSmsRuntime(
   events: FlowTraceEvent[],
@@ -26,6 +43,14 @@ export function summarizeSmsRuntime(
   const last = smsEvents[0];
   const lastSuccess = smsEvents.find((event) => event.outcome === 'success');
   const lastFailure = smsEvents.find((event) => event.outcome === 'failure');
+  const history = smsEvents.slice(0, HISTORY_LIMIT).map((event) => ({
+    id: event.id,
+    createdAt: event.createdAt,
+    outcome: event.outcome === 'failure' ? 'failure' as const : 'success' as const,
+    purpose: smsPurpose(event),
+    ...(event.actorUserId ? { userId: event.actorUserId } : {}),
+    ...(event.code ? { code: event.code } : {}),
+  }));
   return {
     state: !last ? 'no_data' : last.outcome === 'failure' ? 'degraded' : 'healthy',
     attempts24h: recent.length,
@@ -36,5 +61,6 @@ export function summarizeSmsRuntime(
       lastFailureAt: lastFailure.createdAt,
       ...(lastFailure.code ? { lastFailureCode: lastFailure.code } : {}),
     } : {}),
+    history,
   };
 }
