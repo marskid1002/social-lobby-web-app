@@ -181,8 +181,10 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       if (!area || !ALLOWED_AREAS.has(area)) return [];
       const suppliedExpiry = Date.parse(s(r.expiresAt) ?? '');
       if (Number.isFinite(suppliedExpiry) && suppliedExpiry <= now - (REQUEST_RETENTION_MS - REQUEST_ACTIVE_MS)) return [];
+      const safeRequest: Item = { ...r };
+      delete safeRequest.attendanceSummary; // 只允許 /api/sync 讀取端產生，客戶端不可寫入匿名統計
       return [{
-        ...r,
+        ...safeRequest,
         area,
         requestType: primaryRequestType,
         requestTypes: requestTypes.length > 0 ? requestTypes : [primaryRequestType],

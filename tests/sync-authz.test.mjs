@@ -64,10 +64,11 @@ test('presence/photos：本人 escort 可寫；他人/未知/removed/非 manager
 
 // ══ requests（M5）══
 test('requests：creator-only、發局者可編輯白名單欄位、凍結身份/時間、takeover 丟棄', () => {
-  const created = one(run({ requests: [{ id: 'r1', creatorId: 'A', area: '信義區', requestType: 'other', venueType: 'bar', createdAt: CA }] }, usr('A')).requests);
+  const created = one(run({ requests: [{ id: 'r1', creatorId: 'A', area: '信義區', requestType: 'other', venueType: 'bar', createdAt: CA, attendanceSummary: { joiningCount: 999, confirmedCount: 999 } }] }, usr('A')).requests);
   assert.equal(created.createdAt, ACCEPTED_AT);
   assert.equal(created.expiresAt, new Date(NOW + 2 * 60 * 60 * 1000).toISOString());
   assert.equal(created.status, 'open');
+  assert.equal(created.attendanceSummary, undefined, '匿名統計只能由讀取端產生，不得由 client 寫入');
   assert.deepEqual(run({ requests: [{ id: 'r1', creatorId: 'B', area: '信義區', requestType: 'other', venueType: 'bar', createdAt: CA }] }, usr('A')).requests, []);
   const cols = { requests: [{ id: 'r1', creatorId: 'A', createdAt: CA, expiresAt: CA, area: '信義區', venueType: 'bar', partyFormat: 'with_women', requestType: 'other', peopleCount: 2, note: '原文', status: 'open' }] };
   const m = one(run({ requests: [{ id: 'r1', creatorId: 'HACK', createdAt: 'HACK', expiresAt: 'HACK', area: '大安區', venueType: 'nightclub', partyFormat: 'one_on_one', requestType: 'dancing', peopleCount: 4, note: '更新', status: 'closed' }] }, usr('A'), cols).requests);

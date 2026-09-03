@@ -7,7 +7,7 @@ import { buildChatAccessIndex, canReadChatThread } from '@/lib/chat-authz';
 import { getAccountDisplayNames, getManagerUserIds } from '@/lib/auth-store';
 import { recordAcceptedSyncWrites } from '@/lib/flow-trace';
 import { deliverAuthorizedPushes, planAuthorizedSyncPushes } from '@/lib/push-authz';
-import { filledRequestClosures } from '@/lib/request-attendance';
+import { confirmedCountForRequest, filledRequestClosures } from '@/lib/request-attendance';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,11 +75,36 @@ export function scopeForSession(all: SharedState, s: SessionPayload): SharedStat
   const requests = all.requests ?? [];
   const responses = all.responses ?? [];
   const visibleRequests = (isManager ? requests : requests.filter((r) => asRec(r).creatorId === me))
-    .filter((r) => ok(asRec(r).creatorId));
+    .filter((r) => ok(asRec(r).creatorId))
+    .map((request) => {
+      const requestId = String(request.id ?? '');
+      const joiningCount = responses.filter((response) => {
+        const item = asRec(response);
+        return item.requestId === requestId && item.responseStatus === 'joining';
+      }).length;
+      const confirmedCount = confirmedCountForRequest(
+        requestId,
+        all.responses ?? [],
+        all.invitations ?? [],
+      );
+      const scopedRequest: typeof request & Record<string, unknown> = {
+        ...request,
+        attendanceSummary: { joiningCount, confirmedCount },
+      };
+
+      // 公開局的瀏覽者名單也可能揭露女伴身分；非發局幹部只取得匿名統計。
+      if (isManager && asRec(request).creatorId !== me) delete scopedRequest.requestViewers;
+      return scopedRequest;
+    });
   const visibleReqIds = new Set(visibleRequests.map((r) => r.id));
+  const requestCreatorIds = new Map(requests.map((request) => [request.id, asRec(request).creatorId]));
 
   const scopedResponses = (isManager
-    ? responses
+    ? responses.filter((response) => {
+        const item = asRec(response);
+        // 幹部只取得自己派出的女伴；若該局是自己發布，仍保留發局者管理參加者的能力。
+        return item.dispatcherId === me || requestCreatorIds.get(item.requestId as string) === me;
+      })
     : responses.filter((r) => {
         const x = asRec(r);
         return visibleReqIds.has(x.requestId as string) || x.userId === me || x.dispatcherId === me;

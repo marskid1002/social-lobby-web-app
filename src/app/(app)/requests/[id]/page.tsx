@@ -65,6 +65,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
   const isCreator  = state.currentUserId === request.creatorId;
   const isEscort   = currentUser?.role === 'escort';
+  const isManager  = currentUser?.role === 'manager';
   // Only count active responses (not withdrawn) for the escort's CTA state
   const myResponse = responses.find(
     (r) => r.userId === state.currentUserId && r.responseStatus !== 'withdrawn'
@@ -74,8 +75,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   // Split responses by status
   const interestedList = responses.filter((r) => r.responseStatus === 'interested');
   const joiners        = responses.filter((r) => r.responseStatus === 'joining');
+  const totalJoiningCount = request.attendanceSummary?.joiningCount ?? joiners.length;
+  const anonymousJoiningCount = isManager && !isCreator
+    ? Math.max(0, totalJoiningCount - joiners.length)
+    : 0;
   const isAtCap        = request.status === 'closed'; // #5 派工無上限：僅已關閉才視為不可加入
-  const confirmedCount = confirmedCountForRequest(id, state.responses, state.invitations);
+  const confirmedCount = request.attendanceSummary?.confirmedCount
+    ?? confirmedCountForRequest(id, state.responses, state.invitations);
   const isFull = confirmedCount >= request.peopleCount;
 
   // FOMO viewers (exclude anyone who has already responded)
@@ -252,7 +258,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               {SHOW_REQUEST_CLASSIFICATION && request.partyFormat ? ` · ${PARTY_FORMAT_LABELS[request.partyFormat] ?? request.partyFormat}` : ''}
             </span>
             <span className="flex items-center gap-1 text-xs text-zinc-500">
-              <Users className="w-3 h-3" strokeWidth={1.75} /> {joiners.length}/{request.peopleCount} 人
+              <Users className="w-3 h-3" strokeWidth={1.75} /> {totalJoiningCount}/{request.peopleCount} 人
             </span>
             </div>
             {(canEditRequest || canIncreaseRequest) && (
@@ -410,12 +416,12 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </div>
         )}
 
-        {/* Joiners section */}
+        {/* Joiners section：非發局幹部只會收到自己派出的明細 */}
         {joiners.length > 0 && (
           <div className="bg-white rounded-2xl p-4 shadow-card">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
-                已加入 ({joiners.length}/{request.peopleCount})
+                {isManager && !isCreator ? '你安排的女伴' : '已加入'} ({joiners.length}/{request.peopleCount})
               </p>
               {isAtCap && (
                 <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-red-50 text-red-500">
@@ -455,6 +461,20 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 💬 前往收件匣開始聊天
               </button>
             )}
+          </div>
+        )}
+
+        {anonymousJoiningCount > 0 && (
+          <div className="rounded-2xl bg-white p-4 shadow-card">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-brand-ink">其他女伴</p>
+                <p className="mt-1 text-xs text-zinc-400">為保護隱私，不顯示其他幹部安排的人員資料</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-brand-lavender/40 px-3 py-1 text-xs font-bold text-brand-ink">
+                {anonymousJoiningCount} 位
+              </span>
+            </div>
           </div>
         )}
       </div>

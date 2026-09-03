@@ -42,17 +42,15 @@ export function RequestCard({ request, variant, creator, onCancelJoin }: Props) 
   const joinAskCount = allResponses.filter(
     (r) => r.responseStatus === 'interested' || r.responseStatus === 'joining'
   ).length;
-  const joinersCount = allResponses.filter((r) => r.responseStatus === 'joining').length;
+  const joinersCount = request.attendanceSummary?.joiningCount
+    ?? allResponses.filter((r) => r.responseStatus === 'joining').length;
   const views = Math.max(
     request.metrics?.views ?? 0,
     request.requestViewers?.length ?? 0
   );
   const showCounts = views > 0 || joinAskCount > 0 || joinersCount > 0;
-  const confirmedCount = confirmedCountForRequest(
-    request.id,
-    state.responses,
-    state.invitations,
-  );
+  const confirmedCount = request.attendanceSummary?.confirmedCount
+    ?? confirmedCountForRequest(request.id, state.responses, state.invitations);
 
   function handleClose() {
     closeRequest(request.id);

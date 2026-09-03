@@ -84,6 +84,11 @@ export interface Request {
   createdAt: string;         // ISO
   expiresAt: string;         // ISO
   metrics?: RequestMetrics;
+  /** Server-derived counts. Lets scoped clients show capacity without receiving other participants' records. */
+  attendanceSummary?: {
+    joiningCount: number;
+    confirmedCount: number;
+  };
   /** User IDs who opened the detail page but did NOT submit a join response. Used for FOMO display only. */
   requestViewers?: string[];
 }

@@ -318,7 +318,9 @@ export function OperatorHome() {
     .filter((r) => {
       if (r.status !== 'open') return false;
       if (new Date(r.expiresAt).getTime() <= Date.now()) return false;
-      if (confirmedCountForRequest(r.id, state.responses, state.invitations) >= r.peopleCount) {
+      const confirmedCount = r.attendanceSummary?.confirmedCount
+        ?? confirmedCountForRequest(r.id, state.responses, state.invitations);
+      if (confirmedCount >= r.peopleCount) {
         return false;
       }
       const creator = state.users.find((u) => u.id === r.creatorId);
@@ -436,7 +438,8 @@ export function OperatorHome() {
           {incomingRequests.map((req) => {
             const creator = state.users.find((u) => u.id === req.creatorId);
             const dispatchedCount = dispatchedGirlIds(req.id).length;
-            const confirmedCount = confirmedCountForRequest(req.id, state.responses, state.invitations);
+            const confirmedCount = req.attendanceSummary?.confirmedCount
+              ?? confirmedCountForRequest(req.id, state.responses, state.invitations);
             const isFull = isRequestClosed(req); // #5 只有已關閉才鎖定
             const typeColor = TYPE_COLORS[req.requestType] ?? '#9295A5';
             const typeLabel = getRequestTypeLabel(req);

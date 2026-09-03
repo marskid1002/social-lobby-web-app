@@ -101,7 +101,8 @@ export default function RequestsPage() {
   const baseRequests = state.requests.filter(
     (r) => r.status === 'open' &&
            new Date(r.expiresAt) > now &&
-           confirmedCountForRequest(r.id, state.responses, state.invitations) < r.peopleCount &&
+           (r.attendanceSummary?.confirmedCount
+             ?? confirmedCountForRequest(r.id, state.responses, state.invitations)) < r.peopleCount &&
            r.creatorId !== state.currentUserId
   );
 
@@ -109,7 +110,8 @@ export default function RequestsPage() {
   const joinerCounts = Object.fromEntries(
     baseRequests.map((r) => [
       r.id,
-      confirmedCountForRequest(r.id, state.responses, state.invitations),
+      r.attendanceSummary?.confirmedCount
+        ?? confirmedCountForRequest(r.id, state.responses, state.invitations),
     ])
   );
 

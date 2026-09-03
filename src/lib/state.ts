@@ -490,8 +490,9 @@ function applyServerShared(shared: ServerSharedPayload) {
     if (!serverArr) continue;
     // 丟棄早於「清除時間戳」的本機殘留，避免 union 把已清資料保留下來
     const localArr = droppedBeforeReset(key, (globalState[key] as unknown as { id: string }[]) ?? []);
-    // Escorts are authoritative so a stale browser cache cannot resurrect a hard-deleted record.
-    let merged = key === 'escorts' ? [...serverArr] : unionById(localArr, serverArr);
+    // Escorts and responses are authoritative. Scoped response visibility may shrink; retaining the
+    // local union would leave another manager's previously downloaded participants in browser cache.
+    let merged = key === 'escorts' || key === 'responses' ? [...serverArr] : unionById(localArr, serverArr);
     // 疊回尚未確認送達 server 的本機項目：server 版本不得覆蓋（#10）；但別把清除前的舊項目塞回
     const uc = unconfirmed[key];
     if (uc && uc.size) {

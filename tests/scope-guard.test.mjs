@@ -73,6 +73,44 @@ test('scopeForSession：合法 1:1 與群組 chatMessage 的可見性維持原�
   assert.ok(!ids.includes('other'), '與我無關的 1:1 訊息不應可見');
 });
 
+test('scopeForSession：非發局幹部只取得自己派工明細，其他參加者只留下匿名人數', () => {
+  const me = 'manager-a';
+  const otherManager = 'manager-b';
+  const creator = 'customer-a';
+  const reqId = 'request-private-roster';
+  const all = emptyShared({
+    requests: [{
+      id: reqId, creatorId: creator, area: '信義區', requestType: 'drinking',
+      peopleCount: 3, status: 'open', requestViewers: ['girl-other'], createdAt: CA,
+    }],
+    responses: [
+      { id: 'mine', requestId: reqId, userId: 'girl-mine', dispatcherId: me, responseStatus: 'joining', createdAt: CA },
+      { id: 'other', requestId: reqId, userId: 'girl-other', dispatcherId: otherManager, responseStatus: 'joining', createdAt: CA },
+    ],
+  });
+
+  const scoped = scopeForSession(all, session(me, 'manager'));
+  assert.deepEqual(scoped.responses.map((response) => response.id), ['mine']);
+  assert.equal(scoped.requests[0].attendanceSummary.joiningCount, 2);
+  assert.equal(scoped.requests[0].attendanceSummary.confirmedCount, 0);
+  assert.equal('requestViewers' in scoped.requests[0], false, '不得從瀏覽者名單旁路辨識其他女伴');
+});
+
+test('scopeForSession：幹部若是發局者仍可管理該局的全部回應', () => {
+  const me = 'manager-creator';
+  const reqId = 'manager-owned-request';
+  const all = emptyShared({
+    requests: [{ id: reqId, creatorId: me, area: '信義區', requestType: 'drinking', peopleCount: 2, status: 'open', createdAt: CA }],
+    responses: [
+      { id: 'a', requestId: reqId, userId: 'girl-a', dispatcherId: 'manager-a', responseStatus: 'interested', createdAt: CA },
+      { id: 'b', requestId: reqId, userId: 'girl-b', dispatcherId: 'manager-b', responseStatus: 'joining', createdAt: CA },
+    ],
+  });
+
+  const scoped = scopeForSession(all, session(me, 'manager'));
+  assert.deepEqual(scoped.responses.map((response) => response.id), ['a', 'b']);
+});
+
 test('validatePatchShape：合法通過 / 污染丟棄 / 結構錯 400 / 未知 key 忽略 / 超量 400', () => {
   let r = validatePatchShape({ chatMessages: [{ id: 'a', threadId: 't', senderId: 's', text: 'x', createdAt: CA }] });
   assert.equal(r.ok, true); assert.equal(r.patch.chatMessages.length, 1);
