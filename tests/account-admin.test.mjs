@@ -6,6 +6,7 @@ const sessionStore = await import('@/lib/session');
 const activeSession = await import('@/lib/active-session');
 const syncStore = await import('@/lib/sync-store');
 const accountAdminRoute = await import('@/app/api/account-admin/route');
+const accountAdminEscortsRoute = await import('@/app/api/account-admin/escorts/route');
 const authRoute = await import('@/app/api/auth/route');
 
 const REDIS = Boolean(
@@ -122,6 +123,22 @@ test('A777 can inspect every manager and keep a private manager name without gai
     body: JSON.stringify({ action: 'disable', account: 'A001' }),
   }));
   assert.equal(postResponse.status, 403);
+
+  const directoryResponse = await accountAdminEscortsRoute.GET(new Request(
+    'http://localhost/api/account-admin/escorts?q=%E6%9D%B1%E5%8D%80%E9%98%BF%E6%98%8E',
+    { headers },
+  ));
+  assert.equal(directoryResponse.status, 200);
+  const directoryMember = directoryResponse.body.items.find((item) => item.nickname === '稽查測試小姐');
+  assert.ok(directoryMember);
+  assert.equal(directoryMember.managerAccount, 'A001');
+  assert.equal(directoryMember.managerPrivateName, '東區阿明');
+
+  const blockedDirectory = await accountAdminEscortsRoute.GET(new Request(
+    'http://localhost/api/account-admin/escorts',
+    { headers: { cookie: `${sessionStore.SESSION_COOKIE}=${encodeURIComponent(accountAdminToken)}` } },
+  ));
+  assert.equal(blockedDirectory.status, 403);
 });
 
 test('A777 sets its own password once without an activation code', { skip }, async () => {

@@ -61,7 +61,10 @@ export async function requireActiveSession(req: Request): Promise<ActiveSessionR
   // 所有 Route Handler 都在共同授權層拒絕，不能只依賴前端隱藏或 Proxy。
   if (account.role === 'account_viewer') {
     const pathname = new URL(req.url).pathname;
-    if (pathname !== '/api/auth' && pathname !== '/api/account-admin') {
+    const allowedViewerPath = pathname === '/api/auth'
+      || pathname === '/api/account-admin'
+      || pathname === '/api/account-admin/escorts';
+    if (!allowedViewerPath) {
       return { ok: false, response: viewerForbidden() };
     }
   }

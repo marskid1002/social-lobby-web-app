@@ -160,6 +160,31 @@ type ManagerRoster = {
   members: RosterMember[];
 };
 
+type EscortDirectoryStatus = 'online' | 'busy' | 'offline' | 'unset';
+type EscortDirectorySort = 'status' | 'updated' | 'name' | 'manager';
+type EscortDirectoryItem = {
+  id: string;
+  nickname: string;
+  avatarUrl?: string;
+  createdAt: string;
+  status: EscortDirectoryStatus;
+  statusUpdatedAt?: string;
+  managerId: string;
+  managerAccount: string;
+  managerName: string;
+};
+type EscortDirectoryResponse = {
+  items: EscortDirectoryItem[];
+  counts: Record<'all' | EscortDirectoryStatus, number>;
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+};
+type AccountGroup = 'manager' | 'user' | 'staff';
+type AccountDirectoryResponse = {
+  items: Account[];
+  counts: Record<AccountGroup, number>;
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+};
+
 type EscortGallery = {
   id: string;
   nickname: string;
@@ -282,13 +307,14 @@ type DashboardData = {
   requestHistory: RequestHistory[];
 };
 
-type Tab = 'overview' | 'search' | 'flows' | 'history' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
+type Tab = 'overview' | 'search' | 'flows' | 'history' | 'escorts' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
 
 const NAV: Array<{ id: Tab; label: string; short: string }> = [
   { id: 'overview', label: '營運總覽', short: '總覽' },
   { id: 'search', label: '快速查詢', short: '查詢' },
   { id: 'flows', label: '流程診斷', short: '流程' },
   { id: 'history', label: '歷史局', short: '歷史' },
+  { id: 'escorts', label: '小姐狀態', short: '小姐' },
   { id: 'accounts', label: '帳號管理', short: '帳號' },
   { id: 'galleries', label: '小姐相簿總覽', short: '相簿' },
   { id: 'messages', label: '系統訊息', short: '訊息' },
@@ -311,6 +337,19 @@ const ROSTER_STATUS: Record<RosterMember['status'], { label: string; className: 
   offline: { label: '離線', className: 'bg-zinc-100 text-zinc-500' },
   busy: { label: '忙碌中', className: 'bg-pink-50 text-pink-700' },
   removed: { label: '已移除', className: 'bg-red-50 text-red-600' },
+};
+
+const DIRECTORY_STATUS: Record<EscortDirectoryStatus, { label: string; dot: string; className: string }> = {
+  online: { label: '上班中', dot: 'bg-emerald-500', className: 'bg-emerald-50 text-emerald-700' },
+  busy: { label: '忙碌中', dot: 'bg-pink-500', className: 'bg-pink-50 text-pink-700' },
+  offline: { label: '離線', dot: 'bg-zinc-400', className: 'bg-zinc-100 text-zinc-600' },
+  unset: { label: '尚未設定', dot: 'bg-amber-400', className: 'bg-amber-50 text-amber-700' },
+};
+
+const ACCOUNT_GROUP_LABEL: Record<AccountGroup, string> = {
+  manager: '幹部',
+  user: '用戶',
+  staff: '管理帳號',
 };
 
 // 標籤刻意寫成「誰做了什麼」，因為原本 active 叫「約會進行中」會被誤讀成「流程還在跑、幹部尚未回報」，
@@ -443,6 +482,19 @@ export default function AdminPage() {
   const [messageTitle, setMessageTitle] = useState('');
   const [messageContent, setMessageContent] = useState('');
   const [messagePreviewOpen, setMessagePreviewOpen] = useState(false);
+  const [escortQuery, setEscortQuery] = useState('');
+  const [escortStatus, setEscortStatus] = useState<'all' | EscortDirectoryStatus>('all');
+  const [escortSort, setEscortSort] = useState<EscortDirectorySort>('status');
+  const [escortPage, setEscortPage] = useState(1);
+  const [escortDirectory, setEscortDirectory] = useState<EscortDirectoryResponse | null>(null);
+  const [escortDirectoryLoading, setEscortDirectoryLoading] = useState(false);
+  const [escortDirectoryError, setEscortDirectoryError] = useState('');
+  const [accountGroup, setAccountGroup] = useState<AccountGroup>('manager');
+  const [accountQuery, setAccountQuery] = useState('');
+  const [accountPage, setAccountPage] = useState(1);
+  const [accountDirectory, setAccountDirectory] = useState<AccountDirectoryResponse | null>(null);
+  const [accountDirectoryLoading, setAccountDirectoryLoading] = useState(false);
+  const [accountDirectoryError, setAccountDirectoryError] = useState('');
 
   const showToast = (message: string) => {
     setToast(message);
@@ -469,6 +521,79 @@ export default function AdminPage() {
   useEffect(() => {
     load().catch(() => setError('後台資料載入失敗'));
   }, [load]);
+
+  useEffect(() => {
+    if (tab !== 'escorts') return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setEscortDirectoryLoading(true);
+      setEscortDirectoryError('');
+      try {
+        const query = new URLSearchParams({
+          q: escortQuery.trim(),
+          status: escortStatus,
+          sort: escortSort,
+          page: String(escortPage),
+          pageSize: '50',
+        });
+        const response = await fetch(`/api/admin/escorts?${query}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const result = await response.json().catch(() => ({})) as EscortDirectoryResponse & { error?: string };
+        if (!response.ok) throw new Error(result.error || '小姐狀態載入失敗');
+        setEscortDirectory(result);
+        if (result.pagination.page !== escortPage) setEscortPage(result.pagination.page);
+      } catch (loadError) {
+        if (!controller.signal.aborted) {
+          setEscortDirectoryError(loadError instanceof Error ? loadError.message : '小姐狀態載入失敗');
+        }
+      } finally {
+        if (!controller.signal.aborted) setEscortDirectoryLoading(false);
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [tab, escortQuery, escortStatus, escortSort, escortPage, lastRefreshedAt]);
+
+  useEffect(() => {
+    if (tab !== 'accounts') return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setAccountDirectoryLoading(true);
+      setAccountDirectoryError('');
+      try {
+        const response = await fetch('/api/admin/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            group: accountGroup,
+            q: accountQuery.trim(),
+            page: accountPage,
+            pageSize: 50,
+          }),
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const result = await response.json().catch(() => ({})) as AccountDirectoryResponse & { error?: string };
+        if (!response.ok) throw new Error(result.error || '帳號資料載入失敗');
+        setAccountDirectory(result);
+        if (result.pagination.page !== accountPage) setAccountPage(result.pagination.page);
+      } catch (loadError) {
+        if (!controller.signal.aborted) {
+          setAccountDirectoryError(loadError instanceof Error ? loadError.message : '帳號資料載入失敗');
+        }
+      } finally {
+        if (!controller.signal.aborted) setAccountDirectoryLoading(false);
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [tab, accountGroup, accountQuery, accountPage, lastRefreshedAt]);
 
   async function refreshDashboard() {
     if (refreshing) return;
@@ -1022,7 +1147,12 @@ export default function AdminPage() {
                             <button
                               type="button"
                               key={account.userId}
-                              onClick={() => { setSearch(account.userId); setTab('accounts'); }}
+                              onClick={() => {
+                                setAccountGroup(account.role === 'manager' ? 'manager' : account.role === 'user' ? 'user' : 'staff');
+                                setAccountQuery(account.userId);
+                                setAccountPage(1);
+                                setTab('accounts');
+                              }}
                               className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 text-left last:border-0 hover:bg-sky-50"
                             >
                               <div className="min-w-0">
@@ -1486,11 +1616,138 @@ export default function AdminPage() {
               </section>
             )}
 
+            {tab === 'escorts' && (
+              <section>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold">小姐狀態</h1>
+                    <p className="mt-1 text-sm text-zinc-500">A000 可跨幹部搜尋小姐、查看隸屬關係與目前接單狀態。</p>
+                  </div>
+                  <select
+                    value={escortSort}
+                    onChange={(event) => { setEscortSort(event.target.value as EscortDirectorySort); setEscortPage(1); }}
+                    className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-pink-400"
+                    aria-label="小姐排序方式"
+                  >
+                    <option value="status">狀態優先</option>
+                    <option value="updated">最近更新</option>
+                    <option value="name">小姐名稱</option>
+                    <option value="manager">幹部帳號</option>
+                  </select>
+                </div>
+
+                <input
+                  value={escortQuery}
+                  onChange={(event) => { setEscortQuery(event.target.value); setEscortPage(1); }}
+                  placeholder="搜尋小姐暱稱、小姐 ID、幹部名稱或帳號"
+                  className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-pink-400"
+                />
+
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                  {(['all', 'online', 'busy', 'offline', 'unset'] as const).map((statusKey) => {
+                    const label = statusKey === 'all' ? '全部' : DIRECTORY_STATUS[statusKey].label;
+                    const count = escortDirectory?.counts[statusKey] ?? 0;
+                    return (
+                      <button
+                        key={statusKey}
+                        type="button"
+                        onClick={() => { setEscortStatus(statusKey); setEscortPage(1); }}
+                        className={`shrink-0 rounded-full px-3 py-2 text-xs font-bold ${
+                          escortStatus === statusKey ? 'bg-zinc-900 text-white' : 'border border-zinc-200 bg-white text-zinc-600'
+                        }`}
+                      >
+                        {label} {count}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {escortDirectoryError && (
+                  <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{escortDirectoryError}</p>
+                )}
+                <div className={`mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3 ${escortDirectoryLoading ? 'opacity-60' : ''}`}>
+                  {escortDirectory?.items.map((escort) => {
+                    const status = DIRECTORY_STATUS[escort.status];
+                    return (
+                      <article key={escort.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                        <div className="flex items-start gap-3">
+                          {escort.avatarUrl ? (
+                            <img src={escort.avatarUrl} alt={escort.nickname} className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+                          ) : (
+                            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-pink-50 text-lg font-bold text-pink-500">
+                              {escort.nickname.slice(0, 1)}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h2 className="truncate font-bold text-zinc-900">{escort.nickname}</h2>
+                              <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-bold ${status.className}`}>
+                                <span className={`h-2 w-2 rounded-full ${status.dot}`} />
+                                {status.label}
+                              </span>
+                            </div>
+                            <p className="mt-1 break-all font-mono text-[11px] text-zinc-400">{escort.id}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 rounded-xl bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                          <p><span className="text-zinc-400">隸屬幹部：</span>{escort.managerAccount}・{escort.managerName}</p>
+                          <p className="mt-1 break-all text-[11px] text-zinc-400">{escort.managerId}</p>
+                        </div>
+                        <p className="mt-3 text-xs text-zinc-400">
+                          狀態更新：{escort.statusUpdatedAt ? fmtTime(escort.statusUpdatedAt) : '從未設定'}
+                        </p>
+                      </article>
+                    );
+                  })}
+                </div>
+                {!escortDirectoryLoading && escortDirectory?.items.length === 0 && (
+                  <p className="mt-4 rounded-2xl bg-white p-8 text-center text-sm text-zinc-400">找不到符合條件的小姐。</p>
+                )}
+                {escortDirectory && escortDirectory.pagination.totalPages > 1 && (
+                  <div className="mt-5 flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      disabled={escortDirectory.pagination.page <= 1 || escortDirectoryLoading}
+                      onClick={() => setEscortPage((page) => Math.max(1, page - 1))}
+                      className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                    >
+                      上一頁
+                    </button>
+                    <span className="text-sm text-zinc-500">
+                      {escortDirectory.pagination.page} / {escortDirectory.pagination.totalPages}・共 {escortDirectory.pagination.total} 位
+                    </span>
+                    <button
+                      type="button"
+                      disabled={escortDirectory.pagination.page >= escortDirectory.pagination.totalPages || escortDirectoryLoading}
+                      onClick={() => setEscortPage((page) => page + 1)}
+                      className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                    >
+                      下一頁
+                    </button>
+                  </div>
+                )}
+              </section>
+            )}
+
             {tab === 'accounts' && (
               <section>
                 <h1 className="text-2xl font-bold">帳號管理</h1>
-                <p className="mt-1 text-sm text-zinc-500">A000、幹部與客戶帳號集中管理。</p>
-                <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                <p className="mt-1 text-sm text-zinc-500">幹部、用戶與管理帳號分開搜尋，不會再混在同一份清單。</p>
+                <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                  {(['manager', 'user', 'staff'] as const).map((group) => (
+                    <button
+                      key={group}
+                      type="button"
+                      onClick={() => { setAccountGroup(group); setAccountPage(1); setAccountQuery(''); setRosterOpen(null); }}
+                      className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold ${
+                        accountGroup === group ? 'bg-zinc-900 text-white' : 'border border-zinc-200 bg-white text-zinc-600'
+                      }`}
+                    >
+                      {ACCOUNT_GROUP_LABEL[group]} {accountDirectory?.counts[group] ?? 0}
+                    </button>
+                  ))}
+                </div>
+                {accountGroup === 'manager' && <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4">
                   <p className="text-sm font-bold text-sky-900">新增幹部帳號</p>
                   <p className="mt-1 text-xs text-sky-700">帳號由伺服器配置；一次性啟用碼只顯示一次。</p>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -1511,15 +1768,18 @@ export default function AdminPage() {
                       建立幹部
                     </button>
                   </div>
-                </div>
+                </div>}
                 <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="搜尋帳號、暱稱或 userId"
+                  value={accountQuery}
+                  onChange={(event) => { setAccountQuery(event.target.value); setAccountPage(1); }}
+                  placeholder={accountGroup === 'user' ? '搜尋手機號碼、暱稱或 userId（結果仍會遮罩）' : '搜尋帳號、暱稱或 userId'}
                   className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-sky-400"
                 />
-                <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
-                  {filteredAccounts.map((account) => {
+                {accountDirectoryError && (
+                  <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{accountDirectoryError}</p>
+                )}
+                <div className={`mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white ${accountDirectoryLoading ? 'opacity-60' : ''}`}>
+                  {accountDirectory?.items.map((account) => {
                     const roster = data.managerRosters.find((item) => item.managerId === account.userId);
                     const isRosterOpen = rosterOpen === account.userId;
                     return (
@@ -1682,6 +1942,32 @@ export default function AdminPage() {
                     );
                   })}
                 </div>
+                {!accountDirectoryLoading && accountDirectory?.items.length === 0 && (
+                  <p className="mt-4 rounded-2xl bg-white p-8 text-center text-sm text-zinc-400">找不到符合條件的{ACCOUNT_GROUP_LABEL[accountGroup]}帳號。</p>
+                )}
+                {accountDirectory && accountDirectory.pagination.totalPages > 1 && (
+                  <div className="mt-5 flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      disabled={accountDirectory.pagination.page <= 1 || accountDirectoryLoading}
+                      onClick={() => setAccountPage((page) => Math.max(1, page - 1))}
+                      className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                    >
+                      上一頁
+                    </button>
+                    <span className="text-sm text-zinc-500">
+                      {accountDirectory.pagination.page} / {accountDirectory.pagination.totalPages}・共 {accountDirectory.pagination.total} 筆
+                    </span>
+                    <button
+                      type="button"
+                      disabled={accountDirectory.pagination.page >= accountDirectory.pagination.totalPages || accountDirectoryLoading}
+                      onClick={() => setAccountPage((page) => page + 1)}
+                      className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                    >
+                      下一頁
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 

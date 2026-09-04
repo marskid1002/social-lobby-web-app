@@ -6,8 +6,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 
-const { buildAdminDashboard, buildAdminManagerRosters } = await import('@/lib/admin-dashboard');
+const {
+  buildAdminDashboard,
+  buildAdminManagerRosters,
+  buildAdminEscortDirectory,
+  queryAdminEscortDirectory,
+} = await import('@/lib/admin-dashboard');
 const { GET, POST } = await import('@/app/api/admin/route');
+const adminEscortsRoute = await import('@/app/api/admin/escorts/route');
+const adminAccountsRoute = await import('@/app/api/admin/accounts/route');
 const { listAdminAudit, recordAdminAudit } = await import('@/lib/admin-audit-store');
 const { signSession } = await import('@/lib/session');
 const authStore = await import('@/lib/auth-store');
@@ -64,6 +71,54 @@ test('幹部人員統計：依 managerId 隔離，且不顯示舊的軟刪除資
   assert.equal(rosters[0].members.find((member) => member.id === 'girl-a1').status, 'online');
   assert.equal(rosters[0].members.some((member) => member.id === 'girl-a2'), false);
   assert.equal(rosters[1].members[0].status, 'busy');
+});
+
+test('小姐狀態目錄：顯示隸屬、區分未設定，且忙碌優先於上班', () => {
+  const entries = buildAdminEscortDirectory({
+    accounts: [
+      account('A001', 'manager-a', '幹部 A', 'manager'),
+      account('A002', 'manager-b', '幹部 B', 'manager'),
+    ],
+    escorts: [
+      { id: 'girl-online', managerId: 'manager-a', nickname: '小安', createdAt: RECENT },
+      { id: 'girl-unset', managerId: 'manager-b', nickname: '小雨', createdAt: RECENT },
+      { id: 'girl-busy', managerId: 'manager-a', nickname: '小美', createdAt: RECENT },
+    ],
+    presence: [
+      { id: 'girl-online', online: true, updatedAt: RECENT },
+      { id: 'girl-busy', online: true, updatedAt: RECENT_LATER },
+    ],
+    responses: [{ id: 'response-busy', requestId: 'request-busy', userId: 'girl-busy' }],
+    invitations: [{
+      id: 'invitation-busy',
+      requestId: 'request-busy',
+      responseId: 'response-busy',
+      status: 'accepted',
+      managerDecision: 'confirmed',
+      chatExpiresAt: LIVE_FUTURE,
+    }],
+    managerPrivateNames: new Map([['manager-a', '東區阿明']]),
+    now: Date.now(),
+  });
+
+  assert.deepEqual(entries.map((entry) => [entry.id, entry.status]), [
+    ['girl-online', 'online'],
+    ['girl-unset', 'unset'],
+    ['girl-busy', 'busy'],
+  ]);
+  assert.equal(entries.find((entry) => entry.id === 'girl-online').managerAccount, 'A001');
+  assert.equal(entries.find((entry) => entry.id === 'girl-busy').managerPrivateName, '東區阿明');
+});
+
+test('小姐狀態查詢：可用私人名稱搜尋、統計狀態並限制分頁大小', () => {
+  const entries = [
+    { id: 'g1', nickname: '小安', createdAt: RECENT, status: 'online', managerId: 'm1', managerAccount: 'A001', managerName: '幹部一', managerPrivateName: '東區阿明' },
+    { id: 'g2', nickname: '小雨', createdAt: RECENT, status: 'offline', managerId: 'm2', managerAccount: 'A002', managerName: '幹部二' },
+  ];
+  const result = queryAdminEscortDirectory(entries, { q: '東區阿明', page: 9, pageSize: 500 });
+  assert.deepEqual(result.items.map((entry) => entry.id), ['g1']);
+  assert.deepEqual(result.counts, { all: 1, online: 1, busy: 0, offline: 0, unset: 0 });
+  assert.deepEqual(result.pagination, { page: 1, pageSize: 100, total: 1, totalPages: 1 });
 });
 
 function account(key, userId, nickname, role = 'user') {
@@ -314,6 +369,35 @@ test('A000 權限：未登入 401；一般幹部即使偽造 JWT role=admin 仍 
   assert.equal(Array.isArray(allowed.body.accounts), true);
   assert.equal(allowed.body.accounts.some((item) => 'hash' in item || 'salt' in item), false);
   assert.equal(allowed.body.dashboard.overview.accounts >= 1, true);
+});
+
+test('A000 專用目錄：A000 可查詢，A777 不可存取 /api/admin 資料', { skip }, async () => {
+  const adminToken = await signSession({ userId: 'u-016', role: 'admin', tier: 'admin' });
+  const adminHeaders = { cookie: `sl_session=${encodeURIComponent(adminToken)}` };
+  const escorts = await adminEscortsRoute.GET(new Request('http://localhost/api/admin/escorts?pageSize=1', {
+    headers: adminHeaders,
+  }));
+  const accounts = await adminAccountsRoute.POST(new Request('http://localhost/api/admin/accounts', {
+    method: 'POST',
+    headers: { ...adminHeaders, 'content-type': 'application/json' },
+    body: JSON.stringify({ group: 'staff' }),
+  }));
+  assert.equal(escorts.status, 200);
+  assert.equal(accounts.status, 200);
+  assert.equal(accounts.body.items.some((item) => item.key === 'A000'), true);
+
+  const viewer = await authStore.getAccount('A777');
+  assert.ok(viewer);
+  const viewerToken = await signSession({
+    userId: viewer.userId,
+    role: 'account_viewer',
+    tier: viewer.tier,
+    sessionVersion: viewer.sessionVersion,
+  });
+  const blocked = await adminEscortsRoute.GET(new Request('http://localhost/api/admin/escorts', {
+    headers: { cookie: `sl_session=${encodeURIComponent(viewerToken)}` },
+  }));
+  assert.equal(blocked.status, 403);
 });
 
 test('危險操作：只有前端確認不夠，API 確認文字錯誤必須 400 且資料保留', { skip }, async () => {

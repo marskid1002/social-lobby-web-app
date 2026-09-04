@@ -113,6 +113,33 @@ export interface AdminManagerRoster {
   members: AdminRosterMember[];
 }
 
+export type AdminEscortPresenceStatus = 'online' | 'busy' | 'offline' | 'unset';
+export type AdminEscortDirectorySort = 'status' | 'updated' | 'name' | 'manager';
+
+export interface AdminEscortDirectoryEntry {
+  id: string;
+  nickname: string;
+  avatarUrl?: string;
+  createdAt: string;
+  status: AdminEscortPresenceStatus;
+  statusUpdatedAt?: string;
+  managerId: string;
+  managerAccount: string;
+  managerName: string;
+  managerPrivateName?: string;
+}
+
+export interface AdminEscortDirectoryResult {
+  items: AdminEscortDirectoryEntry[];
+  counts: Record<'all' | AdminEscortPresenceStatus, number>;
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 const text = (value: unknown): string =>
   typeof value === 'string' ? value : '';
 
@@ -241,6 +268,131 @@ export function buildAdminManagerRosters(input: {
         members,
       };
     });
+}
+
+/**
+ * A000/A777 共用的跨幹部小姐目錄。呼叫端決定是否附上 A777 私人名稱或照片，
+ * 角色授權則必須由各自的 route 在呼叫本函式前完成。
+ */
+export function buildAdminEscortDirectory(input: {
+  accounts: AdminAccountSummary[];
+  escorts: Item[];
+  presence: Item[];
+  responses: Item[];
+  invitations: Item[];
+  avatarByEscort?: ReadonlyMap<string, string>;
+  managerPrivateNames?: ReadonlyMap<string, string>;
+  now?: number;
+}): AdminEscortDirectoryEntry[] {
+  const busyIds = activeConfirmedGirlIds(input.responses, input.invitations, input.now);
+  const presenceById = new Map(input.presence.map((item) => [item.id, item]));
+  const managerById = new Map(
+    input.accounts
+      .filter((account) => account.role === 'manager')
+      .map((account) => [account.userId, account]),
+  );
+
+  return input.escorts
+    .filter((escort) => escort.removed !== true)
+    .map((escort): AdminEscortDirectoryEntry => {
+      const managerId = text(escort.managerId);
+      const manager = managerById.get(managerId);
+      const presence = presenceById.get(escort.id);
+      const status: AdminEscortPresenceStatus = busyIds.has(escort.id)
+        ? 'busy'
+        : !presence
+          ? 'unset'
+          : presence.online === true
+            ? 'online'
+            : 'offline';
+      const avatarUrl = input.avatarByEscort?.get(escort.id) ?? '';
+      const managerPrivateName = input.managerPrivateNames?.get(managerId)?.trim() ?? '';
+      return {
+        id: escort.id,
+        nickname: text(escort.nickname) || escort.id,
+        ...(avatarUrl ? { avatarUrl } : {}),
+        createdAt: text(escort.createdAt),
+        status,
+        ...(text(presence?.updatedAt) ? { statusUpdatedAt: text(presence?.updatedAt) } : {}),
+        managerId,
+        managerAccount: manager?.key || managerId || '未知帳號',
+        managerName: manager?.nickname || '找不到所屬帳號',
+        ...(managerPrivateName ? { managerPrivateName } : {}),
+      };
+    });
+}
+
+const DIRECTORY_STATUS_ORDER: Record<AdminEscortPresenceStatus, number> = {
+  busy: 0,
+  online: 1,
+  offline: 2,
+  unset: 3,
+};
+
+export function queryAdminEscortDirectory(
+  entries: AdminEscortDirectoryEntry[],
+  input: {
+    q?: string;
+    status?: AdminEscortPresenceStatus | 'all';
+    managerId?: string;
+    sort?: AdminEscortDirectorySort;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): AdminEscortDirectoryResult {
+  const query = text(input.q).trim().toLowerCase();
+  const managerId = text(input.managerId).trim();
+  const status = input.status && ['online', 'busy', 'offline', 'unset'].includes(input.status)
+    ? input.status as AdminEscortPresenceStatus
+    : 'all';
+  const sort = input.sort && ['status', 'updated', 'name', 'manager'].includes(input.sort)
+    ? input.sort as AdminEscortDirectorySort
+    : 'status';
+  const requestedPage = Number.isFinite(input.page) ? Math.floor(input.page as number) : 1;
+  const requestedPageSize = Number.isFinite(input.pageSize) ? Math.floor(input.pageSize as number) : 50;
+  const pageSize = Math.min(100, Math.max(1, requestedPageSize));
+
+  const matched = entries.filter((entry) => {
+    if (managerId && entry.managerId !== managerId) return false;
+    if (!query) return true;
+    return [
+      entry.nickname,
+      entry.id,
+      entry.managerName,
+      entry.managerAccount,
+      entry.managerId,
+      entry.managerPrivateName ?? '',
+    ].some((value) => value.toLowerCase().includes(query));
+  });
+  const counts = matched.reduce<AdminEscortDirectoryResult['counts']>((result, entry) => {
+    result.all += 1;
+    result[entry.status] += 1;
+    return result;
+  }, { all: 0, online: 0, busy: 0, offline: 0, unset: 0 });
+  const filtered = status === 'all' ? matched : matched.filter((entry) => entry.status === status);
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === 'name') return a.nickname.localeCompare(b.nickname, 'zh-Hant');
+    if (sort === 'manager') {
+      return a.managerAccount.localeCompare(b.managerAccount, undefined, { numeric: true })
+        || a.nickname.localeCompare(b.nickname, 'zh-Hant');
+    }
+    if (sort === 'updated') {
+      return dateMs(b.statusUpdatedAt) - dateMs(a.statusUpdatedAt)
+        || a.nickname.localeCompare(b.nickname, 'zh-Hant');
+    }
+    return DIRECTORY_STATUS_ORDER[a.status] - DIRECTORY_STATUS_ORDER[b.status]
+      || dateMs(b.statusUpdatedAt) - dateMs(a.statusUpdatedAt)
+      || a.nickname.localeCompare(b.nickname, 'zh-Hant');
+  });
+  const total = sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(totalPages, Math.max(1, requestedPage));
+  const start = (page - 1) * pageSize;
+  return {
+    items: sorted.slice(start, start + pageSize),
+    counts,
+    pagination: { page, pageSize, total, totalPages },
+  };
 }
 
 export function buildAdminDashboard(input: {
