@@ -87,8 +87,16 @@ async function applyReplacements(replacements: Map<string, string>): Promise<num
       ...record,
       urls: Array.isArray(record.urls) ? record.urls.map(replace) : record.urls,
     })),
-    chatMessages: changed(chatMessages, (record) => ({ ...record, imageUrl: replace(record.imageUrl) })),
-    momentPosts: changed(momentPosts, (record) => ({ ...record, imageUrl: replace(record.imageUrl) })),
+    chatMessages: changed(chatMessages, (record) => ({
+      ...record,
+      avatarUrl: replace(record.avatarUrl),
+      imageUrl: replace(record.imageUrl),
+    })),
+    momentPosts: changed(momentPosts, (record) => ({
+      ...record,
+      avatarUrl: replace(record.avatarUrl),
+      imageUrl: replace(record.imageUrl),
+    })),
   };
   await mergeShared(patch);
   return Object.values(patch).reduce((sum, records) => sum + records.length, 0);

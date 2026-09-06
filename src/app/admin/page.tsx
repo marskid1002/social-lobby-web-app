@@ -178,6 +178,16 @@ type EscortDirectoryResponse = {
   counts: Record<'all' | EscortDirectoryStatus, number>;
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
 };
+type ImageMigrationStatus = {
+  batches: number;
+  attempted: number;
+  migrated: number;
+  failed: number;
+  updatedRecords: number;
+  remaining: number;
+  hasMore: boolean;
+  message: string;
+};
 type AccountGroup = 'manager' | 'user' | 'staff';
 type AccountDirectoryResponse = {
   items: Account[];
@@ -495,6 +505,7 @@ export default function AdminPage() {
   const [accountDirectory, setAccountDirectory] = useState<AccountDirectoryResponse | null>(null);
   const [accountDirectoryLoading, setAccountDirectoryLoading] = useState(false);
   const [accountDirectoryError, setAccountDirectoryError] = useState('');
+  const [imageMigration, setImageMigration] = useState<ImageMigrationStatus | null>(null);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -605,6 +616,70 @@ export default function AdminPage() {
       showToast('重新整理失敗，請確認網路後再試');
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function migrateImagesToR2() {
+    if (busy) return;
+    if (!window.confirm('開始把仍可讀取的舊照片複製到 Cloudflare R2？\n\n不會刪除 Vercel 上的原始照片；只有複製成功後才會更新網址。')) return;
+    setBusy('migrate-images');
+    let cursor = '';
+    let attempted = 0;
+    let migrated = 0;
+    let failed = 0;
+    let updatedRecords = 0;
+    let batches = 0;
+    let remaining = 0;
+    let hasMore = false;
+    try {
+      do {
+        const response = await fetch('/api/admin/migrate-images', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cursor, batchSize: 20 }),
+        });
+        const result = await response.json().catch(() => ({})) as {
+          error?: string;
+          referencedVercelImages?: number;
+          attempted?: number;
+          migrated?: number;
+          failed?: number;
+          updatedRecords?: number;
+          nextCursor?: string | null;
+        };
+        if (!response.ok) throw new Error(result.error || '照片搬移失敗');
+        batches += 1;
+        attempted += result.attempted ?? 0;
+        migrated += result.migrated ?? 0;
+        failed += result.failed ?? 0;
+        updatedRecords += result.updatedRecords ?? 0;
+        remaining = Math.max(0, (result.referencedVercelImages ?? 0) - (result.migrated ?? 0));
+        cursor = result.nextCursor ?? '';
+        hasMore = Boolean(result.nextCursor);
+        setImageMigration({
+          batches,
+          attempted,
+          migrated,
+          failed,
+          updatedRecords,
+          remaining,
+          hasMore,
+          message: hasMore ? '搬移中，請勿關閉頁面…' : '本輪搬移完成',
+        });
+      } while (hasMore && batches < 25);
+      setImageMigration((current) => current ? {
+        ...current,
+        message: hasMore ? '本輪已處理 500 張；可再次按下按鈕繼續' : '本輪搬移完成',
+      } : current);
+      showToast(migrated > 0 ? `已安全搬移 ${migrated} 張照片` : '沒有可搬移的照片');
+    } catch (migrationError) {
+      const message = migrationError instanceof Error ? migrationError.message : '照片搬移失敗';
+      setImageMigration((current) => current
+        ? { ...current, message }
+        : { batches, attempted, migrated, failed, updatedRecords, remaining, hasMore, message });
+      showToast(message);
+    } finally {
+      setBusy('');
     }
   }
 
@@ -2431,6 +2506,29 @@ export default function AdminPage() {
                 <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 text-sm">
                   <p>正式站版本：<code className="font-mono font-bold">{data.system.version}</code></p>
                   <p className="mt-2">資料環境：<code className="font-mono font-bold">{data.system.keyPrefix}</code></p>
+                </div>
+                <div className="mt-5 rounded-2xl border border-sky-200 bg-white p-4 text-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-bold">舊照片搬移到 Cloudflare R2</h2>
+                      <p className="mt-1 text-zinc-500">只搬仍可讀取的 Vercel Blob 照片；複製成功後才更新網址，不刪除原始照片。</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={Boolean(busy)}
+                      onClick={migrateImagesToR2}
+                      className="rounded-xl bg-sky-500 px-4 py-2 text-xs font-bold text-white disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {busy === 'migrate-images' ? '搬移中…' : imageMigration?.hasMore ? '繼續搬移' : '開始安全搬移'}
+                    </button>
+                  </div>
+                  {imageMigration && (
+                    <div className="mt-4 rounded-xl bg-zinc-50 p-3 text-xs text-zinc-600">
+                      <p className="font-bold text-zinc-800">{imageMigration.message}</p>
+                      <p className="mt-2">已嘗試 {imageMigration.attempted} 張 · 成功 {imageMigration.migrated} 張 · 失敗 {imageMigration.failed} 張</p>
+                      <p className="mt-1">已更新 {imageMigration.updatedRecords} 筆資料 · 目前估計仍引用舊網址 {imageMigration.remaining} 張</p>
+                    </div>
+                  )}
                 </div>
                 <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 text-sm">
                   <div className="flex items-center gap-2">
