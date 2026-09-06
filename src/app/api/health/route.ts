@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRedis, isRedisConfigured, keyPrefix } from '@/lib/kv';
 import { isSessionSecretConfigured } from '@/lib/session';
 import { isSmsConfigured, isProductionEnv } from '@/lib/sms';
+import { isR2Configured } from '@/lib/r2-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,8 +53,14 @@ export async function GET() {
       VAPID_PRIVATE_KEY: present('VAPID_PRIVATE_KEY'),
       BLOB_READ_WRITE_TOKEN: present('BLOB_READ_WRITE_TOKEN'),
       BLOB_STORE_ID: present('BLOB_STORE_ID'),
+      R2_ACCOUNT_ID: present('R2_ACCOUNT_ID'),
+      R2_ACCESS_KEY_ID: present('R2_ACCESS_KEY_ID'),
+      R2_SECRET_ACCESS_KEY: present('R2_SECRET_ACCESS_KEY'),
+      R2_BUCKET_NAME: present('R2_BUCKET_NAME'),
+      R2_PUBLIC_BASE_URL: present('R2_PUBLIC_BASE_URL'),
     },
     blobConfigured: present('BLOB_READ_WRITE_TOKEN') || present('BLOB_STORE_ID'),
+    r2Configured: isR2Configured(),
   };
 
   return NextResponse.json(bodyData, { status: ready ? 200 : 503 });

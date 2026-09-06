@@ -51,7 +51,8 @@ import {
 import { listRequestHistory } from '@/lib/request-history-store';
 import { summarizeSmsRuntime } from '@/lib/sms-runtime';
 import { activeConfirmedGirlIds } from '@/lib/request-attendance';
-import { parseBlobUrl } from '@/lib/image-upload';
+import { parseStoredImageUrl } from '@/lib/image-upload';
+import { deleteR2Object, isR2Configured } from '@/lib/r2-storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,8 +122,8 @@ const stringValue = (value: unknown): string =>
 
 function collectBlobPathnames(value: unknown, output: Set<string>): void {
   if (typeof value === 'string') {
-    const parsed = parseBlobUrl(value);
-    if (parsed.ok) output.add(parsed.pathname);
+    const parsed = parseStoredImageUrl(value);
+    if (parsed.ok) output.add(`${parsed.provider}:${parsed.pathname}`);
     return;
   }
   if (Array.isArray(value)) {
@@ -598,21 +599,25 @@ export async function POST(req: NextRequest) {
         collectBlobPathnames(records, referencedElsewhere);
       });
       const validBlobUrls = imageUrls.flatMap((url) => {
-        const parsed = parseBlobUrl(url);
-        return parsed.ok ? [{ url, pathname: parsed.pathname }] : [];
+        const parsed = parseStoredImageUrl(url);
+        return parsed.ok ? [{ url, pathname: parsed.pathname, provider: parsed.provider }] : [];
       });
       const blobUrls = validBlobUrls
-        .filter((item) => !referencedElsewhere.has(item.pathname))
-        .map((item) => item.url);
+        .filter((item) => !referencedElsewhere.has(`${item.provider}:${item.pathname}`));
       const sharedImageCount = validBlobUrls.length - blobUrls.length;
       if (blobUrls.length > 0) {
-        const blobConfigured = Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
-        if (!blobConfigured) {
+        const vercelUrls = blobUrls.filter((item) => item.provider === 'vercel').map((item) => item.url);
+        const r2Objects = blobUrls.filter((item) => item.provider === 'r2');
+        if (vercelUrls.length > 0 && !Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID))
           return NextResponse.json({ error: 'Blob 圖片服務尚未設定，為避免留下照片，本次未刪除' }, { status: 503 });
-        }
+        if (r2Objects.length > 0 && !isR2Configured())
+          return NextResponse.json({ error: 'R2 圖片服務尚未設定，為避免留下照片，本次未刪除' }, { status: 503 });
         try {
-          const { del } = await import('@vercel/blob');
-          await del(blobUrls);
+          if (vercelUrls.length > 0) {
+            const { del } = await import('@vercel/blob');
+            await del(vercelUrls);
+          }
+          await Promise.all(r2Objects.map((item) => deleteR2Object(item.pathname)));
         } catch {
           console.error('[admin escort delete] blob delete failed');
           return NextResponse.json({ error: '照片刪除失敗，人員資料尚未刪除，請稍後重試' }, { status: 502 });

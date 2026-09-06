@@ -27,6 +27,19 @@ test('parseBlobUrl：合法 Vercel Blob URL → ok + pathname', () => {
   assert.equal(r.pathname, 'uploads/u-023/image/11111111-2222-3333-4444-555555555555.jpg');
 });
 
+test('parseStoredImageUrl：僅接受設定的 R2 自訂網域', () => {
+  const pathname = 'uploads/u-023/image/11111111-2222-3333-4444-555555555555.jpg';
+  assert.deepEqual(iu.parseStoredImageUrl(`https://images.juga.com.tw/${pathname}`, 'https://images.juga.com.tw'), {
+    ok: true, provider: 'r2', pathname,
+  });
+  for (const url of [
+    `https://evil.com/${pathname}`,
+    `https://fake.images.juga.com.tw/${pathname}`,
+    `https://images.juga.com.tw/${pathname}?download=1`,
+    'https://images.juga.com.tw/uploads/u-023/image/%2e%2e.jpg',
+  ]) assert.equal(iu.parseStoredImageUrl(url, 'https://images.juga.com.tw').ok, false);
+});
+
 test('9) http / host 偽造 / userinfo / encoded slash / encoded .. / 雙重編碼 / 非 Vercel → 全部拒絕', () => {
   const bad = [
     'http://' + HOST + '/uploads/u-023/image/x.jpg',              // 非 https
@@ -111,7 +124,8 @@ test('未知 pathname 格式 → 403', () => {
 
 // ══ Route 層 ═══════════════════════════════════════════════════════════════
 
-const ENV_KEYS = ['NODE_ENV', 'VERCEL_ENV', 'BLOB_READ_WRITE_TOKEN', 'BLOB_STORE_ID', 'SESSION_SECRET',
+const ENV_KEYS = ['NODE_ENV', 'VERCEL_ENV', 'BLOB_READ_WRITE_TOKEN', 'BLOB_STORE_ID', 'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME', 'R2_PUBLIC_BASE_URL', 'SESSION_SECRET',
   'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'REDIS_URL', 'KV_URL'];
 function snapshotEnv() { const s = {}; for (const k of ENV_KEYS) s[k] = process.env[k]; return s; }
 function restoreEnv(s) { for (const k of ENV_KEYS) { if (s[k] === undefined) delete process.env[k]; else process.env[k] = s[k]; } }

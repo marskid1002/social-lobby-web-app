@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireActiveSession } from '@/lib/active-session';
 import { getCollection, mergeShared, updatePhotoGallery } from '@/lib/sync-store';
-import { matchNewPathname, parseBlobUrl, safeUserSegment } from '@/lib/image-upload';
+import { matchNewPathname, parseStoredImageUrl, safeUserSegment } from '@/lib/image-upload';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ function cleanUrls(value: unknown): string[] | null {
 }
 
 function isManagerOwnedUpload(url: string, managerId: string): boolean {
-  const parsed = parseBlobUrl(url);
+  const parsed = parseStoredImageUrl(url);
   if (!parsed.ok) return false;
   const path = matchNewPathname(parsed.pathname);
   return path?.owner === safeUserSegment(managerId);

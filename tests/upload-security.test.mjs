@@ -124,7 +124,8 @@ test('safeKind：白名單保留，未知/含 ../ 正規化為 image', () => {
 
 // ══ Route / Blob（H1 十二.19~十二.34）══════════════════════════════════════
 
-const ENV_KEYS = ['NODE_ENV', 'VERCEL_ENV', 'BLOB_READ_WRITE_TOKEN', 'BLOB_STORE_ID', 'SESSION_SECRET',
+const ENV_KEYS = ['NODE_ENV', 'VERCEL_ENV', 'BLOB_READ_WRITE_TOKEN', 'BLOB_STORE_ID', 'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET_NAME', 'R2_PUBLIC_BASE_URL', 'SESSION_SECRET',
   'KV_REST_API_URL', 'KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'REDIS_URL', 'KV_URL'];
 function snapshotEnv() { const s = {}; for (const k of ENV_KEYS) s[k] = process.env[k]; return s; }
 function restoreEnv(s) { for (const k of ENV_KEYS) { if (s[k] === undefined) delete process.env[k]; else process.env[k] = s[k]; } }

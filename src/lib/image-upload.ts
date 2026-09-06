@@ -129,6 +129,31 @@ export function parseBlobUrl(rawUrl: unknown): { ok: true; pathname: string } | 
   return { ok: true, pathname };
 }
 
+export type StoredImageUrl = { ok: true; provider: 'vercel' | 'r2'; pathname: string } | { ok: false };
+
+// 接受既有 Vercel Blob 與目前設定的 R2 自訂網域；仍拒絕任意外部圖片網址。
+export function parseStoredImageUrl(rawUrl: unknown, r2Base = process.env.R2_PUBLIC_BASE_URL): StoredImageUrl {
+  const vercel = parseBlobUrl(rawUrl);
+  if (vercel.ok) return { ...vercel, provider: 'vercel' };
+  if (typeof rawUrl !== 'string' || !r2Base) return { ok: false };
+  if (rawUrl.includes('%') || rawUrl.includes('\\') || /(^|\/)\.\.?(\/|$)/.test(rawUrl)) {
+    return { ok: false };
+  }
+  let url: URL;
+  let base: URL;
+  try { url = new URL(rawUrl); base = new URL(r2Base); } catch { return { ok: false }; }
+  if (base.protocol !== 'https:' || base.username || base.password || base.port || base.search || base.hash) return { ok: false };
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.search || url.hash) return { ok: false };
+  if (url.origin !== base.origin) return { ok: false };
+  const basePath = base.pathname.replace(/^\/+|\/+$/g, '');
+  const fullPath = url.pathname.replace(/^\/+/, '');
+  const pathname = basePath
+    ? (fullPath.startsWith(`${basePath}/`) ? fullPath.slice(basePath.length + 1) : '')
+    : fullPath;
+  if (!pathname || pathname.split('/').some((segment) => !segment || segment === '.' || segment === '..')) return { ok: false };
+  return { ok: true, provider: 'r2', pathname };
+}
+
 // 新（H1）格式：uploads/<owner>/<kind>/<uuid>.<ext>；kind 須白名單、uuid 須 v4、ext 須 jpg/png/webp。
 export function matchNewPathname(pathname: string): { owner: string; kind: UploadKind; uuid: string; ext: string } | null {
   const segs = pathname.split('/');

@@ -17,7 +17,7 @@ import { chatExpiresAtFrom } from './chat-lifetime';
 import { activeConfirmedGirlIds, confirmedCountForRequest } from './request-attendance';
 import { REQUEST_ACTIVE_MS, REQUEST_RETENTION_MS } from './data-retention';
 import { ALL_ACCEPTED_AREAS } from './area-options';
-import { parseBlobUrl } from './image-upload';
+import { parseStoredImageUrl } from './image-upload';
 
 type Item = Record<string, unknown>;
 
@@ -391,7 +391,7 @@ export function authorizeWrites(rawPatch: Record<string, unknown>, session: Sess
       }
       if (s(p.authorId) !== me) return [];
       // 只驗新貼文；舊資料仍可更新按讚／留言數，避免歷史外部網址卡住正常互動。
-      if (p.imageUrl !== undefined && !parseBlobUrl(p.imageUrl).ok) return [];
+      if (p.imageUrl !== undefined && !parseStoredImageUrl(p.imageUrl).ok) return [];
       return [p];
     });
   }
