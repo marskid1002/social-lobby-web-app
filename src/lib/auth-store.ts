@@ -485,6 +485,46 @@ export async function deleteUnactivatedManager(key: string): Promise<Account | n
   return account;
 }
 
+export type ClearedManagerAccount = {
+  account: Account;
+  retainedReservedSlot: boolean;
+};
+
+/**
+ * A000 永久清空幹部時使用。
+ *
+ * 預留的 MANAGER_MAP 帳號不能直接刪除，否則下一次讀取帳號時會被系統自動補回；
+ * 因此將它恢復成原始、未啟用狀態。後台動態建立的幹部則真正移除帳號。
+ */
+export async function clearManagerAccount(key: string): Promise<ClearedManagerAccount | null> {
+  const accounts = await readAccounts();
+  await ensureManagerAccounts(accounts);
+  const normalized = normalizeKey(key);
+  const current = accounts[normalized];
+  if (!current || current.role !== 'manager') return null;
+
+  const account = { ...current };
+  const reserved = MANAGER_MAP.find((item) => item.code === normalized);
+  if (reserved) {
+    accounts[normalized] = {
+      key: reserved.code,
+      role: 'manager',
+      tier: 'vip',
+      userId: reserved.userId,
+      nickname: reserved.nickname,
+      salt: '',
+      hash: null,
+      createdAt: current.createdAt,
+      sessionVersion: (current.sessionVersion ?? 0) + 1,
+      mustChangeNickname: Boolean(reserved.mustChangeNickname),
+    };
+  } else {
+    delete accounts[normalized];
+  }
+  await writeAccounts(accounts);
+  return { account, retainedReservedSlot: Boolean(reserved) };
+}
+
 // 清空「所有幹部」密碼（role==='manager'），讓他們用啟用碼重新設定。回傳被清空的帳號數。
 // 用於正式發放幹部帳號前，把先前測試設過的密碼一次清乾淨。
 export async function resetAllManagerPasswords(): Promise<number> {

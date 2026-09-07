@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
@@ -20,6 +20,20 @@ type SystemMessage = {
   content: string;
   createdAt: string;
   readAt?: string;
+  caseKind?: 'issue' | 'report';
+  caseId?: string;
+};
+
+type CaseThread = {
+  caseId: string;
+  kind: 'issue' | 'report';
+  status: 'pending_admin' | 'waiting_reporter' | 'reporter_replied' | 'resolved';
+  messages: Array<{
+    id: string;
+    senderRole: 'admin' | 'reporter';
+    content: string;
+    createdAt: string;
+  }>;
 };
 
 export default function InboxPage() {
@@ -32,6 +46,12 @@ export default function InboxPage() {
   const [systemMessages, setSystemMessages] = useState<SystemMessage[]>([]);
   const [systemMessageOpen, setSystemMessageOpen] = useState<string | null>(requestedSystemMessageId);
   const [systemMessagesLoaded, setSystemMessagesLoaded] = useState(false);
+  const [caseThread, setCaseThread] = useState<CaseThread | null>(null);
+  const [caseThreadLoading, setCaseThreadLoading] = useState(false);
+  const [caseReply, setCaseReply] = useState('');
+  const [caseReplySending, setCaseReplySending] = useState(false);
+  const [caseReplyError, setCaseReplyError] = useState('');
+  const caseLoadTokenRef = useRef(0);
   const [matchRefreshAttempts, setMatchRefreshAttempts] = useState(0);
   const requestedMatch = requestedMatchId
     ? state.invitations.find((invitation) => invitation.id === requestedMatchId && invitation.status === 'accepted')
@@ -87,18 +107,67 @@ export default function InboxPage() {
   }, [state.currentUserId]);
 
   async function openSystemMessage(message: SystemMessage) {
+    const loadToken = caseLoadTokenRef.current + 1;
+    caseLoadTokenRef.current = loadToken;
     setSystemMessageOpen(message.id);
-    if (message.readAt) return;
-    const response = await fetch('/api/system-messages', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: message.id }),
-    });
-    const result = await response.json().catch(() => ({})) as { readAt?: string };
-    if (response.ok && result.readAt) {
-      setSystemMessages((current) => current.map((item) =>
-        item.id === message.id ? { ...item, readAt: result.readAt } : item));
-      window.dispatchEvent(new Event('system-message-read'));
+    setCaseReply('');
+    setCaseReplyError('');
+    setCaseThread(null);
+    if (message.caseKind && message.caseId) {
+      setCaseThreadLoading(true);
+      fetch(`/api/case-messages?systemMessageId=${encodeURIComponent(message.id)}`, { cache: 'no-store' })
+        .then(async (response) => {
+          const result = await response.json().catch(() => ({})) as CaseThread & { error?: string };
+          if (!response.ok) throw new Error(result.error || '案件載入失敗');
+          if (caseLoadTokenRef.current === loadToken) setCaseThread(result);
+        })
+        .catch(() => {
+          if (caseLoadTokenRef.current === loadToken) setCaseReplyError('案件對話載入失敗，請稍後再試');
+        })
+        .finally(() => {
+          if (caseLoadTokenRef.current === loadToken) setCaseThreadLoading(false);
+        });
+    } else {
+      setCaseThreadLoading(false);
+    }
+    if (!message.readAt) {
+      const response = await fetch('/api/system-messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: message.id }),
+      });
+      const result = await response.json().catch(() => ({})) as { readAt?: string };
+      if (response.ok && result.readAt) {
+        setSystemMessages((current) => current.map((item) =>
+          item.id === message.id ? { ...item, readAt: result.readAt } : item));
+        window.dispatchEvent(new Event('system-message-read'));
+      }
+    }
+  }
+
+  async function sendCaseReply(message: SystemMessage) {
+    const content = caseReply.trim();
+    if (!content || caseReplySending) return;
+    setCaseReplySending(true);
+    setCaseReplyError('');
+    try {
+      const response = await fetch('/api/case-messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ systemMessageId: message.id, content }),
+      });
+      const result = await response.json().catch(() => ({})) as Pick<CaseThread, 'messages' | 'status'> & { error?: string };
+      if (!response.ok) throw new Error(result.error || '回覆失敗');
+      setCaseThread((current) => current ? {
+        ...current,
+        messages: result.messages ?? current.messages,
+        status: result.status ?? 'reporter_replied',
+      } : current);
+      setCaseReply('');
+    } catch (error) {
+      setCaseReplyError(error instanceof Error ? error.message : '回覆失敗，請稍後再試');
+    } finally {
+      setCaseReplySending(false);
     }
   }
 
@@ -594,7 +663,7 @@ export default function InboxPage() {
               role="dialog"
               aria-modal="true"
               aria-label="JUGA 官方通知"
-              className="relative w-full max-w-[400px] rounded-3xl bg-white p-5 shadow-2xl"
+              className="relative max-h-[88dvh] w-full max-w-[400px] overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
@@ -611,7 +680,58 @@ export default function InboxPage() {
                   ×
                 </button>
               </div>
-              <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-700">{message.content}</p>
+              {!message.caseKind && (
+                <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-7 text-zinc-700">{message.content}</p>
+              )}
+              {message.caseKind && message.caseId && (
+                <div className="mt-5 border-t border-zinc-100 pt-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-brand-ink">案件對話</p>
+                    <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-semibold text-zinc-500">
+                      {caseThread?.status === 'resolved' ? '已結案' : caseThread?.status === 'waiting_reporter' ? '等待您的回覆' : '處理中'}
+                    </span>
+                  </div>
+                  {caseThreadLoading ? (
+                    <p className="py-5 text-center text-xs text-zinc-400">載入案件紀錄…</p>
+                  ) : (
+                    <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
+                      {caseThread?.messages.map((item) => (
+                        <div
+                          key={item.id}
+                          className={`rounded-xl px-3 py-2 text-sm ${item.senderRole === 'reporter' ? 'ml-6 bg-brand-pink/20' : 'mr-6 bg-zinc-100'}`}
+                        >
+                          <p className="text-[10px] font-bold text-zinc-500">{item.senderRole === 'reporter' ? '您' : 'JUGA 管理員'}</p>
+                          <p className="mt-1 whitespace-pre-wrap break-words text-zinc-700">{item.content}</p>
+                          <p className="mt-1 text-[10px] text-zinc-400">{new Date(item.createdAt).toLocaleString('zh-Hant-TW')}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <textarea
+                    value={caseReply}
+                    onChange={(event) => setCaseReply(event.target.value.slice(0, 1000))}
+                    placeholder="補充內容或回覆管理員…"
+                    rows={3}
+                    disabled={caseThreadLoading || caseReplySending}
+                    className="mt-3 w-full resize-none rounded-xl border border-brand-lavender bg-brand-snow px-3 py-2 text-sm outline-none focus:border-brand-pink disabled:opacity-50"
+                  />
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-zinc-400">{caseReply.length}/1000</span>
+                    <button
+                      type="button"
+                      onClick={() => void sendCaseReply(message)}
+                      disabled={!caseReply.trim() || caseReplySending || caseThreadLoading}
+                      className="rounded-xl bg-brand-pink px-4 py-2 text-xs font-bold text-brand-ink disabled:opacity-40"
+                    >
+                      {caseReplySending ? '送出中…' : '回覆管理員'}
+                    </button>
+                  </div>
+                  {caseThread?.status === 'resolved' && (
+                    <p className="mt-2 text-[11px] text-amber-600">此案件已結案；再次回覆會自動重新開啟。</p>
+                  )}
+                  {caseReplyError && <p className="mt-2 text-xs font-semibold text-red-500">{caseReplyError}</p>}
+                </div>
+              )}
               <p className="mt-5 border-t border-zinc-100 pt-3 text-xs text-zinc-400">
                 {new Date(message.createdAt).toLocaleString('zh-Hant-TW')}
               </p>

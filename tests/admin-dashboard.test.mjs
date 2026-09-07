@@ -492,6 +492,126 @@ test('A000 永久刪除人員：確認碼、進行中約會與 Blob 清理都由
   }
 });
 
+test('A000 永久清空幹部：刪除名下小姐與照片、保留共同歷史並撤銷帳號', { skip }, async () => {
+  await store.clearShared();
+  const created = await authStore.createManagerAccount(`待清空幹部-${crypto.randomUUID()}`);
+  const manager = created.account;
+  const escortId = `escort-clear-${crypto.randomUUID()}`;
+  const responseId = `response-clear-${crypto.randomUUID()}`;
+  const invitationId = `invitation-clear-${crypto.randomUUID()}`;
+  const blobUrl = 'https://store.public.blob.vercel-storage.com/uploads/manager/gallery/323e4567-e89b-42d3-a456-426614174000.jpg';
+  const oldBlobToken = process.env.BLOB_READ_WRITE_TOKEN;
+  process.env.BLOB_READ_WRITE_TOKEN = 'test-token';
+  globalThis.__BLOB_DEL_CALLS__ = [];
+  try {
+    await store.mergeShared({
+      requests: [{
+        id: 'request-clear-manager',
+        creatorId: 'customer-clear-manager',
+        status: 'open',
+        createdAt: RECENT,
+        expiresAt: LIVE_FUTURE,
+      }],
+      registeredUsers: [{ id: manager.userId, nickname: manager.nickname, role: 'manager', createdAt: RECENT }],
+      escorts: [{ id: escortId, managerId: manager.userId, nickname: '待清空小姐', createdAt: RECENT }],
+      presence: [{ id: escortId, online: true, updatedAt: RECENT }],
+      photoOverrides: [{ id: escortId, avatarUrl: blobUrl }],
+      photoGalleries: [{ id: escortId, urls: [blobUrl] }],
+      responses: [{ id: responseId, requestId: 'request-clear-manager', userId: escortId, responseStatus: 'joining', createdAt: RECENT }],
+      invitations: [{
+        id: invitationId,
+        requestId: 'request-clear-manager',
+        responseId,
+        fromUserId: manager.userId,
+        toUserId: 'customer-clear-manager',
+        status: 'accepted',
+        meetupConfirmed: true,
+        chatExpiresAt: LIVE_FUTURE,
+        createdAt: RECENT,
+      }],
+      chatMessages: [{
+        id: `message-clear-${crypto.randomUUID()}`,
+        requestId: 'request-clear-manager',
+        senderId: manager.userId,
+        content: '共同歷史需保留',
+        createdAt: RECENT,
+      }],
+    });
+
+    const wrong = await adminRequest('POST', {
+      action: 'permanently-clear-manager',
+      account: manager.userId,
+      confirmation: 'wrong',
+    });
+    assert.equal(wrong.status, 400);
+
+    const busy = await adminRequest('POST', {
+      action: 'permanently-clear-manager',
+      account: manager.userId,
+      confirmation: manager.key,
+    });
+    assert.equal(busy.status, 409);
+    assert.ok(await authStore.getAccount(manager.key));
+
+    await store.mergeShared({
+      invitations: [{
+        id: invitationId,
+        requestId: 'request-clear-manager',
+        responseId,
+        fromUserId: manager.userId,
+        toUserId: 'customer-clear-manager',
+        status: 'declined',
+        meetupConfirmed: false,
+        chatExpiresAt: RECENT,
+        createdAt: RECENT,
+      }],
+    });
+    const cleared = await adminRequest('POST', {
+      action: 'permanently-clear-manager',
+      account: manager.userId,
+      confirmation: manager.key,
+    });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.body.deletedEscortCount, 1);
+    assert.equal(cleared.body.deletedImageCount, 1);
+    assert.equal(cleared.body.retainedReservedSlot, false);
+    assert.deepEqual(globalThis.__BLOB_DEL_CALLS__, [[blobUrl]]);
+    assert.equal(await authStore.getAccount(manager.key), null);
+    assert.equal((await store.getCollection('escorts')).some((item) => item.id === escortId), false);
+    assert.equal((await store.getCollection('presence')).some((item) => item.id === escortId), false);
+    assert.equal((await store.getCollection('registeredUsers')).some((item) => item.id === manager.userId), false);
+    assert.equal((await store.getCollection('responses')).some((item) => item.id === responseId), true);
+    assert.equal((await store.getCollection('chatMessages')).some((item) => item.senderId === manager.userId), true);
+  } finally {
+    if (oldBlobToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+    else process.env.BLOB_READ_WRITE_TOKEN = oldBlobToken;
+    delete globalThis.__BLOB_DEL_CALLS__;
+    await store.clearShared();
+  }
+});
+
+test('預留幹部清空後回到原始未啟用狀態，不會被系統補回舊密碼或名稱', { skip }, async () => {
+  const before = await authStore.getAccount('A025');
+  assert.ok(before);
+  await authStore.updateManagerNickname('A025', '即將清空的私人名稱');
+  const activationCode = await authStore.regenerateManagerActivation('A025');
+  assert.ok(activationCode);
+  assert.ok(await authStore.activateManagerWithCode('A025', activationCode, 'ValidPass123!'));
+
+  const result = await authStore.clearManagerAccount('A025');
+  assert.ok(result);
+  assert.equal(result.retainedReservedSlot, true);
+  const after = await authStore.getAccount('A025');
+  assert.ok(after);
+  assert.equal(after.userId, before.userId);
+  assert.equal(after.nickname, '幹部25');
+  assert.equal(after.hash, null);
+  assert.equal(after.activationHash, undefined);
+  assert.equal(after.activationSalt, undefined);
+  assert.equal(after.mustChangeNickname, true);
+  assert.equal((after.sessionVersion ?? 0) > (before.sessionVersion ?? 0), true);
+});
+
 test('聊天室內容按需載入，並以 requestId 精確隔離', { skip }, async () => {
   await store.clearShared();
   await store.mergeShared({

@@ -20,6 +20,8 @@ export interface SystemMessageRecord {
   pushSent: number;
   pushTotal: number;
   pushSkipped?: string;
+  caseKind?: 'issue' | 'report';
+  caseId?: string;
 }
 
 const memoryMessages = new Map<string, SystemMessageRecord>();
@@ -105,6 +107,12 @@ export async function listSystemMessages(limit = 200) {
 
 export async function listSystemMessagesForUser(userId: string) {
   return (await allMessages()).filter((message) => message.recipientId === userId);
+}
+
+export async function getSystemMessageForUser(userId: string, id: string) {
+  return (await allMessages()).find(
+    (message) => message.id === id && message.recipientId === userId,
+  ) ?? null;
 }
 
 export async function markSystemMessageRead(userId: string, id: string) {

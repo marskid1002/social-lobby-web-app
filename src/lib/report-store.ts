@@ -44,6 +44,11 @@ export async function listReports(): Promise<Report[]> {
   return Object.values(all).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); // 新到舊
 }
 
+export async function getReport(id: string): Promise<Report | null> {
+  const all = await readAll();
+  return all[id] ?? null;
+}
+
 export async function setReportResolved(id: string, resolved: boolean): Promise<boolean> {
   const all = await readAll();
   if (!all[id]) return false;

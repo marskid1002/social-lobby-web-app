@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -188,6 +188,11 @@ type ImageMigrationStatus = {
   hasMore: boolean;
   message: string;
 };
+type ReportReplyContext = {
+  kind: 'issue' | 'report';
+  referenceId: string;
+  recipientId: string;
+};
 type AccountGroup = 'manager' | 'user' | 'staff';
 type AccountDirectoryResponse = {
   items: Account[];
@@ -222,6 +227,21 @@ type SystemMessage = {
   pushSent: number;
   pushTotal: number;
   pushSkipped?: string;
+};
+type CaseMessage = {
+  id: string;
+  senderRole: 'admin' | 'reporter';
+  content: string;
+  createdAt: string;
+};
+type CaseThread = {
+  id: string;
+  kind: 'issue' | 'report';
+  caseId: string;
+  reporterId: string;
+  status: 'pending_admin' | 'waiting_reporter' | 'reporter_replied' | 'resolved';
+  updatedAt: string;
+  messages: CaseMessage[];
 };
 
 type SystemStatus = {
@@ -315,6 +335,7 @@ type DashboardData = {
   escortGalleries: EscortGallery[];
   systemMessages: SystemMessage[];
   requestHistory: RequestHistory[];
+  caseThreads: CaseThread[];
 };
 
 type Tab = 'overview' | 'search' | 'flows' | 'history' | 'escorts' | 'accounts' | 'galleries' | 'messages' | 'reports' | 'chats' | 'system' | 'danger';
@@ -404,12 +425,21 @@ const ACTION_LABEL: Record<string, string> = {
   'reset-all-managers': '清空所有幹部密碼',
   'delete-all-customers': '刪除所有客戶',
   'permanently-delete-escort': '永久刪除人員',
+  'permanently-clear-manager': '永久清空幹部資料',
   'send-system-message': '發送單人系統訊息',
   'send-system-message-all': '群發系統訊息',
 };
 
 const ALL_MESSAGE_RECIPIENTS = '__all_active_recipients__';
 const ALL_MESSAGE_CONFIRMATION = 'ALL_ACTIVE_RECIPIENTS';
+const GALLERY_BATCH_SIZE = 20;
+const GALLERY_EAGER_IMAGE_COUNT = 6;
+const CASE_STATUS_LABEL: Record<CaseThread['status'], { label: string; className: string }> = {
+  pending_admin: { label: '待管理員處理', className: 'bg-amber-100 text-amber-700' },
+  waiting_reporter: { label: '等待使用者回覆', className: 'bg-sky-100 text-sky-700' },
+  reporter_replied: { label: '使用者已回覆', className: 'bg-pink-100 text-pink-700' },
+  resolved: { label: '已結案', className: 'bg-emerald-100 text-emerald-700' },
+};
 
 const TRACE_LABEL: Record<string, string> = {
   'request.created': '客戶發局已儲存',
@@ -443,6 +473,29 @@ const escortImages = (escort: EscortGallery): string[] =>
 
 function StatusDot({ ok }: { ok: boolean }) {
   return <span className={`inline-block h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />;
+}
+
+function CaseConversation({ thread }: { thread?: CaseThread }) {
+  if (!thread || thread.messages.length === 0) return null;
+  return (
+    <details className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+      <summary className="cursor-pointer text-xs font-bold text-zinc-700">
+        案件對話（{thread.messages.length} 則）
+      </summary>
+      <div className="mt-3 space-y-2">
+        {thread.messages.map((message) => (
+          <div
+            key={message.id}
+            className={`rounded-xl px-3 py-2 text-sm ${message.senderRole === 'admin' ? 'ml-5 bg-sky-100 text-sky-950' : 'mr-5 bg-white text-zinc-800'}`}
+          >
+            <p className="text-[10px] font-bold opacity-60">{message.senderRole === 'admin' ? 'A000 管理員' : '回報人'}</p>
+            <p className="mt-1 whitespace-pre-wrap break-words">{message.content}</p>
+            <p className="mt-1 text-[10px] opacity-50">{fmtTime(message.createdAt)}</p>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 function MetricCard({
@@ -488,10 +541,13 @@ export default function AdminPage() {
   const [lastRefreshedAt, setLastRefreshedAt] = useState('');
   const [rosterOpen, setRosterOpen] = useState<string | null>(null);
   const [galleryOpen, setGalleryOpen] = useState<{ escortId: string; index: number } | null>(null);
+  const [visibleGalleryCount, setVisibleGalleryCount] = useState(GALLERY_BATCH_SIZE);
+  const galleryLoadMoreRef = useRef<HTMLDivElement | null>(null);
   const [messageRecipientId, setMessageRecipientId] = useState('');
   const [messageTitle, setMessageTitle] = useState('');
   const [messageContent, setMessageContent] = useState('');
   const [messagePreviewOpen, setMessagePreviewOpen] = useState(false);
+  const [reportReplyContext, setReportReplyContext] = useState<ReportReplyContext | null>(null);
   const [escortQuery, setEscortQuery] = useState('');
   const [escortStatus, setEscortStatus] = useState<'all' | EscortDirectoryStatus>('all');
   const [escortSort, setEscortSort] = useState<EscortDirectorySort>('status');
@@ -671,6 +727,7 @@ export default function AdminPage() {
         ...current,
         message: hasMore ? '本輪已處理 500 張；可再次按下按鈕繼續' : '本輪搬移完成',
       } : current);
+      if (migrated > 0) await load();
       showToast(migrated > 0 ? `已安全搬移 ${migrated} 張照片` : '沒有可搬移的照片');
     } catch (migrationError) {
       const message = migrationError instanceof Error ? migrationError.message : '照片搬移失敗';
@@ -785,6 +842,30 @@ export default function AdminPage() {
       ].some((value) => value.toLowerCase().includes(query))
     );
   }, [data, matchedAccountUserIds, search]);
+
+  const visibleEscortGalleries = useMemo(
+    () => filteredEscortGalleries.slice(0, visibleGalleryCount),
+    [filteredEscortGalleries, visibleGalleryCount],
+  );
+
+  useEffect(() => {
+    setVisibleGalleryCount(GALLERY_BATCH_SIZE);
+  }, [search, tab]);
+
+  useEffect(() => {
+    if (tab !== 'galleries' || visibleGalleryCount >= filteredEscortGalleries.length) return;
+    const target = galleryLoadMoreRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setVisibleGalleryCount((current) => Math.min(
+        current + GALLERY_BATCH_SIZE,
+        filteredEscortGalleries.length,
+      ));
+    }, { rootMargin: '240px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [filteredEscortGalleries.length, tab, visibleGalleryCount]);
 
   useEffect(() => {
     if (!galleryOpen || !data) return;
@@ -986,6 +1067,10 @@ export default function AdminPage() {
           title: messageTitle.trim(),
           content: messageContent.trim(),
           confirmation: sendToAll ? ALL_MESSAGE_CONFIRMATION : recipient?.userId,
+          ...(reportReplyContext ? {
+            caseKind: reportReplyContext.kind,
+            caseId: reportReplyContext.referenceId,
+          } : {}),
         }),
       });
       const result = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; count?: number };
@@ -997,15 +1082,44 @@ export default function AdminPage() {
       setMessageRecipientId('');
       setMessageTitle('');
       setMessageContent('');
-      showToast(sendToAll
-        ? `已建立 ${result.count ?? messageRecipients.length} 則官方通知，推播正在分批處理`
-        : '官方通知已建立並嘗試推播');
+      const wasReportReply = reportReplyContext !== null;
+      setReportReplyContext(null);
+      showToast(wasReportReply
+        ? '回覆已送出，案件正在等待使用者回覆'
+        : sendToAll
+          ? `已建立 ${result.count ?? messageRecipients.length} 則官方通知，推播正在分批處理`
+          : '官方通知已建立並嘗試推播');
       await load();
+      if (wasReportReply) setTab('reports');
     } catch {
       showToast('訊息發送失敗，請稍後再試');
     } finally {
       setBusy('');
     }
+  }
+
+  function prepareReportReply({
+    recipientId,
+    referenceId,
+    kind,
+  }: {
+    recipientId: string;
+    referenceId: string;
+    kind: 'issue' | 'report';
+  }) {
+    const recipient = messageRecipients.find((account) => account.userId === recipientId);
+    if (!recipient) {
+      showToast('找不到可接收訊息的回報帳號，可能已停用或刪除');
+      return;
+    }
+    const label = kind === 'report' ? '檢舉' : '問題回報';
+    setMessageRecipientId(recipient.userId);
+    setMessageTitle(`關於您的${label}`);
+    setMessageContent(`您好，關於您提交的${label}（案件編號：${referenceId}）：\n\n`);
+    setMessagePreviewOpen(false);
+    setReportReplyContext({ kind, referenceId, recipientId: recipient.userId });
+    setTab('messages');
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
   }
 
   function runDanger(action: string, expected: string) {
@@ -1954,13 +2068,13 @@ export default function AdminPage() {
                           >
                             登出所有裝置
                           </button>
-                          {(account.role === 'user' || (account.role === 'manager' && !account.hasPassword)) && (
+                          {(account.role === 'user' || account.role === 'manager') && (
                             <button
                               disabled={Boolean(busy)}
                               onClick={() => { setDeleteTarget(account); setConfirmText(''); }}
                               className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-600"
                             >
-                              永久刪除
+                              {account.role === 'manager' ? '清空幹部資料' : '永久刪除'}
                             </button>
                           )}
                         </div>
@@ -2067,8 +2181,9 @@ export default function AdminPage() {
                 />
 
                 {filteredEscortGalleries.length > 0 ? (
-                  <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredEscortGalleries.map((escort) => {
+                  <>
+                    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {visibleEscortGalleries.map((escort, escortIndex) => {
                       const images = escortImages(escort);
                       const coverImage = images[0];
                       return (
@@ -2080,7 +2195,14 @@ export default function AdminPage() {
                                 onClick={() => setGalleryOpen({ escortId: escort.id, index: 0 })}
                                 className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-zinc-100"
                               >
-                                <img src={coverImage} alt={`${escort.nickname} 大頭照`} className="h-full w-full object-cover" />
+                                <img
+                                  src={coverImage}
+                                  alt={`${escort.nickname} 大頭照`}
+                                  loading={escortIndex < GALLERY_EAGER_IMAGE_COUNT ? 'eager' : 'lazy'}
+                                  fetchPriority={escortIndex < GALLERY_EAGER_IMAGE_COUNT ? 'high' : 'auto'}
+                                  decoding="async"
+                                  className="h-full w-full object-cover"
+                                />
                               </button>
                             ) : (
                               <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-zinc-100 text-xs text-zinc-400">
@@ -2103,31 +2225,31 @@ export default function AdminPage() {
                               <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-zinc-500">{escort.bio}</p>
                             )}
                             {images.length > 0 ? (
-                              <div className="grid grid-cols-4 gap-2">
-                                {images.map((url, index) => (
-                                  <button
-                                    key={`${url}-${index}`}
-                                    type="button"
-                                    onClick={() => setGalleryOpen({ escortId: escort.id, index })}
-                                    className="aspect-square overflow-hidden rounded-xl bg-zinc-100 transition hover:opacity-80"
-                                  >
-                                    <img
-                                      src={url}
-                                      alt={`${escort.nickname} 照片 ${index + 1}`}
-                                      loading="lazy"
-                                      className="h-full w-full object-cover"
-                                    />
-                                  </button>
-                                ))}
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setGalleryOpen({ escortId: escort.id, index: 0 })}
+                                className="w-full rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-700 transition hover:bg-sky-100"
+                              >
+                                查看相簿（{images.length} 張）
+                              </button>
                             ) : (
                               <p className="rounded-xl bg-zinc-50 py-6 text-center text-xs text-zinc-400">尚未上傳照片</p>
                             )}
                           </div>
                         </article>
                       );
-                    })}
-                  </div>
+                      })}
+                    </div>
+                    {visibleGalleryCount < filteredEscortGalleries.length && (
+                      <div
+                        ref={galleryLoadMoreRef}
+                        className="mt-4 py-4 text-center text-xs font-semibold text-zinc-400"
+                        aria-label="載入更多小姐"
+                      >
+                        往下滑載入更多（已顯示 {visibleEscortGalleries.length} / {filteredEscortGalleries.length}）
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <p className="mt-4 rounded-2xl border border-zinc-200 bg-white p-8 text-center text-sm text-zinc-400">
                     找不到符合條件的小姐
@@ -2148,7 +2270,11 @@ export default function AdminPage() {
                       <select
                         id="system-message-recipient"
                         value={messageRecipientId}
-                        onChange={(event) => setMessageRecipientId(event.target.value)}
+                        disabled={reportReplyContext !== null}
+                        onChange={(event) => {
+                          setReportReplyContext(null);
+                          setMessageRecipientId(event.target.value);
+                        }}
                         className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-3 py-3 text-sm outline-none focus:border-sky-400"
                       >
                         <option value="">請選擇收件人</option>
@@ -2159,6 +2285,23 @@ export default function AdminPage() {
                             </option>
                           ))}
                       </select>
+                      {reportReplyContext && (
+                        <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                          <span className="min-w-0 truncate">案件回覆模式 · {reportReplyContext.referenceId}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReportReplyContext(null);
+                              setMessageRecipientId('');
+                              setMessageTitle('');
+                              setMessageContent('');
+                            }}
+                            className="shrink-0 font-bold underline"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      )}
                       {messageRecipientId === ALL_MESSAGE_RECIPIENTS && (
                         <p className="mt-1.5 text-xs font-semibold text-amber-600">
                           群發會同時建立 {messageRecipients.length} 則站內訊息，發送後無法收回。
@@ -2253,9 +2396,13 @@ export default function AdminPage() {
                 <div className="mt-3 space-y-3">
                   {[...filteredIssues]
                     .sort((a, b) => Number(a.resolved) - Number(b.resolved))
-                    .map((issue) => (
+                    .map((issue) => {
+                      const caseThread = data.caseThreads?.find((thread) => thread.kind === 'issue' && thread.caseId === issue.id);
+                      const caseStatus = caseThread?.status ?? (issue.resolved ? 'resolved' : 'pending_admin');
+                      const status = CASE_STATUS_LABEL[caseStatus];
+                      return (
                       <div key={issue.id} className={`rounded-2xl border bg-white p-4 ${
-                        issue.resolved ? 'border-zinc-200 opacity-70' : 'border-sky-200'
+                        caseStatus === 'resolved' ? 'border-zinc-200 opacity-70' : caseStatus === 'reporter_replied' ? 'border-pink-300' : 'border-sky-200'
                       }`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -2264,10 +2411,8 @@ export default function AdminPage() {
                               {fmtTime(issue.createdAt)} · {issue.page}
                             </p>
                           </div>
-                          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${
-                            issue.resolved ? 'bg-emerald-100 text-emerald-700' : 'bg-sky-100 text-sky-700'
-                          }`}>
-                            {issue.resolved ? '已處理' : '待處理'}
+                          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${status.className}`}>
+                            {status.label}
                           </span>
                         </div>
                         <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-700">{issue.description}</p>
@@ -2304,18 +2449,33 @@ export default function AdminPage() {
                           <summary className="cursor-pointer">裝置資訊</summary>
                           <p className="mt-1 break-all">{issue.userAgent}</p>
                         </details>
-                        <button
-                          disabled={Boolean(busy)}
-                          onClick={() => runAction(
-                            issue.resolved ? 'reopen-issue' : 'resolve-issue',
-                            { issueId: issue.id },
-                          )}
-                          className="mt-3 rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold"
-                        >
-                          {issue.resolved ? '重新開啟' : '標記已處理'}
-                        </button>
+                        <CaseConversation thread={caseThread} />
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => prepareReportReply({
+                              recipientId: issue.reporterId,
+                              referenceId: issue.id,
+                              kind: 'issue',
+                            })}
+                            className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700"
+                          >
+                            回覆回報人
+                          </button>
+                          <button
+                            disabled={Boolean(busy)}
+                            onClick={() => runAction(
+                              issue.resolved ? 'reopen-issue' : 'resolve-issue',
+                              { issueId: issue.id },
+                            )}
+                            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold"
+                          >
+                            {issue.resolved ? '重新開啟' : '標記已處理'}
+                          </button>
+                        </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   {filteredIssues.length === 0 && (
                     <p className="rounded-2xl bg-white p-5 text-center text-sm text-zinc-400">
                       {search.trim() ? '找不到符合條件的問題回報。' : '目前沒有流程問題回報。'}
@@ -2328,9 +2488,12 @@ export default function AdminPage() {
                     .sort((a, b) => Number(a.resolved) - Number(b.resolved))
                     .map((report) => {
                       const target = data.accounts.find((account) => account.userId === report.targetId);
+                      const caseThread = data.caseThreads?.find((thread) => thread.kind === 'report' && thread.caseId === report.id);
+                      const caseStatus = caseThread?.status ?? (report.resolved ? 'resolved' : 'pending_admin');
+                      const status = CASE_STATUS_LABEL[caseStatus];
                       return (
                         <div key={report.id} className={`rounded-2xl border bg-white p-4 ${
-                          report.resolved ? 'border-zinc-200 opacity-70' : 'border-red-200'
+                          caseStatus === 'resolved' ? 'border-zinc-200 opacity-70' : caseStatus === 'reporter_replied' ? 'border-pink-300' : 'border-red-200'
                         }`}>
                           <div className="flex items-start justify-between gap-3">
                             <div>
@@ -2339,14 +2502,24 @@ export default function AdminPage() {
                                 檢舉人：{accountName(report.reporterId)} · {fmtTime(report.createdAt)}
                               </p>
                             </div>
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${
-                              report.resolved ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                            }`}>
-                              {report.resolved ? '已處理' : '待處理'}
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${status.className}`}>
+                              {status.label}
                             </span>
                           </div>
                           <p className="mt-3 rounded-xl bg-zinc-50 p-3 text-sm text-zinc-700">{report.reason || '未填原因'}</p>
+                          <CaseConversation thread={caseThread} />
                           <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => prepareReportReply({
+                                recipientId: report.reporterId,
+                                referenceId: report.id,
+                                kind: 'report',
+                              })}
+                              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700"
+                            >
+                              回覆檢舉人
+                            </button>
                             <button
                               disabled={Boolean(busy)}
                               onClick={() => runAction(report.resolved ? 'reopen-report' : 'resolve-report', { reportId: report.id })}
@@ -2732,6 +2905,8 @@ export default function AdminPage() {
                 <img
                   src={images[index]}
                   alt={`${escort.nickname} 照片 ${index + 1}`}
+                  loading="eager"
+                  decoding="async"
                   className="h-full w-full object-contain"
                 />
                 {images.length > 1 && (
@@ -2769,10 +2944,13 @@ export default function AdminPage() {
       {deleteTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
-            <h2 className="text-lg font-bold">永久刪除帳號</h2>
+            <h2 className="text-lg font-bold">
+              {deleteTarget.role === 'manager' ? '永久清空幹部資料' : '永久刪除帳號'}
+            </h2>
             <p className="mt-2 text-sm text-zinc-500">
-              將永久刪除 {deleteTarget.nickname}（{deleteTarget.key}）。
-              {deleteTarget.role === 'manager' && ' 若已有任何歷史紀錄，伺服器會拒絕並要求改用封存。'}
+              {deleteTarget.role === 'manager'
+                ? `將清除 ${deleteTarget.nickname}（${deleteTarget.key}）的登入資料、所有建立過的小姐及其照片。目前的歷史局、聊天與稽核紀錄會保留。若有進行中的約會，伺服器會拒絕操作。`
+                : `將永久刪除 ${deleteTarget.nickname}（${deleteTarget.key}）。`}
             </p>
             <p className="mt-3 text-xs text-zinc-500">請輸入帳號 <b>{deleteTarget.key}</b>：</p>
             <input
@@ -2791,7 +2969,7 @@ export default function AdminPage() {
                 disabled={confirmText !== deleteTarget.key}
                 onClick={async () => {
                   const target = deleteTarget;
-                  const success = await runAction(deleteTarget.role === 'manager' ? 'delete-manager' : 'delete', {
+                  const success = await runAction(deleteTarget.role === 'manager' ? 'permanently-clear-manager' : 'delete', {
                     account: target.accountRef,
                     confirmation: confirmText,
                   });
@@ -2802,7 +2980,7 @@ export default function AdminPage() {
                 }}
                 className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white disabled:opacity-40"
               >
-                永久刪除
+                {deleteTarget.role === 'manager' ? '確認永久清空' : '永久刪除'}
               </button>
             </div>
           </div>

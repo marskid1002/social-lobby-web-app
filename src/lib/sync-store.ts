@@ -94,6 +94,29 @@ export async function permanentlyDeleteEscort(escortId: string): Promise<void> {
   });
 }
 
+/**
+ * 清除幹部目前仍在使用的個人資料與名下人員。
+ * 局、回應、邀請、聊天及營運稽核屬於多人共同歷史，刻意不在這裡刪除。
+ */
+export async function permanentlyClearManagerData(managerId: string, escortIds: string[]): Promise<void> {
+  const uniqueEscortIds = [...new Set(escortIds.filter(Boolean))];
+  const subjectIds = new Set([managerId, ...uniqueEscortIds]);
+  const all = await getShared();
+  await deleteSharedItems({
+    escorts: uniqueEscortIds,
+    presence: [managerId, ...uniqueEscortIds],
+    photoOverrides: [managerId, ...uniqueEscortIds],
+    photoGalleries: [managerId, ...uniqueEscortIds],
+    registeredUsers: [managerId],
+    chatReads: all.chatReads
+      .filter((item) => item.userId === managerId)
+      .map((item) => item.id),
+    blocks: all.blocks
+      .filter((item) => subjectIds.has(String(item.blockerId ?? '')) || subjectIds.has(String(item.blockedId ?? '')))
+      .map((item) => item.id),
+  });
+}
+
 export async function getShared(): Promise<SharedState> {
   const raw = await readSharedRaw();
   const now = Date.now();

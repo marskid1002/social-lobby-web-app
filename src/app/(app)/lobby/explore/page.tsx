@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppState, blockedPeerIds, escortPeerIds } from '@/lib/state';
 import { OperatorHome } from '@/components/OperatorHome';
@@ -14,6 +14,9 @@ import { activeConfirmedGirlIds, confirmedGirlIdsForRequest } from '@/lib/reques
 import { onlineEscortLimitForTier } from '@/lib/browse-access';
 import { requestDisplayState } from '@/lib/request-display';
 import { useNotificationPermission } from '@/components/PushManager';
+
+const ESCORT_BATCH_SIZE = 20;
+const EAGER_ESCORT_IMAGE_COUNT = 4;
 
 function shouldShowBoostNudge(req: Request): boolean {
   const impressions = req.metrics?.impressions ?? 0;
@@ -137,7 +140,7 @@ function MyRequestCard({
   );
 }
 
-function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) {
+function FemaleTile({ userId, blurred, priority = false }: { userId: string; blurred?: boolean; priority?: boolean }) {
   const { state } = useAppState();
   const router = useRouter();
   const user = state.users.find((u) => u.id === userId);
@@ -155,6 +158,9 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
               src={user.avatarUrl}
               alt=""
               aria-hidden
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : 'auto'}
+              decoding="async"
               className="h-full w-full object-cover"
             />
           </div>
@@ -177,6 +183,9 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
         <img
           src={user.cardImageUrl || user.avatarUrl}
           alt={user.nickname}
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : 'auto'}
+          decoding="async"
           className="h-full w-full object-cover transition-transform duration-300 group-active:scale-[1.02]"
         />
         <span className="absolute left-2 top-2 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_2px_rgba(255,255,255,0.9)]" role="status" aria-label="今晚在線" />
@@ -197,6 +206,62 @@ function FemaleTile({ userId, blurred }: { userId: string; blurred?: boolean }) 
         </button>
       </div>
     </article>
+  );
+}
+
+function InfiniteEscortGrid({
+  ids,
+  isGuest,
+  limit,
+  blurred,
+}: {
+  ids: string[];
+  isGuest: boolean;
+  limit: number;
+  blurred: boolean;
+}) {
+  const [visibleCount, setVisibleCount] = useState(ESCORT_BATCH_SIZE);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setVisibleCount(ESCORT_BATCH_SIZE);
+  }, [ids.length, isGuest, limit]);
+
+  useEffect(() => {
+    if (visibleCount >= ids.length) return;
+    const target = loadMoreRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      setVisibleCount((current) => Math.min(current + ESCORT_BATCH_SIZE, ids.length));
+    }, { rootMargin: '240px 0px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [ids.length, visibleCount]);
+
+  const visibleIds = ids.slice(0, visibleCount);
+  return (
+    <>
+      <div className={`mx-auto grid w-full max-w-[310px] grid-cols-2 justify-items-center gap-1.5 p-3 [@media(min-height:700px)]:max-w-[346px] [@media(min-height:700px)]:gap-3 ${blurred ? 'filter blur-[5px] pointer-events-none select-none' : ''}`}>
+        {visibleIds.map((uid, index) => (
+          <FemaleTile
+            key={uid}
+            userId={uid}
+            blurred={isGuest && index >= limit}
+            priority={index < EAGER_ESCORT_IMAGE_COUNT}
+          />
+        ))}
+      </div>
+      {visibleCount < ids.length && (
+        <div
+          ref={loadMoreRef}
+          className="py-4 text-center text-xs font-semibold text-zinc-400"
+          aria-label="載入更多小姐"
+        >
+          載入更多…
+        </div>
+      )}
+    </>
   );
 }
 
@@ -349,11 +414,12 @@ function ExploreContent() {
 
       {/* === SECTION B: Online Women === */}
       <div className="flex-1 min-h-0 overflow-y-auto pb-24 relative">
-        <div className={`mx-auto grid w-full max-w-[310px] grid-cols-2 justify-items-center gap-1.5 p-3 [@media(min-height:700px)]:max-w-[346px] [@media(min-height:700px)]:gap-3 ${tier === 'free' ? 'filter blur-[5px] pointer-events-none select-none' : ''}`}>
-          {sectionBRenderIds.map((uid, idx) => (
-            <FemaleTile key={uid} userId={uid} blurred={isGuest && idx >= limit} />
-          ))}
-        </div>
+        <InfiniteEscortGrid
+          ids={sectionBRenderIds}
+          isGuest={isGuest}
+          limit={limit}
+          blurred={tier === 'free'}
+        />
 
         {currentUser?.tier === 'free' && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">

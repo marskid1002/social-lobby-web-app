@@ -13,6 +13,7 @@ import {
   updateManagerNickname,
   setManagerArchived,
   deleteUnactivatedManager,
+  clearManagerAccount,
   bumpAccountSessionVersion,
   getAccountByUserId,
 } from '@/lib/auth-store';
@@ -23,10 +24,11 @@ import {
   getCollection,
   mergeShared,
   permanentlyDeleteEscort,
+  permanentlyClearManagerData,
   SHARED_KEYS,
 } from '@/lib/sync-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
-import { listReports, setReportResolved } from '@/lib/report-store';
+import { getReport, listReports, setReportResolved } from '@/lib/report-store';
 import {
   buildAdminDashboard,
   buildAdminEscortStatuses,
@@ -38,7 +40,7 @@ import { getRedis, isRedisConfigured, keyPrefix } from '@/lib/kv';
 import { isSessionSecretConfigured } from '@/lib/session';
 import { isSmsConfigured } from '@/lib/sms';
 import { listFlowTraces } from '@/lib/flow-trace-store';
-import { listIssueReports, setIssueResolved } from '@/lib/issue-store';
+import { getIssueReport, listIssueReports, setIssueResolved } from '@/lib/issue-store';
 import { listDeviceSummaries, removeDevicesForUser } from '@/lib/device-store';
 import { rateLimit } from '@/lib/rate-limit';
 import { sendWebPushToUsers } from '@/lib/push-service';
@@ -53,6 +55,7 @@ import { summarizeSmsRuntime } from '@/lib/sms-runtime';
 import { activeConfirmedGirlIds } from '@/lib/request-attendance';
 import { parseStoredImageUrl } from '@/lib/image-upload';
 import { deleteR2Object, isR2Configured } from '@/lib/r2-storage';
+import { appendCaseMessage, listCaseThreads, setCaseStatus, type CaseKind } from '@/lib/case-thread-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -248,6 +251,7 @@ export async function GET(req: NextRequest) {
     systemMessages,
     requestHistory,
     system,
+    caseThreads,
   ] = await Promise.all([
     listAccounts().then((list) => list.map(safeAccount)),
     listReports(),
@@ -266,6 +270,7 @@ export async function GET(req: NextRequest) {
     listSystemMessages(),
     listRequestHistory(),
     getSystemStatus(),
+    listCaseThreads(),
   ]);
 
   const dashboard = buildAdminDashboard({
@@ -343,6 +348,7 @@ export async function GET(req: NextRequest) {
       traceEvents,
       issues: safeIssues,
       devices,
+      caseThreads,
     },
     { headers: { 'Cache-Control': 'no-store' } },
   );
@@ -384,6 +390,10 @@ export async function POST(req: NextRequest) {
       const recipientScope = stringValue(body.recipientScope) === 'all' ? 'all' : 'single';
       const title = stringValue(body.title).trim();
       const content = stringValue(body.content).trim();
+      const caseKind = ['issue', 'report'].includes(stringValue(body.caseKind))
+        ? stringValue(body.caseKind) as CaseKind
+        : undefined;
+      const caseId = stringValue(body.caseId);
       if (title.length < 1 || title.length > 60 || content.length < 1 || content.length > 1000) {
         return NextResponse.json({ error: '標題需為 1–60 字，內容需為 1–1000 字' }, { status: 400 });
       }
@@ -453,6 +463,15 @@ export async function POST(req: NextRequest) {
       if (confirmation !== recipient.userId) {
         return NextResponse.json({ error: '收件人確認資料不一致，請重新確認' }, { status: 400 });
       }
+      if (caseKind || caseId) {
+        if (!caseKind || !caseId || caseId.length > 128) {
+          return NextResponse.json({ error: '案件資料不完整，請重新從檢舉中心回覆' }, { status: 400 });
+        }
+        const caseRecord = caseKind === 'report' ? await getReport(caseId) : await getIssueReport(caseId);
+        if (!caseRecord || caseRecord.reporterId !== recipient.userId) {
+          return NextResponse.json({ error: '案件與收件人不一致，已阻止傳送' }, { status: 403 });
+        }
+      }
       const limited = await rateLimit('admin-system-message', `${admin.userId}:${recipient.userId}`, 1, 30);
       if (!limited.ok) {
         return NextResponse.json({ error: `請等待 ${limited.retryAfter} 秒後再傳給同一位使用者` }, { status: 429 });
@@ -465,7 +484,20 @@ export async function POST(req: NextRequest) {
         title,
         content,
         senderId: admin.userId,
+        ...(caseKind && caseId ? { caseKind, caseId } : {}),
       });
+      if (caseKind && caseId) {
+        await appendCaseMessage({
+          kind: caseKind,
+          caseId,
+          reporterId: recipient.userId,
+          senderId: admin.userId,
+          senderRole: 'admin',
+          content,
+        });
+        if (caseKind === 'report') await setReportResolved(caseId, false);
+        else await setIssueResolved(caseId, false);
+      }
       const push = await sendWebPushToUsers(
         [recipient.userId],
         `JUGA 官方通知：${title}`,
@@ -515,16 +547,24 @@ export async function POST(req: NextRequest) {
     if (action === 'resolve-report' || action === 'reopen-report') {
       const reportId = stringValue(body.reportId);
       if (!reportId) return NextResponse.json({ error: '缺少檢舉編號' }, { status: 400 });
+      const report = await getReport(reportId);
       const ok = await setReportResolved(reportId, action === 'resolve-report');
-      if (ok) await audit(admin, action, reportId);
+      if (ok && report) {
+        await setCaseStatus('report', reportId, report.reporterId, action === 'resolve-report' ? 'resolved' : 'pending_admin');
+        await audit(admin, action, reportId);
+      }
       return NextResponse.json({ ok });
     }
 
     if (action === 'resolve-issue' || action === 'reopen-issue') {
       const issueId = stringValue(body.issueId);
       if (!issueId) return NextResponse.json({ error: '缺少問題編號' }, { status: 400 });
+      const issue = await getIssueReport(issueId);
       const ok = await setIssueResolved(issueId, action === 'resolve-issue');
-      if (ok) await audit(admin, action, issueId);
+      if (ok && issue) {
+        await setCaseStatus('issue', issueId, issue.reporterId, action === 'resolve-issue' ? 'resolved' : 'pending_admin');
+        await audit(admin, action, issueId);
+      }
       return NextResponse.json({ ok });
     }
 
@@ -645,6 +685,101 @@ export async function POST(req: NextRequest) {
     if (!targetAccount) return NextResponse.json({ error: '找不到帳號' }, { status: 404 });
     const accountKey = targetAccount.key;
     const auditTarget = targetAccount.role === 'user' ? targetAccount.userId : targetAccount.key;
+
+    if (action === 'permanently-clear-manager') {
+      if (targetAccount.role !== 'manager') {
+        return NextResponse.json({ error: '只能清空幹部帳號' }, { status: 400 });
+      }
+      if (confirmation !== accountKey) {
+        return NextResponse.json({ error: '確認文字錯誤，已取消清空' }, { status: 400 });
+      }
+
+      const collections = await Promise.all(SHARED_KEYS.map((key) => getCollection(key)));
+      const escorts = collections[SHARED_KEYS.indexOf('escorts')]
+        .filter((item) => item.managerId === targetAccount.userId);
+      const escortIds = escorts.map((item) => item.id);
+      const activeEscortIds = activeConfirmedGirlIds(
+        collections[SHARED_KEYS.indexOf('responses')],
+        collections[SHARED_KEYS.indexOf('invitations')],
+      );
+      const busyEscortCount = escortIds.filter((id) => activeEscortIds.has(id)).length;
+      if (busyEscortCount > 0) {
+        return NextResponse.json({
+          error: `此幹部有 ${busyEscortCount} 位小姐正在進行約會，結束後才能永久清空`,
+        }, { status: 409 });
+      }
+
+      const targetIds = new Set([targetAccount.userId, ...escortIds]);
+      const photoOverrides = collections[SHARED_KEYS.indexOf('photoOverrides')];
+      const photoGalleries = collections[SHARED_KEYS.indexOf('photoGalleries')];
+      const imageUrls = [...new Set([
+        ...photoOverrides
+          .filter((item) => targetIds.has(item.id))
+          .map((item) => stringValue(item.avatarUrl)),
+        ...photoGalleries
+          .filter((item) => targetIds.has(item.id))
+          .flatMap((item) => Array.isArray(item.urls) ? item.urls.map(stringValue) : []),
+      ].filter(Boolean))];
+      const referencedElsewhere = new Set<string>();
+      SHARED_KEYS.forEach((key, index) => {
+        const records = collections[index].filter((item) => !(
+          (key === 'photoOverrides' || key === 'photoGalleries') && targetIds.has(item.id)
+        ));
+        collectBlobPathnames(records, referencedElsewhere);
+      });
+      const validImages = imageUrls.flatMap((url) => {
+        const parsed = parseStoredImageUrl(url);
+        return parsed.ok ? [{ url, pathname: parsed.pathname, provider: parsed.provider }] : [];
+      });
+      const imagesToDelete = validImages.filter(
+        (item) => !referencedElsewhere.has(`${item.provider}:${item.pathname}`),
+      );
+      const vercelUrls = imagesToDelete
+        .filter((item) => item.provider === 'vercel')
+        .map((item) => item.url);
+      const r2Objects = imagesToDelete.filter((item) => item.provider === 'r2');
+      if (vercelUrls.length > 0 && !Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)) {
+        return NextResponse.json({ error: 'Blob 圖片服務尚未設定，為避免留下照片，本次未清空' }, { status: 503 });
+      }
+      if (r2Objects.length > 0 && !isR2Configured()) {
+        return NextResponse.json({ error: 'R2 圖片服務尚未設定，為避免留下照片，本次未清空' }, { status: 503 });
+      }
+      try {
+        if (vercelUrls.length > 0) {
+          const { del } = await import('@vercel/blob');
+          await del(vercelUrls);
+        }
+        for (let offset = 0; offset < r2Objects.length; offset += 10) {
+          await Promise.all(r2Objects.slice(offset, offset + 10).map((item) => deleteR2Object(item.pathname)));
+        }
+      } catch {
+        console.error('[admin manager clear] image delete failed');
+        return NextResponse.json({ error: '照片刪除失敗，幹部與小姐資料尚未清空，請稍後重試' }, { status: 502 });
+      }
+
+      await permanentlyClearManagerData(targetAccount.userId, escortIds);
+      await Promise.all([
+        removeDevicesForUser(targetAccount.userId),
+        removeSubscriptionsForUser(targetAccount.userId),
+      ]);
+      const cleared = await clearManagerAccount(accountKey);
+      if (!cleared) {
+        return NextResponse.json({ error: '幹部帳號清空失敗，請聯絡系統管理員確認' }, { status: 500 });
+      }
+      await audit(
+        admin,
+        action,
+        accountKey,
+        `userId=${targetAccount.userId};escortCount=${escortIds.length};imageCount=${imagesToDelete.length};retainedReservedSlot=${cleared.retainedReservedSlot}`,
+      );
+      return NextResponse.json({
+        ok: true,
+        count: escortIds.length,
+        deletedEscortCount: escortIds.length,
+        deletedImageCount: imagesToDelete.length,
+        retainedReservedSlot: cleared.retainedReservedSlot,
+      });
+    }
 
     if (action === 'edit-manager') {
       const nickname = stringValue(body.nickname).trim();
