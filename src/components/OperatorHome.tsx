@@ -60,7 +60,7 @@ async function downscaleToJpegDataUrl(file: File, maxDim = 1280, quality = 0.82)
 }
 
 export function OperatorHome() {
-  const { state, dispatchGirls, switchToRosterGirl, setUserPresence, updateUser, addEscort, updateEscortProfile, removeEscort } = useAppState();
+  const { state, dispatchGirls, switchToRosterGirl, setUserPresence, updateUser, updateEscortProfile, removeEscort } = useAppState();
   const photoInputRef = useRef<HTMLInputElement>(null);
   const uploadModeRef = useRef<'avatar' | 'gallery'>('avatar');
   const [photoSheetGirlId, setPhotoSheetGirlId] = useState<string | null>(null); // 開啟照片管理彈窗的小姐
@@ -236,6 +236,8 @@ export function OperatorHome() {
   const [nameDraft, setNameDraft] = useState(''); // 首登設定顯示名稱
   const [addOpen, setAddOpen] = useState(false); // 新增人員彈窗
   const [newEscortName, setNewEscortName] = useState('');
+  const [newEscortAvatar, setNewEscortAvatar] = useState<File | null>(null);
+  const [newEscortPhotos, setNewEscortPhotos] = useState<File[]>([]);
   const [creatingEscort, setCreatingEscort] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [editEscortId, setEditEscortId] = useState<string | null>(null);
@@ -255,20 +257,58 @@ export function OperatorHome() {
 
   async function handleAddEscort() {
     const name = newEscortName.trim();
-    if (!name || creatingEscort) return;
+    if (!name || !newEscortAvatar || newEscortPhotos.length === 0 || creatingEscort) return;
     setCreatingEscort(true);
+    const uploadedUrls: string[] = [];
+    let escortCreated = false;
     try {
-      await addEscort(name);
+      uploadModeRef.current = 'avatar';
+      const avatarUrl = await uploadImage(state.currentUserId, newEscortAvatar);
+      uploadedUrls.push(avatarUrl);
+
+      uploadModeRef.current = 'gallery';
+      const photos: string[] = [];
+      for (const file of newEscortPhotos) {
+        const url = await uploadImage(state.currentUserId, file);
+        photos.push(url);
+        uploadedUrls.push(url);
+      }
+
+      const response = await fetch('/api/escorts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname: name, avatarUrl, photos }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error || '新增失敗，請稍後再試');
+      escortCreated = true;
+      await refreshShared().catch(() => undefined);
       setNewEscortName('');
+      setNewEscortAvatar(null);
+      setNewEscortPhotos([]);
       setAddOpen(false);
-      setToast('✅ 人員已建立並同步完成');
+      setToast('✅ 人員與照片已建立並同步完成');
       setTimeout(() => setToast(''), 2500);
     } catch (error) {
+      if (!escortCreated && uploadedUrls.length > 0) {
+        await Promise.allSettled(uploadedUrls.map((url) => fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', url }),
+        })));
+      }
       setToast(`⚠️ ${error instanceof Error ? error.message : '新增失敗'}`);
       setTimeout(() => setToast(''), 6000);
     } finally {
       setCreatingEscort(false);
     }
+  }
+
+  function openAddEscort() {
+    setNewEscortName('');
+    setNewEscortAvatar(null);
+    setNewEscortPhotos([]);
+    setAddOpen(true);
   }
 
   async function handleRemoveGalleryPhoto(girlId: string, url: string) {
@@ -512,7 +552,7 @@ export function OperatorHome() {
       <div className="flex items-center gap-3 px-4 py-3 mt-2 bg-brand-snow border-y border-zinc-100">
         <p className="text-sm font-bold text-brand-ink uppercase tracking-wider flex-1">人員管理（{currentRosterIds.length}）</p>
         <button
-          onClick={() => { setNewEscortName(''); setAddOpen(true); }}
+          onClick={openAddEscort}
           className="shrink-0 text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1.5 rounded-full active:bg-purple-100 transition-colors"
         >
           ＋ 新增人員
@@ -522,7 +562,7 @@ export function OperatorHome() {
       {rosterGirls.length === 0 ? (
         <div className="px-4 py-6 text-center">
           <p className="text-sm text-zinc-400">目前沒有人員，請自行新增</p>
-          <button onClick={() => { setNewEscortName(''); setAddOpen(true); }} className="mt-2 text-xs font-bold text-purple-600 underline">＋ 新增人員</button>
+          <button onClick={openAddEscort} className="mt-2 text-xs font-bold text-purple-600 underline">＋ 新增人員</button>
         </div>
       ) : (
         <div>
@@ -880,21 +920,55 @@ export function OperatorHome() {
           >
             <div className="w-10 h-1 bg-brand-lavender rounded-full mx-auto mb-4" />
             <p className="text-base font-bold text-brand-ink text-center mb-1">新增人員</p>
-            <p className="text-xs text-zinc-400 text-center mb-4">先輸入名稱建立；建立後在列表按「照片」上傳大頭照 / 相簿。</p>
+            <p className="text-xs text-zinc-400 text-center mb-4">名稱、大頭照及至少一張一般照片都完成後才能建立。</p>
             <input
               value={newEscortName}
               onChange={(e) => setNewEscortName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void handleAddEscort(); }}
               placeholder="輸入人員名稱（例如 小美）"
               maxLength={20}
-              className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky mb-4"
+              className="w-full rounded-xl border border-brand-lavender bg-brand-snow px-4 py-3 text-sm text-brand-ink focus:outline-none focus:border-brand-sky"
               aria-label="人員名稱"
               autoFocus
             />
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <label className={`rounded-2xl border p-3 text-center transition-colors ${newEscortAvatar ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
+                <span className="block text-xs font-bold text-brand-ink">大頭照（必填）</span>
+                <span className="mt-1 block truncate text-[11px] text-zinc-500">{newEscortAvatar?.name ?? '點此選擇 1 張'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={creatingEscort}
+                  className="sr-only"
+                  onChange={(event) => {
+                    setNewEscortAvatar(event.target.files?.[0] ?? null);
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              <label className={`rounded-2xl border p-3 text-center transition-colors ${newEscortPhotos.length > 0 ? 'border-emerald-300 bg-emerald-50' : 'border-amber-300 bg-amber-50'}`}>
+                <span className="block text-xs font-bold text-brand-ink">一般照片（必填）</span>
+                <span className="mt-1 block text-[11px] text-zinc-500">{newEscortPhotos.length > 0 ? `已選 ${newEscortPhotos.length} 張` : '至少選擇 1 張'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={creatingEscort}
+                  className="sr-only"
+                  onChange={(event) => {
+                    setNewEscortPhotos(Array.from(event.target.files ?? []));
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+            {(!newEscortAvatar || newEscortPhotos.length === 0) && (
+              <p className="mt-3 text-center text-xs font-semibold text-amber-600">請補齊大頭照與一般照片後才能建立</p>
+            )}
             <button
               onClick={() => void handleAddEscort()}
-              disabled={!newEscortName.trim() || creatingEscort}
-              className="w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:opacity-40 active:bg-purple-600 transition-colors"
+              disabled={!newEscortName.trim() || !newEscortAvatar || newEscortPhotos.length === 0 || creatingEscort}
+              className="mt-4 w-full py-3.5 rounded-2xl bg-purple-500 text-white text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 active:bg-purple-600 transition-colors"
             >
               {creatingEscort ? '建立並同步中…' : '建立'}
             </button>

@@ -146,6 +146,36 @@ export async function mergeShared(patch: Partial<SharedState>): Promise<void> {
   if (writes.length) await Promise.all(writes); // 不同集合的寫入互不相依，可並行
 }
 
+const CREATE_ESCORT_WITH_PHOTOS_SCRIPT = `
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+redis.call('HSET', KEYS[2], ARGV[1], ARGV[3])
+redis.call('HSET', KEYS[3], ARGV[1], ARGV[4])
+return 1
+`;
+
+/** 原子建立小姐、大頭照與相簿，避免任一集合只寫入一半。 */
+export async function createEscortWithPhotos(
+  escort: Item,
+  avatarUrl: string,
+  photos: string[],
+): Promise<void> {
+  if (!escort.id || !avatarUrl || photos.length === 0) throw new Error('escort photos required');
+  const avatar = { id: escort.id, avatarUrl };
+  const gallery = { id: escort.id, urls: [...new Set(photos)] };
+  const redis = getRedis();
+  if (redis) {
+    await redis.eval(
+      CREATE_ESCORT_WITH_PHOTOS_SCRIPT,
+      [hashKey('escorts'), hashKey('photoOverrides'), hashKey('photoGalleries')],
+      [escort.id, JSON.stringify(escort), JSON.stringify(avatar), JSON.stringify(gallery)],
+    );
+    return;
+  }
+  mem.escorts[escort.id] = escort;
+  mem.photoOverrides[escort.id] = avatar;
+  mem.photoGalleries[escort.id] = gallery;
+}
+
 export interface PhotoGalleryRecord extends Item {
   id: string;
   urls: string[];

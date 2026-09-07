@@ -35,14 +35,44 @@ async function post(route, account, body) {
   }));
 }
 
+function requiredPhotos(account) {
+  const base = `https://test.public.blob.vercel-storage.com/uploads/${account.userId}`;
+  return {
+    avatarUrl: `${base}/managed-photo/${crypto.randomUUID()}.jpg`,
+    photos: [`${base}/gallery/${crypto.randomUUID()}.jpg`],
+  };
+}
+
+test('新增小姐缺少大頭照或一般照片時拒絕建立', { skip }, async () => {
+  await store.clearShared();
+  const manager = (await authStore.createManagerAccount(`照片必填-${Date.now()}`)).account;
+
+  const missingAvatar = await post(createEscort, manager, {
+    nickname: '缺大頭照',
+    photos: requiredPhotos(manager).photos,
+  });
+  assert.equal(missingAvatar.status, 400);
+  assert.match(missingAvatar.body.error, /大頭照/);
+
+  const missingGallery = await post(createEscort, manager, {
+    nickname: '缺一般照片',
+    avatarUrl: requiredPhotos(manager).avatarUrl,
+  });
+  assert.equal(missingGallery.status, 400);
+  assert.match(missingGallery.body.error, /一般照片/);
+  assert.equal((await store.getCollection('escorts')).length, 0);
+});
+
 test('新增小姐成功回應後，不經背景同步也能立即派工', { skip }, async () => {
   await store.clearShared();
   const manager = (await authStore.createManagerAccount(`立即派工-${Date.now()}`)).account;
-  const created = await post(createEscort, manager, { nickname: '立即建立小姐' });
+  const created = await post(createEscort, manager, { nickname: '立即建立小姐', ...requiredPhotos(manager) });
   assert.equal(created.status, 201);
   assert.equal(created.body.ok, true);
   assert.equal(created.body.escort.managerId, manager.userId);
   assert.ok(created.body.escorts.some((escort) => escort.id === created.body.escort.id));
+  assert.equal((await store.getCollection('photoOverrides')).find((item) => item.id === created.body.escort.id)?.avatarUrl.startsWith('https://'), true);
+  assert.equal((await store.getCollection('photoGalleries')).find((item) => item.id === created.body.escort.id)?.urls.length, 1);
 
   const requestId = `req-immediate-${Date.now()}`;
   await store.mergeShared({
@@ -83,7 +113,7 @@ test('新增小姐成功回應後，不經背景同步也能立即派工', { ski
 test('派工會保存當下在線狀態快照', { skip }, async () => {
   await store.clearShared();
   const manager = (await authStore.createManagerAccount(`在線快照-${Date.now()}`)).account;
-  const created = await post(createEscort, manager, { nickname: '在線快照人員' });
+  const created = await post(createEscort, manager, { nickname: '在線快照人員', ...requiredPhotos(manager) });
   const escortId = created.body.escort.id;
   const requestId = `req-presence-${Date.now()}`;
   const updatedAt = new Date(Date.now() - 30_000).toISOString();
