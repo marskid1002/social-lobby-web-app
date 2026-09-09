@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 const ONE_YEAR_SECONDS = 31_536_000;
 
@@ -75,4 +75,11 @@ export async function deleteR2Object(pathname: string): Promise<void> {
   } finally {
     client.destroy();
   }
+}
+
+export async function probeR2Bucket(): Promise<void> {
+  const { client, config } = clientAndConfig();
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: config.bucket }), { abortSignal: AbortSignal.timeout(5000) });
+  } finally { client.destroy(); }
 }

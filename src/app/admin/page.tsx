@@ -1,5 +1,8 @@
 'use client';
 
+import type { Diagnostic } from '@/lib/system-diagnostics';
+import { diagnosticGuidance, formatDiagnosticReport } from '@/lib/diagnostic-guidance';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -562,6 +565,25 @@ export default function AdminPage() {
   const [accountDirectoryLoading, setAccountDirectoryLoading] = useState(false);
   const [accountDirectoryError, setAccountDirectoryError] = useState('');
   const [imageMigration, setImageMigration] = useState<ImageMigrationStatus | null>(null);
+  const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState('');
+  const [diagnosticReport, setDiagnosticReport] = useState('');
+  const diagnose = useCallback(async () => {
+    setDiagnosticsBusy(true);
+    setDiagnostics([]);
+    setDiagnosticsError('');
+    setDiagnosticReport('');
+    try {
+      const response = await fetch('/api/admin/diagnostics', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '診斷請求失敗，未取得檢查結果');
+      setDiagnostics(result.checks);
+    } catch (error) {
+      setDiagnosticsError(error instanceof Error && error.name !== 'TimeoutError' ? error.message : '診斷請求逾時，未取得結果；請檢查網路及伺服器紀錄。');
+    } finally { setDiagnosticsBusy(false); }
+  }, []);
+  useEffect(() => { if (tab === 'system') void diagnose(); }, [tab, diagnose]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -577,7 +599,7 @@ export default function AdminPage() {
       return;
     }
     if (!response.ok) {
-      setError('後台資料載入失敗');
+      setError(`後台資料 API 回傳 HTTP ${response.status}，無法取得診斷資料；這不代表所有服務都故障。請比對此時間的伺服器紀錄。`);
       return false;
     }
     setData(await response.json() as DashboardData);
@@ -1242,7 +1264,7 @@ export default function AdminPage() {
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${
                       data.system.ready ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
                     }`}>
-                      {data.system.ready ? '系統正常' : '系統異常'}
+                      {data.system.ready ? '基本設定通過・詳見系統診斷' : '基本檢查未通過・詳見系統診斷'}
                     </span>
                   </div>
                 </div>
@@ -2655,24 +2677,50 @@ export default function AdminPage() {
             {tab === 'system' && (
               <section>
                 <h1 className="text-2xl font-bold">系統狀態</h1>
-                <p className="mt-1 text-sm text-zinc-500">只顯示服務是否可用，不顯示任何金鑰內容。</p>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {[
-                    ['Redis 儲存', data.system.redisConfigured && data.system.redisPing],
-                    ['Session 密鑰', data.system.sessionSecretConfigured],
-                    ['SMS 簡訊', data.system.smsConfigured],
-                    ['Web Push', data.system.pushConfigured],
-                    ['Blob 圖片', data.system.blobConfigured],
-                    ['Sentry 錯誤追蹤', data.system.sentryConfigured],
-                  ].map(([label, ok]) => (
-                    <div key={String(label)} className="rounded-2xl border border-zinc-200 bg-white p-4">
-                      <div className="flex items-center gap-2">
-                        <StatusDot ok={Boolean(ok)} />
-                        <p className="text-sm font-bold">{String(label)}</p>
-                      </div>
-                      <p className={`mt-3 text-xs font-semibold ${ok ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {ok ? '正常' : '需要檢查'}
+                <p className="mt-1 text-sm text-zinc-500">綠色僅代表列出的檢查通過；紅色表示該環節失敗；黃色表示尚未驗證完整流程。結果為檢查當下的快照。</p>
+                <button type="button" onClick={() => void diagnose()} disabled={diagnosticsBusy} className="mt-3 rounded-xl bg-sky-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                  {diagnosticsBusy ? '檢查中…' : '重新執行診斷'}
+                </button>
+                <button type="button" disabled={diagnosticsBusy || (!diagnostics.length && !diagnosticsError)}
+                  className="ml-2 mt-3 rounded-xl border border-sky-300 px-4 py-2 text-sm font-bold text-sky-700 disabled:opacity-50"
+                  onClick={async () => {
+                    const report = formatDiagnosticReport({ checks: diagnostics, version: data.system.version, environment: data.system.keyPrefix, error: diagnosticsError });
+                    setDiagnosticReport(report);
+                    try { await navigator.clipboard.writeText(report); showToast('診斷報告已複製，可貼給維護人員'); }
+                    catch { showToast('瀏覽器不允許自動複製，請從下方文字框選取複製'); }
+                  }}>
+                  複製診斷報告
+                </button>
+                {diagnosticReport && <div className="mt-3">
+                  <p className="mb-2 text-xs text-zinc-500">報告包含抽查照片網址，請只交给信任的維護人員。可點選文字框全選複製。</p>
+                  <textarea aria-label="診斷報告" readOnly value={diagnosticReport} onFocus={(event) => event.currentTarget.select()} className="h-40 w-full rounded-xl border border-zinc-300 p-3 text-xs" />
+                </div>}
+                {diagnosticsError && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-4 text-sm text-red-700">{diagnosticsError}</p>}
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {diagnostics.map((check) => (
+                    <div key={check.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
+                      <p className="text-sm font-bold">{check.label}</p>
+                      <p className={`mt-2 text-sm font-bold ${check.status === 'pass' ? 'text-emerald-700' : check.status === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
+                        {check.status === 'pass' ? '已通過列出項目' : check.status === 'error' ? '此環節失敗' : '尚未完整驗證'}
                       </p>
+                      <p className="mt-2 text-xs font-semibold text-zinc-600">檢查環節：{check.stage}</p>
+                      <p className="mt-2 text-sm text-zinc-700">{check.detail}</p>
+                      <p className="mt-2 text-xs text-zinc-500">處理方式：{check.action}</p>
+                      {check.sample && <div className="mt-3 space-y-1 rounded-lg bg-zinc-50 p-3 text-xs">
+                        <p>小姐 ID：{check.sample.escortId}</p>
+                        <p className="break-all">物件路徑：{check.sample.pathname}</p>
+                        <a href={check.sample.url} target="_blank" rel="noopener noreferrer" className="block break-all text-sky-700 underline">開啟抽查照片：{check.sample.url}</a>
+                        <p>HTTP：{check.sample.httpStatus ?? '未取得回應'}</p>
+                      </div>}
+                      <details className="mt-3 rounded-lg border border-zinc-200 p-3" open={check.status === 'error'}>
+                        <summary className="cursor-pointer text-sm font-bold">去哪裡處理／操作步驟</summary>
+                        <ol className="mt-2 list-decimal space-y-2 pl-5 text-xs leading-relaxed text-zinc-700">
+                          {diagnosticGuidance(check).steps.map((step, index) => <li key={index}>{step}</li>)}
+                        </ol>
+                        <p className="mt-3 text-xs text-zinc-500">完成後：{diagnosticGuidance(check).verification}</p>
+                        <a href={diagnosticGuidance(check).helpUrl} target="_blank" rel="noopener noreferrer" className="mt-2 block text-xs text-sky-700 underline">相關官方設定說明</a>
+                      </details>
+                      <p className="mt-3 text-xs text-zinc-400">檢查時間：{fmtTime(check.checkedAt)}</p>
                     </div>
                   ))}
                 </div>
@@ -2705,13 +2753,13 @@ export default function AdminPage() {
                 </div>
                 <div className="mt-5 rounded-2xl border border-zinc-200 bg-white p-4 text-sm">
                   <div className="flex items-center gap-2">
-                    <StatusDot ok={data.system.smsConfigured && data.system.smsRuntime.state !== 'degraded'} />
                     <h2 className="font-bold">SMS 實際發送狀況</h2>
                   </div>
                   {data.system.smsRuntime.state === 'no_data' ? (
-                    <p className="mt-3 text-zinc-500">目前尚無簡訊發送紀錄；上方只代表設定完整。</p>
+                    <p className="mt-3 text-zinc-500">目前尚無簡訊發送紀錄，無法確認發送服務是否可用。</p>
                   ) : (
                     <div className="mt-3 text-zinc-600">
+                      <p className="mb-2 text-xs text-zinc-500">以下為歷史發送結果，不代表現在可用或手機已收到。重新整理後台可更新歷程。</p>
                       <div className="space-y-1">
                         <p>最近一次：{data.system.smsRuntime.state === 'healthy' ? '成功' : '失敗'} · {fmtTime(data.system.smsRuntime.lastAttemptAt)}</p>
                         <p>近 24 小時：發送 {data.system.smsRuntime.attempts24h} 次，失敗 {data.system.smsRuntime.failures24h} 次</p>
