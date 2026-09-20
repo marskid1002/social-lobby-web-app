@@ -35,7 +35,9 @@ export interface RetentionPlan {
   remove: Partial<Record<SharedKey, string[]>>;
 }
 
-/** 局／未成立邀請保留 8 小時；已建立聊天室保留至 server 的 chatExpiresAt。 */
+/** 前台有效資料：局／未成立邀請 8 小時，聊天室至 chatExpiresAt。
+ * remove 只代表移出即時集合；伺服器會將局、回應、邀請與訊息封存，不永久刪除。
+ */
 export function planDataRetention(all: SharedState, now: number = Date.now()): RetentionPlan {
   const removed: Partial<Record<SharedKey, Set<string>>> = {};
   const mark = (key: SharedKey, item: Item) => {

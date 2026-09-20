@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const route = await import('@/app/api/auth/route');
-const { passwordRuleError } = route;
+const { passwordRuleError } = await import('@/lib/auth-route');
 
 // ── 純規則（大小寫+數字+符號、最短 6、上限 128）────────────────────────────────
 

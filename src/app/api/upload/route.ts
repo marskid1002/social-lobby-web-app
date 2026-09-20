@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import { requireActiveSession } from '@/lib/active-session';
 import { parseAndValidateImageDataUrl, buildUploadPathname, parseStoredImageUrl, authorizeBlobDeletion } from '@/lib/image-upload';
-import { getCollection } from '@/lib/sync-store';
+import { getCollection, getCollectionWithHistory } from '@/lib/sync-store';
 import { deleteR2Object, isR2Configured, putR2Object } from '@/lib/r2-storage';
 
 export const dynamic = 'force-dynamic';
@@ -68,6 +68,15 @@ export async function POST(req: NextRequest) {
         photoGalleries: photoGalleries as { id?: string; urls?: string[] }[],
       });
       if (!decision.ok) return NextResponse.json({ error: 'forbidden' }, { status: decision.status });
+
+      const chatMessages = await getCollectionWithHistory('chatMessages');
+      const referencedByChat = chatMessages.some((message) => {
+        if (typeof message.imageUrl !== 'string') return false;
+        const image = parseStoredImageUrl(message.imageUrl);
+        return image.ok && image.provider === parsedUrl.provider && image.pathname === parsedUrl.pathname;
+      });
+      // The gallery may remove its reference, but shared historical evidence must remain readable.
+      if (referencedByChat) return NextResponse.json({ ok: true, retainedForChatHistory: true });
 
       // 通過所有權才可能 del；Blob 本就不存在則冪等成功、不 del
       if (authoritativePathname === null) return NextResponse.json({ ok: true });

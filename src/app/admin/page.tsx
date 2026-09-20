@@ -995,6 +995,8 @@ export default function AdminPage() {
       escortId?: string;
       confirmation?: string;
       nickname?: string;
+      threadId?: string;
+      requestId?: string;
     } = {},
   ) {
     setBusy(`${action}:${input.account ?? input.reportId ?? input.issueId ?? input.escortId ?? ''}`);
@@ -1045,7 +1047,7 @@ export default function AdminPage() {
     setBusy(`chat:${conversation.key}`);
     try {
       const query = new URLSearchParams({ threadId: conversation.threadId });
-      if (conversation.requestId !== null) query.set('requestId', conversation.requestId);
+      query.set('requestId', conversation.requestId ?? '');
       const response = await fetch(`/api/admin?${query}`, { cache: 'no-store' });
       const result = await response.json().catch(() => ({})) as {
         messages?: ConversationMessage[];
@@ -2574,7 +2576,7 @@ export default function AdminPage() {
             {tab === 'chats' && (
               <section>
                 <h1 className="text-2xl font-bold">聊天室查詢</h1>
-                <p className="mt-1 text-sm text-zinc-500">預設只看摘要；管理者點開後才向伺服器載入內容。</p>
+                <p className="mt-1 text-sm text-zinc-500">包含已到期的保存紀錄，不自動刪除。點開才載入完整訊息；僅 A000 可手動刪除已封存對話。</p>
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -2607,6 +2609,18 @@ export default function AdminPage() {
                         </button>
                         {isOpen && (
                           <div className="max-h-[28rem] overflow-y-auto border-t border-zinc-100 bg-zinc-50 p-4">
+                            <p className="mb-2 break-all text-xs text-zinc-500">聊天室：{conversation.threadId} · 局：{conversation.requestId || '私人對話'}</p>
+                            <button type="button" disabled={Boolean(busy)} className="mb-4 text-xs text-red-600 disabled:opacity-50"
+                              onClick={async () => {
+                                const expected = `DELETE ${conversation.threadId}`;
+                                const typed = window.prompt(`永久刪除此對話的後台訊息與邀請紀錄，無法復原。共 ${conversation.messageCount} 則訊息。原始照片檔與局摘要不會一併刪除。\n請輸入：${expected}`);
+                                if (typed !== expected) return;
+                                const ok = await runAction('delete-chat-history', { threadId: conversation.threadId, requestId: conversation.requestId ?? '', confirmation: typed });
+                                if (ok) {
+                                  setChatOpen(null);
+                                  setChatMessages((current) => { const next = { ...current }; delete next[conversation.key]; return next; });
+                                }
+                              }}>手動刪除已封存紀錄</button>
                             {busy === `chat:${conversation.key}` && (
                               <p className="text-center text-xs text-zinc-400">載入對話中…</p>
                             )}
@@ -2826,7 +2840,7 @@ export default function AdminPage() {
                 <div className="mt-5 space-y-4">
                   <div className="rounded-2xl border border-red-200 bg-white p-5">
                     <h2 className="font-bold">清除所有局、聊天與廣場</h2>
-                    <p className="mt-2 text-sm text-zinc-500">保留帳號、小姐與照片，清除局、回應、邀請、通知、聊天室、廣場貼文及留言。</p>
+                    <p className="mt-2 text-sm text-zinc-500">清除前台局、聊天、通知及廣場。局、回應、邀請與訊息仍保存在後台；歷史對話需到「聊天室查詢」另行手動刪除。</p>
                     <p className="mt-2 text-xs font-mono text-red-600">確認文字：CLEAR SHARED</p>
                     <button
                       disabled={Boolean(busy)}
@@ -2844,7 +2858,7 @@ export default function AdminPage() {
                   </div>
                   <div className="rounded-2xl border border-red-300 bg-red-50 p-5">
                     <h2 className="font-bold text-red-800">刪除所有客戶帳號</h2>
-                    <p className="mt-2 text-sm text-red-700">連同客戶的局、對話、個人資料與推播訂閱一併刪除。</p>
+                    <p className="mt-2 text-sm text-red-700">刪除客戶帳號、個人資料與推播訂閱；局與對話紀錄移至後台保存，不會一併刪除歷史訊息。</p>
                     <p className="mt-2 text-xs font-mono text-red-700">確認文字：DELETE CUSTOMERS</p>
                     <button
                       disabled={Boolean(busy)}

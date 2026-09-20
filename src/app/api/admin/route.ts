@@ -22,6 +22,9 @@ import {
   deleteUserData,
   clearShared,
   getCollection,
+  getCollectionWithHistory,
+  getHistoryCollection,
+  deleteArchivedConversation,
   mergeShared,
   permanentlyDeleteEscort,
   permanentlyClearManagerData,
@@ -186,9 +189,9 @@ async function getConversationDetail(req: NextRequest) {
     return NextResponse.json({ error: 'invalid threadId' }, { status: 400 });
   }
   const [chatMessages, responses, invitations, escorts, accounts] = await Promise.all([
-    getCollection('chatMessages'),
-    getCollection('responses'),
-    getCollection('invitations'),
+    getCollectionWithHistory('chatMessages'),
+    getCollectionWithHistory('responses'),
+    getCollectionWithHistory('invitations'),
     getCollection('escorts'),
     listAccounts().then((list) => list.map(safeAccount)),
   ]);
@@ -201,7 +204,6 @@ async function getConversationDetail(req: NextRequest) {
         : messageRequestId === requestedRequestId;
     })
     .sort((a, b) => stringValue(a.createdAt).localeCompare(stringValue(b.createdAt)))
-    .slice(-500)
     .map((message) => ({
       id: message.id,
       senderId: stringValue(message.senderId),
@@ -283,6 +285,13 @@ export async function GET(req: NextRequest) {
     chatMessages,
     traceEvents, // 供步驟判定辨識「已派工但通知未送達」
   });
+  const [savedMessages, savedInvitations] = await Promise.all([
+    getCollectionWithHistory('chatMessages'), getCollectionWithHistory('invitations'),
+  ]);
+  dashboard.conversations = buildAdminDashboard({
+    accounts, reports: [], requests: [], responses: [],
+    invitations: savedInvitations, chatMessages: savedMessages,
+  }).conversations;
   const managerRosters = buildAdminManagerRosters({
     accounts,
     escorts,
@@ -384,6 +393,26 @@ export async function POST(req: NextRequest) {
     const action = stringValue(body.action);
     const account = stringValue(body.account);
     const confirmation = stringValue(body.confirmation);
+
+    if (action === 'delete-chat-history') {
+      const threadId = stringValue(body.threadId).trim();
+      const requestId = stringValue(body.requestId);
+      if (!threadId || threadId.length > 256 || requestId.length > 256 || confirmation !== `DELETE ${threadId}`) {
+        return NextResponse.json({ error: '確認文字錯誤，未刪除紀錄' }, { status: 400 });
+      }
+      // Fail closed if the audit cannot be persisted. Record intent separately from success.
+      await recordAdminAudit({ adminUserId: admin.userId, action: 'delete-chat-history-requested', target: threadId, detail: `requestId=${requestId}` });
+      try {
+        const count = await deleteArchivedConversation(threadId, requestId);
+        await recordAdminAudit({ adminUserId: admin.userId, action, target: threadId, detail: `requestId=${requestId};records=${count};imageFilesRetained=true` });
+        return NextResponse.json({ ok: true, count });
+      } catch (error) {
+        if (error instanceof Error && error.message === 'CHAT_NOT_ARCHIVED') {
+          return NextResponse.json({ error: '聊天室尚未封存，不能刪除；請待到期封存後再操作' }, { status: 409 });
+        }
+        throw error;
+      }
+    }
 
     if (action === 'send-system-message') {
       const recipientId = stringValue(body.recipientId);
@@ -581,7 +610,7 @@ export async function POST(req: NextRequest) {
         'momentPosts',
         'plazaComments',
       ]);
-      await audit(admin, action, undefined, '清除局、邀請、通知、對話與廣場');
+      await audit(admin, action, undefined, '清除前台資料；局、邀請與對話移至後台保存，不刪歷史');
       return NextResponse.json({ ok: true });
     }
 
@@ -632,6 +661,7 @@ export async function POST(req: NextRequest) {
           .flatMap((item) => Array.isArray(item.urls) ? item.urls.map(stringValue) : []),
       ].filter(Boolean))];
       const referencedElsewhere = new Set<string>();
+      collectBlobPathnames(await getHistoryCollection('chatMessages'), referencedElsewhere);
       SHARED_KEYS.forEach((key, index) => {
         const records = collections[index].filter((item) => !(
           (key === 'photoOverrides' || key === 'photoGalleries') && item.id === escortId
@@ -721,6 +751,7 @@ export async function POST(req: NextRequest) {
           .flatMap((item) => Array.isArray(item.urls) ? item.urls.map(stringValue) : []),
       ].filter(Boolean))];
       const referencedElsewhere = new Set<string>();
+      collectBlobPathnames(await getHistoryCollection('chatMessages'), referencedElsewhere);
       SHARED_KEYS.forEach((key, index) => {
         const records = collections[index].filter((item) => !(
           (key === 'photoOverrides' || key === 'photoGalleries') && targetIds.has(item.id)

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireActiveSession } from '@/lib/active-session';
-import { getCollection, SHARED_KEYS } from '@/lib/sync-store';
+import { getCollectionWithHistory, SHARED_KEYS } from '@/lib/sync-store';
 import { parseBlobUrl, matchNewPathname, matchLegacyPathname } from '@/lib/image-upload';
 
 /**
  * A000 專用、**完全唯讀**的 Blob 盤點：找出「已無任何資料引用」的孤兒照片。
  *
- * 背景：聊天室過期後 planDataRetention 會刪掉 chatMessages，但 Blob 上的照片檔案不會被刪，
- * 因此累積孤兒。照片是 access:'public'、網址永久有效，所以這同時是隱私問題而非只是空間。
+ * 聊天室到期後移至歷史保存區；引用盤點必須包含封存訊息，避免把歷史照片誤判成孤兒。
  *
  * **本端點絕對不刪除任何東西**，只回報統計，供決定是否開啟自動清理。
  *
@@ -105,7 +104,7 @@ export async function GET(req: NextRequest) {
     } while (cursor);
 
     // 2) 讀所有集合（並行、不觸發 retention），遞迴收集被引用的 pathname
-    const collections = await Promise.all(SHARED_KEYS.map((key) => getCollection(key)));
+    const collections = await Promise.all(SHARED_KEYS.map((key) => getCollectionWithHistory(key)));
     const referenced = new Set<string>();
     const perCollection: Record<string, number> = {};
     SHARED_KEYS.forEach((key, i) => {

@@ -13,6 +13,75 @@ warnIfRedisMissingInProd(); // 生產環境缺 Redis → 冷啟動時大聲警�
 
 const hashKey = (col: string) => kvKey(`sl:h:v1:${col}`); // 每集合一個 hash（含環境前綴）
 const RESET_KEY = kvKey('sl:reset:v1'); // hash：{ collection: 清除時間戳(ms) }，供用戶端丟棄舊本機殘留
+// Independent of client sync. No TTL: only explicit A000 history deletion removes these.
+const HISTORY_COLLECTIONS = new Set(['requests', 'responses', 'invitations', 'chatMessages']);
+const historyKey = (col: string) => kvKey(`sl:chat-history:v1:${col}`);
+const historyMemory: Record<string, Record<string, Item>> = {};
+const ARCHIVE_ITEMS = `
+local ids = ARGV
+if #ids == 0 then ids = redis.call('HKEYS', KEYS[1]) end
+for _, id in ipairs(ids) do
+  local value = redis.call('HGET', KEYS[1], id)
+  if value then
+    redis.call('HSET', KEYS[2], id, value)
+    redis.call('HDEL', KEYS[1], id)
+  end
+end
+return #ids
+`;
+
+async function archiveItems(key: SharedKey, ids?: string[]): Promise<void> {
+  const redis = getRedis();
+  if (redis) {
+    // Move current values atomically: retries/stale retention snapshots cannot erase new writes.
+    await redis.eval(ARCHIVE_ITEMS, [hashKey(key), historyKey(key)], ids ?? []);
+  } else {
+    const target = historyMemory[key] ??= {};
+    for (const id of ids ?? Object.keys(mem[key])) {
+      if (mem[key][id]) target[id] = mem[key][id];
+      delete mem[key][id];
+    }
+  }
+}
+
+/** Server/admin only. Never feed archived records into normal sync or chat authorization. */
+export async function getHistoryCollection(key: SharedKey): Promise<Item[]> {
+  if (!HISTORY_COLLECTIONS.has(key)) return [];
+  const redis = getRedis();
+  if (!redis) return Object.values(historyMemory[key] ?? {});
+  const hash = await redis.hgetall(historyKey(key));
+  return hash ? Object.values(hash).map(parseItem).filter((item): item is Item => item !== null) : [];
+}
+
+export async function getCollectionWithHistory(key: SharedKey): Promise<Item[]> {
+  const [history, live] = await Promise.all([getHistoryCollection(key), getCollection(key)]);
+  return [...new Map([...history, ...live].map((item) => [item.id, item])).values()];
+}
+
+/** Only exact, already-archived conversation records. Shared request/response evidence is retained. */
+export async function deleteArchivedConversation(threadId: string, requestId: string): Promise<number> {
+  const { directInvitationThreadId } = await import('./chat-authz');
+  const matches = (item: Item, key: SharedKey) =>
+    String(item.requestId ?? '') === requestId && (key === 'chatMessages'
+      ? item.threadId === threadId
+      : (item.groupThreadId || directInvitationThreadId(item)) === threadId);
+  // Live conversations must expire/archive first; avoid deleting while participants are sending.
+  for (const key of ['invitations', 'chatMessages'] as const) {
+    if ((await getCollection(key)).some((item) => matches(item, key))) {
+      throw new Error('CHAT_NOT_ARCHIVED');
+    }
+  }
+  let count = 0;
+  const redis = getRedis();
+  for (const key of ['chatMessages', 'invitations'] as const) {
+    const ids = (await getHistoryCollection(key)).filter((item) => matches(item, key)).map((item) => item.id);
+    if (!ids.length) continue;
+    if (redis) await redis.hdel(historyKey(key), ...ids);
+    else for (const id of ids) delete historyMemory[key][id];
+    count += ids.length;
+  }
+  return count;
+}
 
 export type SharedKey =
   | 'requests' | 'responses' | 'invitations' | 'updates' | 'chatMessages'
@@ -79,7 +148,8 @@ async function deleteSharedItems(remove: Partial<Record<SharedKey, string[]>>): 
   for (const key of SHARED_KEYS) {
     const ids = remove[key];
     if (!ids?.length) continue;
-    if (redis) await redis.hdel(hashKey(key), ...ids);
+    if (HISTORY_COLLECTIONS.has(key)) await archiveItems(key, ids);
+    else if (redis) await redis.hdel(hashKey(key), ...ids);
     else for (const id of ids) delete mem[key][id];
   }
 }
@@ -276,6 +346,7 @@ export async function updatePhotoGallery(
 
 /** 從某集合刪除一筆（跨裝置刪除用）。 */
 export async function deleteSharedItem(key: SharedKey, id: string): Promise<void> {
+  if (HISTORY_COLLECTIONS.has(key)) return archiveItems(key, [id]);
   const redis = getRedis();
   if (redis) await redis.hdel(hashKey(key), id);
   else delete mem[key][id];
@@ -291,10 +362,15 @@ export async function clearShared(keys?: string[]): Promise<void> {
   const marks: Record<string, number> = {};
   for (const k of targets) marks[k] = now;
   if (redis) {
-    await redis.del(...targets.map((k) => hashKey(k)));
+    for (const key of targets.filter((k) => HISTORY_COLLECTIONS.has(k))) await archiveItems(key);
+    const disposable = targets.filter((k) => !HISTORY_COLLECTIONS.has(k));
+    if (disposable.length) await redis.del(...disposable.map((k) => hashKey(k)));
     await redis.hset(RESET_KEY, marks);
   } else {
-    for (const key of targets) mem[key] = {};
+    for (const key of targets) {
+      if (HISTORY_COLLECTIONS.has(key)) await archiveItems(key);
+      else mem[key] = {};
+    }
     Object.assign(memReset, marks);
   }
 }
