@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { normalizeCustomerLogin } from './customer-login';
+import { passwordRuleError } from './password-policy';
 import { getRedis, kvKey } from './kv';
 import { normalizeTaiwanMobile, taiwanMobileStorageAliases } from './phone';
 import { removeDevicesForUser } from './device-store';
@@ -119,8 +121,8 @@ export function normalizePhone(phone: string): string {
 
 export function normalizeKey(key: string): string {
   const k = (key ?? '').trim();
-  // Manually provisioned customer trial account; this does not create an account or grant a role.
-  if (k.toUpperCase() === 'TEST1234') return 'TEST1234';
+  const customerLogin = normalizeCustomerLogin(k);
+  if (customerLogin) return customerLogin;
   // 幹部/管理員帳號＝A + 3~4 位數字（A000~A020 為既有；A999/A1000 為額外測試帳號）；其餘視為手機
   return /^A\d{3,4}$/i.test(k) ? k.toUpperCase() : normalizePhone(k);
 }
@@ -262,6 +264,35 @@ export async function createCustomer(
   };
   accounts[key] = account;
   await writeAccounts(accounts);
+  return account;
+}
+
+
+// A000 provisioning only. A conditional Redis script prevents duplicate creates from
+// overwriting each other; passwords and consent are never synthesized by the client.
+export async function createManagedCustomer(login: string, password: string, nickname: string): Promise<Account | null> {
+  const key = normalizeCustomerLogin(login);
+  if (!key || passwordRuleError(password) || !nickname.trim() || nickname.trim().length > 60) throw new Error('invalid customer input');
+  const salt = crypto.randomBytes(16).toString('hex');
+  const account: Account = {
+    key, role: 'user', tier: 'standard', userId: `c-${crypto.randomUUID()}`,
+    nickname: nickname.trim(), salt, hash: hashPassword(password, salt),
+    createdAt: new Date().toISOString(), sessionVersion: 0,
+  };
+  const redis = getRedis();
+  if (redis) {
+    const created = await redis.eval(`
+      local raw = redis.call('GET', KEYS[1])
+      local accounts = raw and cjson.decode(raw) or {}
+      if accounts[ARGV[1]] then return 0 end
+      accounts[ARGV[1]] = cjson.decode(ARGV[2])
+      redis.call('SET', KEYS[1], cjson.encode(accounts), 'KEEPTTL')
+      return 1
+    `, [ACCOUNTS_KEY], [key, JSON.stringify(account)]);
+    return Number(created) === 1 ? account : null;
+  }
+  if (memAccounts[key]) return null;
+  memAccounts[key] = account;
   return account;
 }
 

@@ -1,5 +1,6 @@
 'use client';
 
+import AdminCustomerForm from '@/components/AdminCustomerForm';
 import type { Diagnostic } from '@/lib/system-diagnostics';
 import { diagnosticGuidance, formatDiagnosticReport } from '@/lib/diagnostic-guidance';
 
@@ -426,6 +427,7 @@ const ACTION_LABEL: Record<string, string> = {
   'reopen-issue': '重開問題回報',
   'clear-shared': '清除局與聊天資料',
   'reset-all-managers': '清空所有幹部密碼',
+  'create-customer': '新增一般用戶',
   'delete-all-customers': '刪除所有客戶',
   'permanently-delete-escort': '永久刪除人員',
   'permanently-clear-manager': '永久清空幹部資料',
@@ -1960,6 +1962,7 @@ export default function AdminPage() {
                     </button>
                   ))}
                 </div>
+                {accountGroup === 'user' && <AdminCustomerForm disabled={Boolean(busy)} onCreated={async (account) => { setAccountPage(1); setAccountQuery(account); await load(); }} />}
                 {accountGroup === 'manager' && <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4">
                   <p className="text-sm font-bold text-sky-900">新增幹部帳號</p>
                   <p className="mt-1 text-xs text-sky-700">帳號由伺服器配置；一次性啟用碼只顯示一次。</p>
@@ -1985,7 +1988,7 @@ export default function AdminPage() {
                 <input
                   value={accountQuery}
                   onChange={(event) => { setAccountQuery(event.target.value); setAccountPage(1); }}
-                  placeholder={accountGroup === 'user' ? '搜尋手機號碼、暱稱或 userId（結果仍會遮罩）' : '搜尋帳號、暱稱或 userId'}
+                  placeholder={accountGroup === 'user' ? '搜尋帳號、手機號碼、暱稱或 userId（手機會遮罩）' : '搜尋帳號、暱稱或 userId'}
                   className="mt-4 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none focus:border-sky-400"
                 />
                 {accountDirectoryError && (

@@ -266,7 +266,7 @@ export default function LoginPage() {
                 <button type="button" onClick={() => switchMode('login')} className={`${styles.textButton} ${styles.textButtonLeft}`}>
                   ← 返回登入
                 </button>
-                <p className={styles.helper}>幹部/管理員帳號請聯絡管理員重設，不適用簡訊重設。</p>
+                <p className={styles.helper}>非手機帳號（含管理員建立的用戶）請聯絡管理員重設密碼。</p>
               </form>
             )}
           </div>

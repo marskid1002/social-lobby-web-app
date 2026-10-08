@@ -17,19 +17,8 @@ import { recordFlowTrace } from '@/lib/flow-trace-store';
 import { removeSubscriptionsForUser } from '@/lib/push-store';
 import * as Sentry from '@sentry/nextjs';
 
-const PW_MIN = 6;
-const PW_MAX = 128; // 上限避免 scryptSync 被超長密碼拖成 CPU DoS
-
-// 密碼複雜度規則（所有「設定密碼」流程共用）：長度 PW_MIN~PW_MAX，且需同時包含
-// 小寫、大寫、數字與符號（非英數字元）。通過回傳 null；否則回傳可直接顯示的錯誤訊息。
-export function passwordRuleError(pw: string): string | null {
-  if (pw.length < PW_MIN || pw.length > PW_MAX) return `密碼需 ${PW_MIN}~${PW_MAX} 碼`;
-  if (!/[a-z]/.test(pw)) return '密碼需包含小寫英文字母';
-  if (!/[A-Z]/.test(pw)) return '密碼需包含大寫英文字母';
-  if (!/[0-9]/.test(pw)) return '密碼需包含數字';
-  if (!/[^A-Za-z0-9]/.test(pw)) return '密碼需包含符號';
-  return null;
-}
+import { PW_MAX, passwordRuleError } from '@/lib/password-policy';
+export { passwordRuleError } from '@/lib/password-policy';
 
 function isProd(): boolean {
   return process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
