@@ -119,6 +119,8 @@ export function normalizePhone(phone: string): string {
 
 export function normalizeKey(key: string): string {
   const k = (key ?? '').trim();
+  // Manually provisioned customer trial account; this does not create an account or grant a role.
+  if (k.toUpperCase() === 'TEST1234') return 'TEST1234';
   // 幹部/管理員帳號＝A + 3~4 位數字（A000~A020 為既有；A999/A1000 為額外測試帳號）；其餘視為手機
   return /^A\d{3,4}$/i.test(k) ? k.toUpperCase() : normalizePhone(k);
 }
