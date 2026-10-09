@@ -304,6 +304,11 @@ let syncPollTimer: ReturnType<typeof setTimeout> | null = null;
 // 尚未確認送達 server 的本機項目（避免 poll 以 server 舊版覆蓋樂觀更新造成靜默遺失，#10）
 const unconfirmed: Partial<Record<SharedKey, Map<string, { id: string }>>> = {};
 
+/** Bulk presence operations must wait until local individual changes are acknowledged. */
+export function hasPendingPresenceChanges(ids: string[]): boolean {
+  return ids.some(id => unconfirmed.presence?.has(id));
+}
+
 // 各共享集合的「清除時間戳」（來自 /api/sync 的 resetAt）。用來丟棄早於此時間的本機殘留，
 // 讓管理員「清空」真正生效——否則 unionById 會保留本機、initPatch 會回推，導致已清資料復活。
 let resetMarks: Record<string, number> = {};

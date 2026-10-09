@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { refreshShared, useAppState } from '@/lib/state';
+import { hasPendingPresenceChanges, refreshShared, useAppState } from '@/lib/state';
 import { formatDistanceToNow } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import { X, Check, UserCog, Camera, Trash2, Pencil, Search } from 'lucide-react';
@@ -246,6 +246,8 @@ export function OperatorHome() {
   const [editEscortCity, setEditEscortCity] = useState<AreaCity>('台北市');
   const [editEscortArea, setEditEscortArea] = useState('信義區');
   const [rosterSearch, setRosterSearch] = useState('');
+  const [clockingOut, setClockingOut] = useState(false);
+  const clockOutLock = useRef(false);
 
   // 幹部自建的小姐（B）：名單以 managerId === 本人 動態產生（一開始為空，全部由幹部自建）
   const rosterGirls = state.users.filter((u) => u.role === 'escort' && u.managerId === state.currentUserId);
@@ -253,7 +255,39 @@ export function OperatorHome() {
   const filteredRosterGirls = filterRosterBySearch(rosterGirls, rosterSearch);
   const hasRosterSearch = rosterSearch.trim().length > 0;
   const currentRosterIds = rosterGirls.map((u) => u.id);
+  const onlineRosterCount = rosterGirls.filter(u => state.onlineUserIds.includes(u.id)).length;
   const busyGirlIds = activeConfirmedGirlIds(state.responses, state.invitations);
+
+  async function handleAllOffline() {
+    if (clockingOut || clockOutLock.current || onlineRosterCount === 0) return;
+    if (hasPendingPresenceChanges(currentRosterIds)) {
+      setToast('上下班狀態正在同步，請稍後再試');
+      setTimeout(() => setToast(''), 4000);
+      return;
+    }
+    if (!window.confirm(`確定將你所屬的 ${onlineRosterCount} 位上班人員全部設為下班？\n\n包含搜尋結果以外的人員；進行中的約會與聊天會保留。`)) return;
+    clockOutLock.current = true;
+    setClockingOut(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch('/api/escorts/offline', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'all-owned' }), signal: controller.signal,
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || '下班操作失敗');
+      await refreshShared();
+      setToast(result.count > 0 ? `已將 ${result.count} 位所屬人員設為下班` : '所屬人員目前皆已下班');
+    } catch (error) {
+      setToast(`⚠️ ${error instanceof Error && error.name !== 'AbortError' ? error.message : '連線逾時，請重新整理確認下班狀態後再重試'}`);
+    } finally {
+      window.clearTimeout(timeout);
+      clockOutLock.current = false;
+      setClockingOut(false);
+      setTimeout(() => setToast(''), 6000);
+    }
+  }
 
   async function handleAddEscort() {
     const name = newEscortName.trim();
@@ -549,8 +583,17 @@ export function OperatorHome() {
       </div>
 
       {/* 人員管理：名單 + 上線狀態 + 照片 + 以其身份操作（單一區塊） */}
-      <div className="flex items-center gap-3 px-4 py-3 mt-2 bg-brand-snow border-y border-zinc-100">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 mt-2 bg-brand-snow border-y border-zinc-100">
         <p className="text-sm font-bold text-brand-ink uppercase tracking-wider flex-1">人員管理（{currentRosterIds.length}）</p>
+        <button
+          type="button"
+          onClick={handleAllOffline}
+          disabled={clockingOut || onlineRosterCount === 0}
+          title={onlineRosterCount === 0 ? '目前皆已下班' : `將全部所屬的 ${onlineRosterCount} 位上班人員設為下班`}
+          className="shrink-0 text-[11px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/60 px-2.5 py-1.5 rounded-full active:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {clockingOut ? '處理中…' : '全部下班'}
+        </button>
         <button
           onClick={openAddEscort}
           className="shrink-0 text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2.5 py-1.5 rounded-full active:bg-purple-100 transition-colors"
@@ -620,7 +663,8 @@ export function OperatorHome() {
                 </div>
                 {/* 上線/下班（跨裝置同步）*/}
                 <button
-                  onClick={() => setUserPresence(user.id, !isOnline)}
+                  onClick={() => { if (!clockOutLock.current) setUserPresence(user.id, !isOnline); }}
+                  disabled={clockingOut}
                   className={`shrink-0 px-2 py-1.5 rounded-full border text-[11px] font-bold transition-colors ${isOnline ? 'bg-green-50 border-green-200 text-green-700 active:bg-green-100' : 'bg-zinc-100 border-zinc-200 text-zinc-400 active:bg-zinc-200'}`}
                   aria-label={`${isOnline ? '設為下班' : '設為上班'}：${user.nickname}`}
                 >
