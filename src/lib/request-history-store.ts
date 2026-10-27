@@ -1,3 +1,4 @@
+import { readRedisSnapshot } from './redis-snapshot';
 import { getRedis, kvKey } from './kv';
 
 type Item = { id: string; [key: string]: unknown };
@@ -149,7 +150,7 @@ export async function archiveRequestHistory(
   const redis = getRedis();
   const existing = redis
     ? new Map(
-        Object.entries((await redis.hgetall(HISTORY_KEY)) ?? {})
+        Object.entries((await readRedisSnapshot(redis, HISTORY_KEY, 'hash') as Record<string, unknown> | null) ?? {})
           .map(([id, value]) => [id, parse(value)] as const)
           .filter((entry): entry is readonly [string, RequestHistoryRecord] => Boolean(entry[1])),
       )
@@ -174,7 +175,7 @@ export async function archiveRequestHistory(
 export async function listRequestHistory(limit = 2000): Promise<RequestHistoryRecord[]> {
   const redis = getRedis();
   const records = redis
-    ? Object.values((await redis.hgetall(HISTORY_KEY)) ?? {}).map(parse).filter(Boolean) as RequestHistoryRecord[]
+    ? Object.values((await readRedisSnapshot(redis, HISTORY_KEY, 'hash') as Record<string, unknown> | null) ?? {}).map(parse).filter(Boolean) as RequestHistoryRecord[]
     : [...memory.values()];
   return records
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))

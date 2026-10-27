@@ -1,3 +1,4 @@
+import { readRedisSnapshot } from './redis-snapshot';
 /**
  * 跨裝置共享狀態儲存層（B 資料層：原子寫入版）。
  * 每個集合存成一個 Redis Hash（field = 項目 id，value = 項目 JSON），
@@ -131,7 +132,7 @@ async function readSharedRaw(): Promise<SharedState> {
     // 實測線上基準往返 0.35s、每次 hgetall 約 0.18s → /api/sync 要 2.9s。
     // 並行後約等於一次往返。語意不變（仍是一份快照），且並行取到的時間點更接近一致。
     const hashes = await Promise.all(
-      SHARED_KEYS.map((key) => redis.hgetall(hashKey(key)) as Promise<Record<string, unknown> | null>),
+      SHARED_KEYS.map((key) => readRedisSnapshot(redis, hashKey(key), 'hash') as Promise<Record<string, unknown> | null>),
     );
     SHARED_KEYS.forEach((key, i) => {
       const h = hashes[i];
@@ -208,7 +209,7 @@ export async function getShared(): Promise<SharedState> {
 export async function getCollection(key: SharedKey): Promise<Item[]> {
   const redis = getRedis();
   if (redis) {
-    const h = (await redis.hgetall(hashKey(key))) as Record<string, unknown> | null;
+    const h = (await readRedisSnapshot(redis, hashKey(key), 'hash')) as Record<string, unknown> | null;
     return h ? (Object.values(h).map(parseItem).filter(Boolean) as Item[]) : [];
   }
   return Object.values(mem[key]);

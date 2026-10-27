@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { coalescedSync } from './coalesced-sync';
 import {
   users as seedUsers,
   onlineStatuses as seedOnlineStatuses,
@@ -295,7 +296,11 @@ function reconcilePresence(next: AppState): AppState {
 }
 // 聊天需要較即時；其他頁面降低輪詢頻率，避免閒置頁面持續消耗 /api/sync。
 const CHAT_SYNC_POLL_MS = 4000;
-const GENERAL_SYNC_POLL_MS = 10_000;
+const GENERAL_SYNC_POLL_MS = 30_000;
+let syncEtag = '';
+let syncVersions = '';
+let syncIdentity = '';
+let syncFailures = 0;
 let syncStarted = false;
 let sharedSyncReady = false;
 let isPushing = false;
@@ -455,6 +460,7 @@ export function otherIdFromThread(threadId: string, me: string): string {
 type AccountDisplayName = { userId: string; nickname: string };
 
 type ServerSharedPayload = Partial<Record<SharedKey, { id: string }[]>> & {
+  authoritative?: boolean;
   resetAt?: Record<string, number>;
   accountNames?: AccountDisplayName[];
 };
@@ -491,7 +497,7 @@ function applyServerShared(shared: ServerSharedPayload) {
   // 更新清除時間戳（管理員清空後，server 會回帶各集合的清除時間）
   const incomingReset = shared.resetAt;
   if (incomingReset) resetMarks = { ...resetMarks, ...incomingReset };
-  let changed = false;
+  let changed = Boolean(shared.accountNames);
   const next = { ...globalState } as AppState;
   for (const key of SHARED_KEYS) {
     const serverArr = shared[key];
@@ -500,7 +506,7 @@ function applyServerShared(shared: ServerSharedPayload) {
     const localArr = droppedBeforeReset(key, (globalState[key] as unknown as { id: string }[]) ?? []);
     // Escorts and responses are authoritative. Scoped response visibility may shrink; retaining the
     // local union would leave another manager's previously downloaded participants in browser cache.
-    let merged = key === 'escorts' || key === 'responses' ? [...serverArr] : unionById(localArr, serverArr);
+    let merged = shared.authoritative || key === 'escorts' || key === 'responses' ? [...serverArr] : unionById(localArr, serverArr);
     // 疊回尚未確認送達 server 的本機項目：server 版本不得覆蓋（#10）；但別把清除前的舊項目塞回
     const uc = unconfirmed[key];
     if (uc && uc.size) {
@@ -536,18 +542,32 @@ function applyServerShared(shared: ServerSharedPayload) {
   }
 }
 
-async function pollShared() {
+const pollShared = coalescedSync(readSharedOnce);
+
+async function readSharedOnce() {
   try {
-    const res = await fetch('/api/sync', { cache: 'no-store' });
-    if (redirectExpiredSession(res)) return;
-    if (!res.ok) return;
+    const identity = getState().currentUserId;
+    if (identity !== syncIdentity) { syncIdentity = identity; syncEtag = ''; syncVersions = ''; }
+    const res = await fetch('/api/sync', {
+      cache: 'no-store', headers: {
+        ...(syncEtag ? { 'If-None-Match': syncEtag } : {}),
+        ...(syncVersions ? { 'X-Sync-Versions': syncVersions } : {}),
+      },
+    });
+    if (redirectExpiredSession(res)) { syncEtag = ''; return; }
+    if (res.status === 304) { syncFailures = 0; return; }
+    if (!res.ok) { syncFailures++; return; }
     const shared = await res.json();
+    if (getState().currentUserId !== identity) { syncEtag = ''; return; }
     applyServerShared(shared);
+    syncEtag = res.headers.get('etag') ?? '';
+    syncVersions = res.headers.get('x-sync-versions') ?? '';
+    syncFailures = 0;
     if (!sharedSyncReady) {
       sharedSyncReady = true;
       listeners.forEach((listener) => listener());
     }
-  } catch {}
+  } catch { syncFailures++; }
 }
 
 function currentSyncPollMs(): number {
@@ -571,7 +591,7 @@ function scheduleNextSync(): void {
     syncPollTimer = null;
     await pollShared();
     scheduleNextSync();
-  }, currentSyncPollMs());
+  }, Math.min(120_000, currentSyncPollMs() * 2 ** Math.min(syncFailures, 5)));
 }
 
 function handleSyncVisibilityChange(): void {
@@ -581,30 +601,26 @@ function handleSyncVisibilityChange(): void {
   }
   // 回到前景時立即取得最新資料，再依目前所在頁面的頻率繼續輪詢。
   stopScheduledSync();
-  void pollShared().finally(scheduleNextSync);
+  void refreshShared();
 }
 
 /** 由通知落地頁主動刷新一次權威共享資料。 */
 export async function refreshShared(): Promise<void> {
-  await pollShared();
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+  stopScheduledSync();
+  try { await pollShared(); }
+  finally { scheduleNextSync(); }
 }
 
 function startSync() {
   if (syncStarted || typeof window === 'undefined') return;
   syncStarted = true;
   document.addEventListener('visibilitychange', handleSyncVisibilityChange);
-  // 啟動時：先拉一次（取得 resetAt 並丟棄已被清除的本機殘留），再把「剩餘」本機共享資料推上 server，
-  // 避免把管理員已清除的舊資料又回推復活。
-  pollShared().then(() => {
-    const s = getState();
-    const initPatch: Partial<Record<SharedKey, unknown[]>> = {};
-    for (const key of SHARED_KEYS) {
-      if (key === 'chatReads') continue;
-      const arr = s[key] as unknown[];
-      if (arr && arr.length) initPatch[key] = arr;
-    }
-    if (Object.keys(initPatch).length) pushSharedPatch(initPatch);
-  }).finally(scheduleNextSync);
+  navigator.serviceWorker?.addEventListener('message', (event) => {
+    if (event.data?.type === 'CHAT_UPDATED') void refreshShared();
+  });
+  // Server is authoritative. Never replay the entire local cache on page load.
+  pollShared().finally(scheduleNextSync);
 }
 
 // 重設共享資料（同時清 server）

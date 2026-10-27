@@ -1,3 +1,4 @@
+import { readRedisSnapshot } from './redis-snapshot';
 import crypto from 'crypto';
 import { normalizeCustomerLogin } from './customer-login';
 import { passwordRuleError } from './password-policy';
@@ -93,7 +94,7 @@ const memAccounts: AccountsMap = {};
 
 async function readAccounts(): Promise<AccountsMap> {
   const redis = getRedis();
-  if (redis) return ((await redis.get(ACCOUNTS_KEY)) as AccountsMap | null) ?? {};
+  if (redis) return ((await readRedisSnapshot(redis, ACCOUNTS_KEY, 'string')) as AccountsMap | null) ?? {};
   return memAccounts;
 }
 

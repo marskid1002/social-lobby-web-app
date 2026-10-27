@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getShared, mergeShared, clearShared, getCollection, getResetMarks, SHARED_KEYS, type SharedState, type SharedKey } from '@/lib/sync-store';
 import { type SessionPayload } from '@/lib/session';
@@ -8,6 +9,7 @@ import { getAccountDisplayNames, getManagerUserIds } from '@/lib/auth-store';
 import { recordAcceptedSyncWrites } from '@/lib/flow-trace';
 import { deliverAuthorizedPushes, planAuthorizedSyncPushes } from '@/lib/push-authz';
 import { confirmedCountForRequest, filledRequestClosures } from '@/lib/request-attendance';
+
 
 async function reconcileFilledRequests(shared: SharedState): Promise<SharedState> {
   const closures = filledRequestClosures(
@@ -289,10 +291,27 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return auth.response;
     const session = auth.session;
     const shared = await reconcileFilledRequests(await getShared());
-    return NextResponse.json(
-      await responsePayload(shared, session),
-      { headers: { 'Cache-Control': 'no-store' } },
-    );
+    const payload = await responsePayload(shared, session);
+    // Hash the authorized response, never a global revision that could skip authorization.
+    const etag = '"' + createHash('sha256').update(JSON.stringify(payload)).digest('hex') + '"';
+    const versions = Object.fromEntries(Object.entries(payload).map(([key, value]) => [
+      key, createHash('sha256').update(JSON.stringify(value)).digest('hex'),
+    ]));
+    const headers = {
+      'Cache-Control': 'private, no-store', ETag: etag, Vary: 'Cookie, X-Sync-Versions',
+      'X-Sync-Versions': JSON.stringify(versions),
+    };
+    if (req.headers.get('if-none-match') === etag) return new Response(null, { status: 304, headers });
+    let previous: Record<string, string> = {};
+    const rawVersions = req.headers.get('x-sync-versions');
+    if (rawVersions && rawVersions.length < 4096) {
+      try {
+        const parsed = JSON.parse(rawVersions);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) previous = parsed;
+      } catch { /* Invalid cursor falls back to a complete authorized snapshot. */ }
+    }
+    const changed = Object.fromEntries(Object.entries(payload).filter(([key]) => previous[key] !== versions[key]));
+    return NextResponse.json({ ...changed, authoritative: true }, { headers });
   } catch (e) {
     console.error('[sync GET]', e);
     return NextResponse.json({ error: 'server error' }, { status: 500 });

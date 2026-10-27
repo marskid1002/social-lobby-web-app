@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+if (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL) throw new Error('Memory-only tests');
+const { GET } = await import('@/app/api/sync/route');
+const { signSession } = await import('@/lib/session');
+const store = await import('@/lib/sync-store');
+const auth = await import('@/lib/auth-store');
+
+test('conditional sync rechecks authorization, detects edits and deletions, and returns no unchanged body', async () => {
+  const account = await auth.getAccount('A000');
+  const token = await signSession({ userId: account.userId, role: account.role, tier: account.tier, sessionVersion: account.sessionVersion });
+  const req = (etag = '', cookie = token, versions = '') => new Request('http://localhost/api/sync', { headers: { cookie: `sl_session=${cookie}`, 'if-none-match': etag, 'x-sync-versions': versions } });
+  const first = await GET(req());
+  assert.equal(first.status, 200);
+  const etag = first.headers.get('etag'); assert.ok(etag);
+  const unchanged = await GET(req(etag));
+  assert.equal(unchanged.status, 304); assert.equal(await unchanged.text(), '');
+  await store.mergeShared({ presence: [{ id: 'bandwidth-user', online: true }] });
+  const edited = await GET(req(etag, token, first.headers.get('x-sync-versions'))); assert.equal(edited.status, 200);
+  assert.deepEqual(Object.keys(edited.body).sort(), ['authoritative', 'presence']);
+  assert.equal(edited.body.presence[0].id, 'bandwidth-user');
+  await store.deleteSharedItem('presence', 'bandwidth-user');
+  const removed = await GET(req(edited.headers.get('etag'), token, edited.headers.get('x-sync-versions')));
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body.presence, []);
+  assert.equal((await GET(req('', token, 'invalid-json'))).body.authoritative, true);
+  assert.equal((await GET(req(etag, 'invalid'))).status, 401);
+  await auth.bumpAccountSessionVersion('A000');
+  assert.equal((await GET(req(etag))).status, 401);
+});
