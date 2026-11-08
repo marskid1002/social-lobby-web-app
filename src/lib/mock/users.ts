@@ -31,7 +31,7 @@ const CARD_PHOTOS: Record<string, string> = {
   'u-021': 'https://randomuser.me/api/portraits/men/48.jpg',
   'u-022': 'https://randomuser.me/api/portraits/men/62.jpg',
   'u-023': 'https://randomuser.me/api/portraits/men/75.jpg',
-  'u-024': 'https://randomuser.me/api/portraits/men/12.jpg',
+  'u-024': '/avatars/u-024-queen-aheng.png',
   'u-025': 'https://randomuser.me/api/portraits/men/41.jpg',
   'u-026': 'https://randomuser.me/api/portraits/men/53.jpg',
   'u-027': 'https://randomuser.me/api/portraits/men/67.jpg',
@@ -110,7 +110,7 @@ export const users: User[] = [
   ...(['u-024', 'u-025', 'u-026', 'u-027', 'u-028', 'u-029', 'u-030', 'u-031'].map((id, i) => ({
     id,
     lineUserId: `U${id.slice(2)}ganbu`,
-    nickname: ['張經理', '黃經理', '劉經理', '吳經理', '蔡經理', '鄭經理', '謝經理', '許經理'][i],
+    nickname: ['Queen阿衡', '黃經理', '劉經理', '吳經理', '蔡經理', '鄭經理', '謝經理', '許經理'][i],
     avatarUrl: CARD_PHOTOS[id],
     cardImageUrl: CARD_PHOTOS[id],
     bio: '幹部 / 經紀人，配合接單與安排出席。',

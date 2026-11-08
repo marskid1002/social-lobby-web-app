@@ -142,7 +142,7 @@ function loadState(): AppState {
     let merged = { ...getSeedState(), ...parsed } as AppState;
     // 套用已儲存的註冊用戶與 override（照片、上/下班）
     if (merged.registeredUsers?.length) merged = applyRegisteredUsers(merged);
-    if (merged.photoOverrides?.length) merged = applyPhotoOverrides(merged);
+    merged = applyPhotoOverrides(merged);
     if (merged.presence?.length) merged = reconcilePresence(merged);
     return pruneExpiredLocalState(merged);
   } catch {
