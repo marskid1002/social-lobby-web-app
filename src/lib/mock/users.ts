@@ -110,7 +110,7 @@ export const users: User[] = [
   ...(['u-024', 'u-025', 'u-026', 'u-027', 'u-028', 'u-029', 'u-030', 'u-031'].map((id, i) => ({
     id,
     lineUserId: `U${id.slice(2)}ganbu`,
-    nickname: ['Queen阿衡', '黃經理', '劉經理', '吳經理', '蔡經理', '鄭經理', '謝經理', '許經理'][i],
+    nickname: ['陳經理', '黃經理', '劉經理', '吳經理', '蔡經理', '鄭經理', '謝經理', '許經理'][i],
     avatarUrl: CARD_PHOTOS[id],
     cardImageUrl: CARD_PHOTOS[id],
     bio: '幹部 / 經紀人，配合接單與安排出席。',

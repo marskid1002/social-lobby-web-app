@@ -60,7 +60,7 @@ const ACCOUNT_VIEWER_ACCOUNT = {
 const MANAGER_MAP: { code: string; userId: string; nickname: string; mustChangeNickname?: boolean }[] = [
   { code: 'A001', userId: 'u-018', nickname: '陳幹部' },
   { code: 'A002', userId: 'u-023', nickname: '林經理' },
-  { code: 'A003', userId: 'u-024', nickname: 'Queen阿衡' },
+  { code: 'A003', userId: 'u-024', nickname: '陳經理' },
   { code: 'A004', userId: 'u-025', nickname: '黃經理' },
   { code: 'A005', userId: 'u-026', nickname: '劉經理' },
   { code: 'A006', userId: 'u-027', nickname: '吳經理' },
@@ -222,9 +222,9 @@ async function ensureManagerAccounts(accounts: AccountsMap): Promise<boolean> {
     }
   }
   // 更新 U024 的舊預設名稱；保留管理員另行設定的名稱。
-  const queen = accounts['A003'];
-  if (queen?.userId === 'u-024' && queen.nickname === '張經理') {
-    queen.nickname = 'Queen阿衡';
+  const manager = accounts['A003'];
+  if (manager?.userId === 'u-024' && ['張經理', 'Queen阿衡'].includes(manager.nickname)) {
+    manager.nickname = '陳經理';
     changed = true;
   }
   return changed;
